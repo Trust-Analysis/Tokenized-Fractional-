@@ -86,7 +86,7 @@ soroban contract invoke \
 ```env
 VITE_CONTRACT_ID=<YOUR_CONTRACT_ID>
 VITE_RPC_URL=https://soroban-testnet.stellar.org:443
-VITE_NETWORK_PASSPHRASE=Test SDF Network ; September 2015
+VITE_NETWORK_PASSPHRASE="Test SDF Network ; September 2015"
 VITE_API_URL=http://localhost:3001
 ```
 
