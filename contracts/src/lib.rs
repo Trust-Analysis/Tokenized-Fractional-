@@ -1,6 +1,5 @@
 #![no_std]
-#![allow(deprecated)]
-use soroban_sdk::{contract, contractimpl, contracttype, token, Address, Env, Symbol};
+use soroban_sdk::{contract, contractevent, contractimpl, contracttype, token, Address, Env};
 
 #[contract]
 pub struct RwaMarketplace;
@@ -17,14 +16,31 @@ pub enum DataKey {
     Balance(Address),
 }
 
-#[derive(Clone)]
-#[contracttype]
-pub enum Event {
-    Init(Address, Address, i128, u32),
-    BuyShares(Address, u32, i128),
-    Pause,
-    Unpause,
-    EmergencyWithdraw(Address, i128),
+#[contractevent(data_format = "vec")]
+pub struct EventInit {
+    admin: Address,
+    payment_token: Address,
+    price: i128,
+    total_shares: u32,
+}
+
+#[contractevent(data_format = "vec")]
+pub struct EventBuyShares {
+    buyer: Address,
+    shares: u32,
+    total_cost: i128,
+}
+
+#[contractevent]
+pub struct EventPause {}
+
+#[contractevent]
+pub struct EventUnpause {}
+
+#[contractevent(data_format = "vec")]
+pub struct EventEmergencyWithdraw {
+    to: Address,
+    amount: i128,
 }
 
 #[contractimpl]
@@ -43,10 +59,7 @@ impl RwaMarketplace {
         env.storage().instance().set(&DataKey::AvailableShares, &total_shares);
         env.storage().instance().set(&DataKey::Paused, &false);
 
-        env.events().publish(
-            (Symbol::new(&env, "init"),),
-            (admin, payment_token, price, total_shares),
-        );
+        EventInit { admin, payment_token, price, total_shares }.publish(&env);
     }
 
     pub fn buy_shares(env: Env, buyer: Address, shares: u32) {
@@ -80,7 +93,7 @@ impl RwaMarketplace {
             .get(&DataKey::PaymentToken)
             .unwrap();
 
-        let client = token::Client::new(&env, &token_id);
+        let client = token::TokenClient::new(&env, &token_id);
         client.transfer(&buyer, &admin, &total_cost);
 
         env.storage()
@@ -97,10 +110,7 @@ impl RwaMarketplace {
             .persistent()
             .set(&DataKey::Balance(buyer.clone()), &buyer_balance);
 
-        env.events().publish(
-            (Symbol::new(&env, "buy_shares"),),
-            (buyer, shares, total_cost),
-        );
+        EventBuyShares { buyer, shares, total_cost }.publish(&env);
     }
 
     pub fn get_shares(env: Env, owner: Address) -> u32 {
@@ -142,14 +152,14 @@ impl RwaMarketplace {
         let admin: Address = env.storage().instance().get(&DataKey::Admin).unwrap();
         admin.require_auth();
         env.storage().instance().set(&DataKey::Paused, &true);
-        env.events().publish((Symbol::new(&env, "pause"),), ());
+        EventPause {}.publish(&env);
     }
 
     pub fn unpause(env: Env) {
         let admin: Address = env.storage().instance().get(&DataKey::Admin).unwrap();
         admin.require_auth();
         env.storage().instance().set(&DataKey::Paused, &false);
-        env.events().publish((Symbol::new(&env, "unpause"),), ());
+        EventUnpause {}.publish(&env);
     }
 
     pub fn emergency_withdraw(env: Env, to: Address, amount: i128) {
@@ -162,13 +172,10 @@ impl RwaMarketplace {
             .get(&DataKey::PaymentToken)
             .unwrap();
 
-        let client = token::Client::new(&env, &token_id);
+        let client = token::TokenClient::new(&env, &token_id);
         client.transfer(&env.current_contract_address(), &to, &amount);
 
-        env.events().publish(
-            (Symbol::new(&env, "emergency_withdraw"),),
-            (to, amount),
-        );
+        EventEmergencyWithdraw { to, amount }.publish(&env);
     }
 }
 
