@@ -132,8 +132,14 @@ function App() {
         throw new Error(simulation.error);
       }
 
-      tx = rpc.assembleTransaction(tx, NETWORK_PASSPHRASE, simulation).build();
-      const signedTxXdr = await signTransaction(tx.toXDR(), { networkPassphrase: NETWORK_PASSPHRASE });
+      tx = rpc.assembleTransaction(tx, simulation).build();
+      const { signedTxXdr, error: signError } = await signTransaction(tx.toXDR(), {
+        networkPassphrase: NETWORK_PASSPHRASE,
+      });
+      if (signError || !signedTxXdr) {
+        throw new Error(signError?.message || 'Freighter transaction signing failed');
+      }
+
       const submitRes = await server.sendTransaction(
         TransactionBuilder.fromXDR(signedTxXdr, NETWORK_PASSPHRASE)
       );
