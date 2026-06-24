@@ -7,6 +7,8 @@ import Card from './components/Card/Card';
 import Input from './components/Input/Input';
 import Badge from './components/Badge/Badge';
 import Alert from './components/Alert/Alert';
+import Skeleton from './components/Skeleton/Skeleton';
+import Spinner from './components/Spinner/Spinner';
 import styles from './App.module.css';
 
 const CONTRACT_ID = import.meta.env.VITE_CONTRACT_ID || 'C...';
@@ -20,7 +22,12 @@ function App() {
   const [publicKey, setPublicKey] = useState(null);
   const [shares, setShares] = useState(0);
   const [buyAmount, setBuyAmount] = useState(1);
-  const [loading, setLoading] = useState(false);
+
+  // Granular loading states
+  const [loadingBuy, setLoadingBuy] = useState(false);
+  const [loadingShares, setLoadingShares] = useState(false);
+  const [loadingMeta, setLoadingMeta] = useState(false);
+
   const [error, setError] = useState(null);
   const [assetMeta, setAssetMeta] = useState(null);
   const [txResult, setTxResult] = useState(null);
@@ -82,6 +89,7 @@ function App() {
 
   const fetchMetadata = async () => {
     if (CONTRACT_ID.length < 50) return;
+    setLoadingMeta(true);
     try {
       const res = await fetch(`${API_URL}/api/rwa/${CONTRACT_ID}`);
       if (res.ok) {
@@ -90,11 +98,14 @@ function App() {
       }
     } catch {
       console.warn('Metadata server unreachable');
+    } finally {
+      setLoadingMeta(false);
     }
   };
 
   const fetchShares = async () => {
     if (!publicKey || CONTRACT_ID.length < 50) return;
+    setLoadingShares(true);
     try {
       setError(null);
       const contract = new Contract(CONTRACT_ID);
@@ -117,6 +128,8 @@ function App() {
     } catch (err) {
       console.error('Error fetching shares:', err);
       setError('Failed to fetch share balance.');
+    } finally {
+      setLoadingShares(false);
     }
   };
 
@@ -127,7 +140,7 @@ function App() {
       return;
     }
 
-    setLoading(true);
+    setLoadingBuy(true);
     setError(null);
     setTxResult(null);
 
@@ -175,7 +188,7 @@ function App() {
         setError('Transaction failed. Check your token balance and try again.');
       }
     } finally {
-      setLoading(false);
+      setLoadingBuy(false);
     }
   };
 
@@ -241,7 +254,18 @@ function App() {
         </Alert>
       )}
 
-      {assetMeta && (
+      {/* ── Asset Metadata Card ─────────────────────────────────────────── */}
+      {loadingMeta ? (
+        <Card>
+          <div className={styles.assetImageWrapper}>
+            <Skeleton variant="rect" height="100%" style={{ borderRadius: 'var(--radius-sm)' }} />
+          </div>
+          <Skeleton variant="text" height="1.4em" width="55%" style={{ marginBottom: 'var(--spacing-xs)' }} />
+          <Skeleton variant="text" height="1em" width="35%" style={{ marginBottom: 'var(--spacing-sm)' }} />
+          <Skeleton variant="text" lines={3} style={{ marginBottom: 'var(--spacing-md)' }} />
+          <Skeleton variant="text" height="1.1em" width="40%" />
+        </Card>
+      ) : assetMeta ? (
         <Card hoverable>
           {assetMeta.imageUrl && (
             <div className={styles.assetImageWrapper}>
@@ -261,13 +285,21 @@ function App() {
             </div>
           )}
         </Card>
-      )}
+      ) : null}
 
+      {/* ── Holdings + Buy Card ─────────────────────────────────────────── */}
       {publicKey && (
         <Card>
           <div className={styles.holdingsRow}>
             <span className={styles.holdingsLabel}>Your Share Balance</span>
-            <span className={styles.holdingsValue}>{shares}</span>
+            {loadingShares ? (
+              <span className={styles.holdingsValueLoading}>
+                <Spinner size="sm" label="Fetching share balance…" />
+                <Skeleton variant="text" width="3rem" height="1.6em" />
+              </span>
+            ) : (
+              <span className={styles.holdingsValue}>{shares}</span>
+            )}
           </div>
           <hr className={styles.divider} />
           <h3 className={styles.purchaseHeader}>Buy Fractional Shares</h3>
@@ -278,13 +310,19 @@ function App() {
               value={buyAmount}
               onChange={(e) => setBuyAmount(Math.max(1, Number(e.target.value)))}
               min="1"
-              disabled={loading}
+              disabled={loadingBuy}
               className={styles.buyInput}
             />
-            <Button onClick={handleBuyShares} loading={loading} variant="primary">
-              Buy Shares
+            <Button onClick={handleBuyShares} loading={loadingBuy} variant="primary">
+              {loadingBuy ? 'Processing…' : 'Buy Shares'}
             </Button>
           </div>
+          {loadingBuy && (
+            <div className={styles.buyLoadingHint}>
+              <Spinner size="sm" label="Processing transaction…" />
+              <span>Submitting transaction to the network…</span>
+            </div>
+          )}
         </Card>
       )}
     </div>

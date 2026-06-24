@@ -47,10 +47,57 @@ describe('404 handler', () => {
 
 // ── GET /api/rwa ──────────────────────────────────────────────────────────────
 describe('GET /api/rwa', () => {
-  test('returns array', async () => {
+  const ID_A = 'C' + 'A'.repeat(55);
+  const ID_B = 'C' + 'B'.repeat(55);
+
+  beforeAll(async () => {
+    await request(app).post('/api/rwa').set('x-api-key', API_KEY)
+      .send({ contractId: ID_A, title: 'Coffee Farm', location: 'Ethiopia', description: 'Premium coffee plantation', assetType: 'Agriculture' });
+    await request(app).post('/api/rwa').set('x-api-key', API_KEY)
+      .send({ contractId: ID_B, title: 'Downtown Office', location: 'NYC', description: 'Manhattan office building', assetType: 'Real Estate' });
+  });
+
+  test('returns paginated response shape', async () => {
     const res = await request(app).get('/api/rwa');
     expect(res.status).toBe(200);
-    expect(Array.isArray(res.body)).toBe(true);
+    expect(Array.isArray(res.body.data)).toBe(true);
+    expect(res.body.pagination).toBeDefined();
+    expect(res.body.pagination.total).toBeGreaterThanOrEqual(2);
+    expect(res.body.pagination.page).toBe(1);
+    expect(res.body.pagination.limit).toBe(20);
+    expect(res.body.pagination.totalPages).toBeGreaterThanOrEqual(1);
+  });
+
+  test('filters by assetType', async () => {
+    const res = await request(app).get('/api/rwa?assetType=agriculture');
+    expect(res.status).toBe(200);
+    expect(res.body.data.every(a => a.assetType.toLowerCase() === 'agriculture')).toBe(true);
+  });
+
+  test('filters by search on title', async () => {
+    const res = await request(app).get('/api/rwa?search=coffee');
+    expect(res.status).toBe(200);
+    expect(res.body.data.some(a => a.title.toLowerCase().includes('coffee'))).toBe(true);
+  });
+
+  test('filters by search on description', async () => {
+    const res = await request(app).get('/api/rwa?search=manhattan');
+    expect(res.status).toBe(200);
+    expect(res.body.data.some(a => a.description.toLowerCase().includes('manhattan'))).toBe(true);
+  });
+
+  test('paginates with limit=1', async () => {
+    const res = await request(app).get('/api/rwa?limit=1&page=1');
+    expect(res.status).toBe(200);
+    expect(res.body.data.length).toBe(1);
+    expect(res.body.pagination.limit).toBe(1);
+    expect(res.body.pagination.page).toBe(1);
+  });
+
+  test('page 2 with limit=1 returns next item', async () => {
+    const page1 = await request(app).get('/api/rwa?limit=1&page=1');
+    const page2 = await request(app).get('/api/rwa?limit=1&page=2');
+    expect(page1.body.data[0].contractId).not.toBe(page2.body.data[0].contractId);
   });
 });
 
@@ -108,7 +155,7 @@ describe('GET /api/rwa/:contractId', () => {
   });
 
   test('returns 404 for unknown contract ID', async () => {
-    const unknown = 'C' + 'B'.repeat(55);
+    const unknown = 'C' + 'Z'.repeat(55);
     const res = await request(app).get(`/api/rwa/${unknown}`);
     expect(res.status).toBe(404);
     expect(res.body.error).toMatch(/not found/i);

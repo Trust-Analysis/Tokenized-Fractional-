@@ -3,6 +3,8 @@ import express from 'express';
 import cors from 'cors';
 import helmet from 'helmet';
 import rateLimit from 'express-rate-limit';
+import pino from 'pino';
+import pinoHttp from 'pino-http';
 import { readFileSync, writeFileSync, existsSync } from 'fs';
 import { join, dirname } from 'path';
 import { fileURLToPath } from 'url';
@@ -14,9 +16,14 @@ const CORS_ORIGINS = process.env.CORS_ORIGINS
   ? process.env.CORS_ORIGINS.split(',').map(s => s.trim())
   : ['http://localhost:5173', 'http://localhost:4173'];
 
-const CACHE_KEY_ALL = 'rwa:all';
-const cacheKey = (id) => `rwa:${id}`;
+// ── Logger ────────────────────────────────────────────────────────────────────
+const isDev = process.env.NODE_ENV === 'development';
+export const logger = pino({
+  level: process.env.LOG_LEVEL || (process.env.NODE_ENV === 'test' ? 'silent' : 'info'),
+  ...(isDev && { transport: { target: 'pino-pretty', options: { colorize: true, ignore: 'pid,hostname' } } }),
+});
 
+// ── Data helpers ──────────────────────────────────────────────────────────────
 function getDataFile() {
   return join(__dirname, process.env.DATA_FILE || 'data.json');
 }
@@ -27,7 +34,7 @@ function loadData() {
   try {
     return JSON.parse(readFileSync(file, 'utf-8'));
   } catch {
-    console.error('Corrupted data file, starting fresh');
+    logger.error('Corrupted data file, starting fresh');
     return {};
   }
 }
@@ -51,16 +58,25 @@ function adminAuth(req, res, next) {
   const apiKey = req.headers['x-api-key'];
   const expected = process.env.ADMIN_API_KEY || 'dev-key-change-in-production';
   if (!apiKey || apiKey !== expected) {
+    req.log?.warn({ hasKey: !!apiKey }, 'Unauthorized API key attempt');
     return res.status(401).json({ error: 'Unauthorized: invalid or missing API key' });
   }
+  req.log?.info('Admin API key used');
   next();
 }
 
+// ── App ───────────────────────────────────────────────────────────────────────
 const app = express();
 
 app.use(helmet());
 app.use(cors({ origin: CORS_ORIGINS, methods: ['GET', 'POST', 'DELETE'], allowedHeaders: ['Content-Type', 'x-api-key'] }));
 app.use(express.json({ limit: '10kb' }));
+
+// Request logging middleware (silent in test)
+app.use(pinoHttp({
+  logger,
+  autoLogging: { ignore: req => req.url === '/health' },
+}));
 
 const apiLimiter = rateLimit({
   windowMs: 15 * 60 * 1000,
@@ -84,14 +100,39 @@ app.get('/health', (_req, res) => {
   res.json({ status: 'ok', timestamp: new Date().toISOString() });
 });
 
-app.get('/api/rwa', async (_req, res) => {
-  const cached = await cacheGet(CACHE_KEY_ALL);
-  if (cached) return res.json(cached);
-
+// GET /api/rwa?page=1&limit=20&assetType=real_estate&search=coffee
+app.get('/api/rwa', (req, res) => {
   const data = loadData();
-  const assets = Object.entries(data).map(([contractId, meta]) => ({ contractId, ...meta }));
-  await cacheSet(CACHE_KEY_ALL, assets);
-  res.json(assets);
+  let assets = Object.entries(data).map(([contractId, meta]) => ({ contractId, ...meta }));
+
+  // Filter: assetType (case-insensitive)
+  const { assetType, search, page, limit } = req.query;
+  if (assetType) {
+    const lower = assetType.toLowerCase();
+    assets = assets.filter(a => a.assetType?.toLowerCase() === lower);
+  }
+
+  // Filter: text search on title and description
+  if (search) {
+    const lower = search.toLowerCase();
+    assets = assets.filter(a =>
+      a.title?.toLowerCase().includes(lower) ||
+      a.description?.toLowerCase().includes(lower)
+    );
+  }
+
+  const total = assets.length;
+  const pageNum = Math.max(1, parseInt(page) || 1);
+  const pageSize = Math.min(100, Math.max(1, parseInt(limit) || 20));
+  const totalPages = Math.ceil(total / pageSize) || 1;
+  const offset = (pageNum - 1) * pageSize;
+
+  assets = assets.slice(offset, offset + pageSize);
+
+  res.json({
+    data: assets,
+    pagination: { total, page: pageNum, limit: pageSize, totalPages },
+  });
 });
 
 app.get('/api/rwa/:contractId', async (req, res) => {
@@ -103,10 +144,7 @@ app.get('/api/rwa/:contractId', async (req, res) => {
   const data = loadData();
   const asset = data[contractId];
   if (!asset) return res.status(404).json({ error: 'Asset metadata not found' });
-
-  const result = { contractId, ...asset };
-  await cacheSet(cacheKey(contractId), result);
-  res.json(result);
+  res.json({ contractId, ...asset });
 });
 
 app.post('/api/rwa', adminAuth, writeLimiter, async (req, res) => {
@@ -134,9 +172,7 @@ app.post('/api/rwa', adminAuth, writeLimiter, async (req, res) => {
   };
   saveData(data);
 
-  // Invalidate list cache + this asset's individual cache
-  await cacheDel(CACHE_KEY_ALL, cacheKey(contractId));
-
+  req.log?.info({ contractId }, 'Asset created/updated');
   res.status(201).json({ contractId, ...data[contractId] });
 });
 
@@ -148,8 +184,7 @@ app.delete('/api/rwa/:contractId', adminAuth, writeLimiter, async (req, res) => 
   delete data[contractId];
   saveData(data);
 
-  await cacheDel(CACHE_KEY_ALL, cacheKey(contractId));
-
+  req.log?.info({ contractId }, 'Asset deleted');
   res.json({ message: 'Asset metadata deleted', contractId });
 });
 
@@ -157,8 +192,8 @@ app.use((_req, res) => {
   res.status(404).json({ error: 'Not found' });
 });
 
-app.use((err, _req, res, _next) => {
-  console.error('Unhandled error:', err);
+app.use((err, req, res, _next) => {
+  req.log?.error({ err }, 'Unhandled error');
   res.status(500).json({ error: 'Internal server error' });
 });
 
@@ -167,6 +202,6 @@ export { app };
 if (process.env.NODE_ENV !== 'test') {
   import('./cache.js').then(({ initClient }) => initClient());
   app.listen(PORT, () => {
-    console.log(`RWA Off-chain Metadata Backend running at http://localhost:${PORT}`);
+    logger.info({ port: PORT }, 'RWA Off-chain Metadata Backend started');
   });
 }

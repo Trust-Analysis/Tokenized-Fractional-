@@ -187,3 +187,25 @@
   flex-shrink: 0;
   display: inline-block;
 }
+
+/* Loading state helpers */
+.holdingsValueLoading {
+  display: flex;
+  align-items: center;
+  gap: var(--spacing-sm);
+}
+
+.buyLoadingHint {
+  display: flex;
+  align-items: center;
+  gap: var(--spacing-sm);
+  margin-top: var(--spacing-sm);
+  font-size: var(--font-size-sm);
+  color: var(--text-muted);
+  animation: fadeIn 0.2s ease;
+}
+
+@keyframes fadeIn {
+  from { opacity: 0; transform: translateY(-4px); }
+  to   { opacity: 1; transform: translateY(0); }
+}
