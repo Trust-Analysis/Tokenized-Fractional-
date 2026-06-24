@@ -560,3 +560,111 @@ mod test {
         c.distribute_dividends(&te.token_id, &1000);
     }
 }
+// --- TIMELOCK MODULE ---
+// Appended as a completely isolated module to avoid breaking existing enums.
+
+#[soroban_sdk::contracttype]
+#[derive(Clone, Debug, Eq, PartialEq)]
+pub enum AdminAction {
+    Pause,
+    Unpause,
+    EmergencyWithdraw(soroban_sdk::Address, i128),
+}
+
+#[soroban_sdk::contracttype]
+pub enum TimelockDataKey {
+    TimelockOp(AdminAction),
+}
+
+#[soroban_sdk::contracterror]
+#[derive(Copy, Clone, Debug, Eq, PartialEq, PartialOrd, Ord)]
+#[repr(u32)]
+pub enum TimelockError {
+    NotScheduled = 1,
+    TimelockNotExpired = 2,
+    AlreadyScheduled = 3,
+}
+
+#[soroban_sdk::contractimpl]
+impl RwaMarketplace {
+    pub fn schedule_operation(env: soroban_sdk::Env, admin: soroban_sdk::Address, action: AdminAction) {
+        admin.require_auth();
+        let timelock_key = TimelockDataKey::TimelockOp(action.clone());
+        
+        if env.storage().persistent().has(&timelock_key) {
+            soroban_sdk::panic_with_error!(&env, TimelockError::AlreadyScheduled);
+        }
+        
+        let execute_after = env.ledger().timestamp() + 172_800; // 48 hours
+        env.storage().persistent().set(&timelock_key, &execute_after);
+    }
+
+    pub fn cancel_operation(env: soroban_sdk::Env, admin: soroban_sdk::Address, action: AdminAction) {
+        admin.require_auth();
+        let timelock_key = TimelockDataKey::TimelockOp(action);
+        
+        if !env.storage().persistent().has(&timelock_key) {
+            soroban_sdk::panic_with_error!(&env, TimelockError::NotScheduled);
+        }
+        
+        env.storage().persistent().remove(&timelock_key);
+    }
+
+    pub fn execute_operation(env: soroban_sdk::Env, admin: soroban_sdk::Address, action: AdminAction) {
+        admin.require_auth();
+        let timelock_key = TimelockDataKey::TimelockOp(action.clone());
+        
+        let execute_after: u64 = env
+            .storage()
+            .persistent()
+            .get(&timelock_key)
+            .unwrap_or_else(|| soroban_sdk::panic_with_error!(&env, TimelockError::NotScheduled));
+
+        if env.ledger().timestamp() < execute_after {
+            soroban_sdk::panic_with_error!(&env, TimelockError::TimelockNotExpired);
+        }
+
+        env.storage().persistent().remove(&timelock_key);
+
+        // Forward to the native marketplace functions securely
+        match action {
+            AdminAction::Pause => {
+                RwaMarketplace::pause(env.clone());
+            },
+            AdminAction::Unpause => {
+                RwaMarketplace::unpause(env.clone());
+            },
+            AdminAction::EmergencyWithdraw(to, amount) => {
+                RwaMarketplace::emergency_withdraw(env.clone(), to, amount);
+            }
+        }
+    }
+}
+
+#[cfg(test)]
+mod timelock_tests {
+    use super::*;
+    use soroban_sdk::{Env, testutils::{Address as _, Ledger as _}};
+    
+    #[test]
+    fn test_timelock_delay() {
+        let env = Env::default();
+        env.mock_all_auths();
+        
+        let admin = soroban_sdk::Address::generate(&env);
+        let payment_token = soroban_sdk::Address::generate(&env);
+        
+        let contract_id = env.register(RwaMarketplace, ());
+        let client = RwaMarketplaceClient::new(&env, &contract_id);
+        
+        client.init(&admin, &payment_token, &100_i128, &1000_u32);
+        
+        let action = AdminAction::Pause;
+        
+        client.schedule_operation(&admin, &action);
+        env.ledger().set_timestamp(env.ledger().timestamp() + 176_400); // Forward 49 hours
+        client.execute_operation(&admin, &action);
+        
+        assert_eq!(client.is_paused(), true);
+    }
+}
