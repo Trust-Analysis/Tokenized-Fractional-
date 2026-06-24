@@ -2,6 +2,13 @@ import React, { useState, useEffect, useCallback } from 'react';
 import { isAllowed, setAllowed, getUserInfo, signTransaction } from '@stellar/freighter-api';
 import { rpc, TransactionBuilder, Networks, Contract, nativeToScVal } from '@stellar/stellar-sdk';
 
+import Button from './components/Button/Button';
+import Card from './components/Card/Card';
+import Input from './components/Input/Input';
+import Badge from './components/Badge/Badge';
+import Alert from './components/Alert/Alert';
+import styles from './App.module.css';
+
 const CONTRACT_ID = import.meta.env.VITE_CONTRACT_ID || 'C...';
 const RPC_URL = import.meta.env.VITE_RPC_URL || 'https://soroban-testnet.stellar.org:443';
 const NETWORK_PASSPHRASE = import.meta.env.VITE_NETWORK_PASSPHRASE || Networks.TESTNET;
@@ -17,6 +24,18 @@ function App() {
   const [error, setError] = useState(null);
   const [assetMeta, setAssetMeta] = useState(null);
   const [txResult, setTxResult] = useState(null);
+  const [theme, setTheme] = useState(() => {
+    return localStorage.getItem('theme') || 'dark';
+  });
+
+  useEffect(() => {
+    document.documentElement.setAttribute('data-theme', theme);
+    localStorage.setItem('theme', theme);
+  }, [theme]);
+
+  const toggleTheme = () => {
+    setTheme((prev) => (prev === 'dark' ? 'light' : 'dark'));
+  };
 
   const checkFreighter = useCallback(async () => {
     try {
@@ -163,118 +182,113 @@ function App() {
   const isTestnet = NETWORK_PASSPHRASE === Networks.TESTNET;
 
   return (
-    <div style={{ maxWidth: '720px', margin: '0 auto', padding: '2rem 1rem' }}>
-      <header style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '2rem' }}>
-        <div>
-          <h1 style={{ fontSize: '1.5rem', fontWeight: 700 }}>RWA Marketplace</h1>
-          <span style={{
-            display: 'inline-block',
-            fontSize: '0.75rem',
-            padding: '0.15rem 0.5rem',
-            borderRadius: '4px',
-            background: isTestnet ? '#1a3a2a' : '#3a1a1a',
-            color: isTestnet ? '#4ade80' : '#f87171',
-          }}>
-            {isTestnet ? 'TESTNET' : 'MAINNET'}
-          </span>
+    <div className={styles.container}>
+      <header className={styles.header}>
+        <div className={styles.titleArea}>
+          <div className={styles.titleRow}>
+            <h1 className={styles.title}>RWA Marketplace</h1>
+            <Badge variant={isTestnet ? 'success' : 'danger'}>
+              {isTestnet ? 'TESTNET' : 'MAINNET'}
+            </Badge>
+          </div>
         </div>
-        <div>
+        <div className={styles.walletArea}>
+          <button
+            onClick={toggleTheme}
+            className={styles.themeToggle}
+            title={theme === 'dark' ? 'Switch to Light Theme' : 'Switch to Dark Theme'}
+            aria-label="Toggle theme"
+          >
+            {theme === 'dark' ? (
+              <svg viewBox="0 0 24 24"><circle cx="12" cy="12" r="5"></circle><line x1="12" y1="1" x2="12" y2="3"></line><line x1="12" y1="21" x2="12" y2="23"></line><line x1="4.22" y1="4.22" x2="5.64" y2="5.64"></line><line x1="18.36" y1="18.36" x2="19.78" y2="19.78"></line><line x1="1" y1="12" x2="3" y2="12"></line><line x1="21" y1="12" x2="23" y2="12"></line><line x1="4.22" y1="19.78" x2="5.64" y2="18.36"></line><line x1="18.36" y1="5.64" x2="19.78" y2="4.22"></line></svg>
+            ) : (
+              <svg viewBox="0 0 24 24"><path d="M21 12.79A9 9 0 1 1 11.21 3 7 7 0 0 0 21 12.79z"></path></svg>
+            )}
+          </button>
+
           {!publicKey ? (
-            <button onClick={connectWallet} style={btnStyle}>
+            <Button onClick={connectWallet} variant="success">
               Connect Freighter
-            </button>
+            </Button>
           ) : (
-            <div style={{ display: 'flex', alignItems: 'center', gap: '0.75rem' }}>
-              <span style={{ fontSize: '0.8rem', color: '#8b949e', maxWidth: '180px', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
+            <div className={styles.walletInfo}>
+              <span className={styles.publicKey} title={publicKey}>
                 {publicKey}
               </span>
-              <button onClick={disconnectWallet} style={{ ...btnStyle, background: '#3a1a1a', border: '1px solid #f87171', color: '#f87171' }}>
+              <Button onClick={disconnectWallet} variant="danger">
                 Disconnect
-              </button>
+              </Button>
             </div>
           )}
         </div>
       </header>
 
       {error && (
-        <div style={{ padding: '0.75rem 1rem', marginBottom: '1rem', borderRadius: '6px', background: '#3a1a1a', border: '1px solid #f87171', color: '#fca5a5', fontSize: '0.875rem' }}>
+        <Alert variant="error">
           {error}
-        </div>
+        </Alert>
       )}
 
       {txResult && (
-        <div style={{ padding: '0.75rem 1rem', marginBottom: '1rem', borderRadius: '6px', background: '#1a3a2a', border: '1px solid #4ade80', color: '#86efac', fontSize: '0.875rem' }}>
+        <Alert variant="success">
           {txResult}
-        </div>
+        </Alert>
       )}
 
       {CONTRACT_ID === 'C...' && (
-        <div style={{ padding: '0.75rem 1rem', marginBottom: '1rem', borderRadius: '6px', background: '#3a2a1a', border: '1px solid #fbbf24', color: '#fde68a', fontSize: '0.875rem' }}>
+        <Alert variant="warning">
           Set VITE_CONTRACT_ID in frontend/.env to connect to a deployed contract.
-        </div>
+        </Alert>
       )}
 
       {assetMeta && (
-        <div style={{ marginBottom: '1.5rem', padding: '1rem', borderRadius: '8px', border: '1px solid #30363d' }}>
+        <Card hoverable>
           {assetMeta.imageUrl && (
-            <img src={assetMeta.imageUrl} alt={assetMeta.title} style={{ width: '100%', height: '200px', objectFit: 'cover', borderRadius: '6px', marginBottom: '0.75rem' }} />
+            <div className={styles.assetImageWrapper}>
+              <img src={assetMeta.imageUrl} alt={assetMeta.title} className={styles.assetImage} />
+            </div>
           )}
-          <h2 style={{ fontSize: '1.25rem', marginBottom: '0.25rem' }}>{assetMeta.title}</h2>
-          <p style={{ fontSize: '0.875rem', color: '#8b949e', marginBottom: '0.5rem' }}>{assetMeta.location}</p>
-          <p style={{ fontSize: '0.875rem', marginBottom: '0.5rem' }}>{assetMeta.description}</p>
+          <h2 className={styles.assetTitle}>{assetMeta.title}</h2>
+          <p className={styles.assetLocation}>
+            <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" className={styles.svgIcon}><path d="M21 10c0 7-9 13-9 13s-9-6-9-13a9 9 0 0 1 18 0z"></path><circle cx="12" cy="10" r="3"></circle></svg>
+            {assetMeta.location}
+          </p>
+          <p className={styles.assetDescription}>{assetMeta.description}</p>
           {assetMeta.totalValuation && (
-            <p style={{ fontSize: '0.875rem', fontWeight: 600 }}>Valuation: {assetMeta.totalValuation}</p>
+            <div className={styles.assetValuation}>
+              <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round" className={styles.svgIcon}><line x1="12" y1="1" x2="12" y2="23"></line><path d="M17 5H9.5a3.5 3.5 0 0 0 0 7h5a3.5 3.5 0 0 1 0 7H6"></path></svg>
+              <span>Valuation: {assetMeta.totalValuation}</span>
+            </div>
           )}
-        </div>
+        </Card>
       )}
 
       {publicKey && (
-        <div style={{ padding: '1rem', borderRadius: '8px', border: '1px solid #30363d' }}>
-          <p style={{ marginBottom: '1rem' }}>
-            <strong>Your Shares:</strong> {shares}
-          </p>
-          <hr style={{ border: 'none', borderTop: '1px solid #30363d', marginBottom: '1rem' }} />
-          <h3 style={{ fontSize: '1rem', marginBottom: '0.75rem' }}>Buy Fractional Shares</h3>
-          <div style={{ display: 'flex', alignItems: 'center', gap: '0.5rem' }}>
-            <input
+        <Card>
+          <div className={styles.holdingsRow}>
+            <span className={styles.holdingsLabel}>Your Share Balance</span>
+            <span className={styles.holdingsValue}>{shares}</span>
+          </div>
+          <hr className={styles.divider} />
+          <h3 className={styles.purchaseHeader}>Buy Fractional Shares</h3>
+          <div className={styles.purchaseRow}>
+            <Input
+              id="buy-amount-input"
               type="number"
               value={buyAmount}
               onChange={(e) => setBuyAmount(Math.max(1, Number(e.target.value)))}
               min="1"
-              style={{
-                padding: '0.5rem 0.75rem',
-                borderRadius: '6px',
-                border: '1px solid #30363d',
-                background: '#161b22',
-                color: '#e1e4e8',
-                fontSize: '1rem',
-                width: '100px',
-              }}
+              disabled={loading}
+              className={styles.buyInput}
             />
-            <button onClick={handleBuyShares} disabled={loading} style={{
-              ...btnStyle,
-              opacity: loading ? 0.7 : 1,
-              cursor: loading ? 'not-allowed' : 'pointer',
-            }}>
-              {loading ? 'Processing...' : 'Buy Shares'}
-            </button>
+            <Button onClick={handleBuyShares} loading={loading} variant="primary">
+              Buy Shares
+            </Button>
           </div>
-        </div>
+        </Card>
       )}
     </div>
   );
 }
-
-const btnStyle = {
-  padding: '0.5rem 1rem',
-  borderRadius: '6px',
-  border: '1px solid #238636',
-  background: '#238636',
-  color: '#fff',
-  fontSize: '0.875rem',
-  fontWeight: 500,
-  cursor: 'pointer',
-  transition: 'background 0.15s',
-};
 
 export default App;
