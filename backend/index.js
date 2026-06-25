@@ -126,6 +126,12 @@ const writeLimiter = rateLimit({
 });
 
 // ── Routes ────────────────────────────────────────────────────────────────────
+
+// Admin API key verification endpoint
+app.get('/api/admin/verify', adminAuth, (_req, res) => {
+  res.json({ ok: true });
+});
+
 app.get('/health', async (_req, res) => {
   const deps = {
     storage: { status: 'ok' },

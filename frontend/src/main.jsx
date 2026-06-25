@@ -3,6 +3,7 @@ import ReactDOM from 'react-dom/client';
 import * as Sentry from '@sentry/react';
 import './styles/theme.css';
 import App from './App';
+import ErrorFallback from './components/ErrorFallback/ErrorFallback';
 
 // Initialize Sentry for error tracking and performance monitoring
 if (import.meta.env.VITE_SENTRY_DSN) {
@@ -27,38 +28,7 @@ if (import.meta.env.VITE_SENTRY_DSN) {
 ReactDOM.createRoot(document.getElementById('root')).render(
   <React.StrictMode>
     <Sentry.ErrorBoundary
-      fallback={({ error, componentStack, resetError }) => (
-        <div style={{
-          maxWidth: 500,
-          margin: '80px auto',
-          padding: 32,
-          textAlign: 'center',
-          fontFamily: 'system-ui, sans-serif',
-          color: '#f8fafc',
-          background: '#121824',
-          borderRadius: 10,
-        }}>
-          <h2 style={{ margin: '0 0 12px', fontSize: 20 }}>Something went wrong</h2>
-          <p style={{ color: '#94a3b8', fontSize: 14, margin: '0 0 24px' }}>
-            An unexpected error occurred. The error has been reported to our team.
-          </p>
-          <button
-            onClick={resetError}
-            style={{
-              padding: '8px 20px',
-              fontSize: 14,
-              fontWeight: 600,
-              background: '#3b82f6',
-              color: '#fff',
-              border: 'none',
-              borderRadius: 6,
-              cursor: 'pointer',
-            }}
-          >
-            Try Again
-          </button>
-        </div>
-      )}
+      fallback={ErrorFallback}
     >
       <App />
     </Sentry.ErrorBoundary>
