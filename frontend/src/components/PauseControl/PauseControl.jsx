@@ -1,4 +1,4 @@
-import React, { useState } from 'react';
+import React, { useState, useEffect } from 'react';
 import Button from '../Button/Button';
 import Alert from '../Alert/Alert';
 import Spinner from '../Spinner/Spinner';
@@ -13,6 +13,14 @@ export default function PauseControl({ publicKey }) {
   const [error, setError] = useState('');
   const [success, setSuccess] = useState('');
   const [isPaused, setIsPaused] = useState(null);
+
+  // Fetch pause status on mount and when publicKey changes
+  useEffect(() => {
+    if (publicKey && CONTRACT_ID.length >= 50) {
+      fetchPauseStatus();
+    }
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [publicKey]);
 
   const fetchPauseStatus = async () => {
     if (!publicKey) return;

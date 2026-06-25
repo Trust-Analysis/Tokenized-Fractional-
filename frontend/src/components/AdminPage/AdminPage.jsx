@@ -1,4 +1,4 @@
-import React, { useState, useEffect } from 'react';
+import React, { useState } from 'react';
 import AdminAuth from '../AdminAuth/AdminAuth';
 import AssetForm from '../AssetForm/AssetForm';
 import PauseControl from '../PauseControl/PauseControl';
@@ -15,7 +15,7 @@ export default function AdminPage({ publicKey, onDisconnect }) {
   const handleAuthenticate = async (key) => {
     setVerifying(true);
     try {
-      const res = await fetch(`${API_URL}/health`, {
+      const res = await fetch(`${API_URL}/api/admin/verify`, {
         headers: { 'x-api-key': key },
       });
       if (!res.ok) throw new Error('Authentication failed');
@@ -28,7 +28,7 @@ export default function AdminPage({ publicKey, onDisconnect }) {
   };
 
   const handleAssetChange = () => {
-    // Refresh asset list — callback passed to AssetForm
+    // Assets have changed — any side effects needed after create/update/delete
   };
 
   if (!apiKey) {
