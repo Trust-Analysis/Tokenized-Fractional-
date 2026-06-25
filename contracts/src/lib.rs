@@ -54,6 +54,18 @@ pub struct EventDistributeDividends {
     holder_count: u32,
 }
 
+#[contractevent(data_format = "vec")]
+pub struct EventSetPrice {
+    old_price: i128,
+    new_price: i128,
+}
+
+#[contractevent(data_format = "vec")]
+pub struct EventSetTotalShares {
+    old_total: u32,
+    new_total: u32,
+}
+
 #[contractimpl]
 impl RwaMarketplace {
     pub fn init(env: Env, admin: Address, payment_token: Address, price: i128, total_shares: u32) {
@@ -288,6 +300,67 @@ impl RwaMarketplace {
         client.transfer(&env.current_contract_address(), &to, &amount);
 
         EventEmergencyWithdraw { to, amount }.publish(&env);
+    }
+
+    /// Update the per-share price. Only the admin may call this.
+    pub fn set_price(env: Env, new_price: i128) {
+        let admin: Address = env.storage().instance().get(&DataKey::Admin).unwrap();
+        admin.require_auth();
+
+        if new_price <= 0 {
+            panic!("Price must be positive");
+        }
+
+        let old_price: i128 = env.storage().instance().get(&DataKey::PricePerShare).unwrap();
+        env.storage()
+            .instance()
+            .set(&DataKey::PricePerShare, &new_price);
+
+        EventSetPrice {
+            old_price,
+            new_price,
+        }
+        .publish(&env);
+    }
+
+    /// Issue additional shares or adjust the total supply cap.
+    /// Only the admin may call this. `new_total` must be at least the number
+    /// of shares already sold and at least the current available pool.
+    pub fn set_total_shares(env: Env, new_total: u32) {
+        let admin: Address = env.storage().instance().get(&DataKey::Admin).unwrap();
+        admin.require_auth();
+
+        let total_shares: u32 = env.storage().instance().get(&DataKey::TotalShares).unwrap();
+        let available_shares: u32 = env
+            .storage()
+            .instance()
+            .get(&DataKey::AvailableShares)
+            .unwrap();
+
+        let issued_shares = total_shares - available_shares;
+
+        if new_total < available_shares {
+            panic!("New total must be at least available shares");
+        }
+
+        if new_total < issued_shares {
+            panic!("New total cannot be less than issued shares");
+        }
+
+        let new_available = new_total - issued_shares;
+
+        env.storage()
+            .instance()
+            .set(&DataKey::TotalShares, &new_total);
+        env.storage()
+            .instance()
+            .set(&DataKey::AvailableShares, &new_available);
+
+        EventSetTotalShares {
+            old_total: total_shares,
+            new_total,
+        }
+        .publish(&env);
     }
 }
 
@@ -558,6 +631,109 @@ mod test {
         let c = client(&te);
         c.init(&te.admin, &te.token_id, &100, &1000);
         c.distribute_dividends(&te.token_id, &1000);
+    }
+
+    // ── Tests for set_price and set_total_shares ────────────────────────
+
+    #[test]
+    fn test_set_price() {
+        let te = setup();
+        let c = client(&te);
+        c.init(&te.admin, &te.token_id, &100, &1000);
+
+        c.set_price(&200);
+        assert_eq!(c.get_price(), 200);
+    }
+
+    #[test]
+    fn test_set_price_affects_future_buys() {
+        let te = setup();
+        let c = client(&te);
+        c.init(&te.admin, &te.token_id, &100, &1000);
+        mint(&te, &te.buyer, 100_000);
+
+        c.set_price(&200);
+        c.buy_shares(&te.buyer, &10);
+
+        let token_client = token::TokenClient::new(&te.env, &te.token_id);
+        assert_eq!(token_client.balance(&te.buyer), 100_000 - 10 * 200);
+    }
+
+    #[test]
+    #[should_panic(expected = "Price must be positive")]
+    fn test_set_price_zero() {
+        let te = setup();
+        let c = client(&te);
+        c.init(&te.admin, &te.token_id, &100, &1000);
+        c.set_price(&0);
+    }
+
+    #[test]
+    #[should_panic(expected = "Price must be positive")]
+    fn test_set_price_negative() {
+        let te = setup();
+        let c = client(&te);
+        c.init(&te.admin, &te.token_id, &100, &1000);
+        c.set_price(&-50);
+    }
+
+    #[test]
+    fn test_set_total_shares_increase() {
+        let te = setup();
+        let c = client(&te);
+        c.init(&te.admin, &te.token_id, &100, &1000);
+
+        c.set_total_shares(&1500);
+        assert_eq!(c.get_total_shares(), 1500);
+        assert_eq!(c.get_available_shares(), 1500);
+    }
+
+    #[test]
+    fn test_set_total_shares_after_partial_sale() {
+        let te = setup();
+        let c = client(&te);
+        c.init(&te.admin, &te.token_id, &100, &1000);
+        mint(&te, &te.buyer, 100_000);
+
+        c.buy_shares(&te.buyer, &100);
+        assert_eq!(c.get_available_shares(), 900);
+
+        c.set_total_shares(&1200);
+        assert_eq!(c.get_total_shares(), 1200);
+        assert_eq!(c.get_available_shares(), 1100);
+        assert_eq!(c.get_shares(&te.buyer), 100);
+    }
+
+    #[test]
+    fn test_set_total_shares_same_as_current() {
+        let te = setup();
+        let c = client(&te);
+        c.init(&te.admin, &te.token_id, &100, &1000);
+
+        c.set_total_shares(&1000);
+        assert_eq!(c.get_total_shares(), 1000);
+        assert_eq!(c.get_available_shares(), 1000);
+    }
+
+    #[test]
+    #[should_panic(expected = "New total must be at least available shares")]
+    fn test_set_total_shares_below_available() {
+        let te = setup();
+        let c = client(&te);
+        c.init(&te.admin, &te.token_id, &100, &1000);
+        c.set_total_shares(&500);
+    }
+
+    #[test]
+    #[should_panic(expected = "New total cannot be less than issued shares")]
+    fn test_set_total_shares_below_issued() {
+        let te = setup();
+        let c = client(&te);
+        c.init(&te.admin, &te.token_id, &100, &1000);
+        mint(&te, &te.buyer, 100_000);
+
+        c.buy_shares(&te.buyer, &600);
+        c.set_total_shares(&500);
     }
 }
 // --- TIMELOCK MODULE ---
