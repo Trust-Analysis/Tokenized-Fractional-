@@ -1,6 +1,6 @@
 #![no_std]
 use soroban_sdk::{
-    contract, contractevent, contractimpl, contracttype, token, Address, Env, Vec,
+    contract, contractevent, contractimpl, contracttype, token, Address, Bytes, Env, Vec,
 };
 
 #[contract]
@@ -18,6 +18,7 @@ pub enum DataKey {
     Balance(Address),
     VestingSchedules(Address),
     Holders, // registry of all unique holder addresses
+    MetadataUri,
 }
 
 #[contracttype]
@@ -460,6 +461,20 @@ impl RwaMarketplace {
             .instance()
             .get(&DataKey::Holders)
             .unwrap_or_else(|| Vec::new(&env))
+    }
+
+    /// Store a URI pointing to off-chain asset metadata. Admin only.
+    pub fn set_metadata_uri(env: Env, uri: Bytes) {
+        let admin: Address = env.storage().instance().get(&DataKey::Admin)
+            .expect("Contract not initialized: admin");
+        admin.require_auth();
+        env.storage().instance().set(&DataKey::MetadataUri, &uri);
+    }
+
+    /// Retrieve the on-chain metadata URI. Returns empty bytes if not set.
+    pub fn get_metadata_uri(env: Env) -> Bytes {
+        env.storage().instance().get(&DataKey::MetadataUri)
+            .unwrap_or_else(|| Bytes::new(&env))
     }
 
     pub fn get_shares(env: Env, owner: Address) -> u32 {
@@ -1096,6 +1111,40 @@ mod test {
     fn test_pre_init_emergency_withdraw() {
         let (_, client, _, admin) = pre_init_client();
         client.emergency_withdraw(&admin, &0);
+    }
+
+    // ── Metadata URI tests ──────────────────────────────────────────────
+
+    #[test]
+    fn test_set_and_get_metadata_uri() {
+        let te = setup();
+        let c = client(&te);
+        c.init(&te.admin, &te.token_id, &100, &1000);
+
+        let uri = soroban_sdk::Bytes::from_slice(&te.env, b"ipfs://QmTest");
+        c.set_metadata_uri(&uri);
+        assert_eq!(c.get_metadata_uri(), uri);
+    }
+
+    #[test]
+    fn test_get_metadata_uri_default_empty() {
+        let te = setup();
+        let c = client(&te);
+        c.init(&te.admin, &te.token_id, &100, &1000);
+
+        assert_eq!(c.get_metadata_uri(), soroban_sdk::Bytes::new(&te.env));
+    }
+
+    #[test]
+    fn test_set_metadata_uri_overwrites() {
+        let te = setup();
+        let c = client(&te);
+        c.init(&te.admin, &te.token_id, &100, &1000);
+
+        c.set_metadata_uri(&soroban_sdk::Bytes::from_slice(&te.env, b"ipfs://old"));
+        let new_uri = soroban_sdk::Bytes::from_slice(&te.env, b"ipfs://new");
+        c.set_metadata_uri(&new_uri);
+        assert_eq!(c.get_metadata_uri(), new_uri);
     }
 }
 // --- TIMELOCK MODULE ---
