@@ -47,6 +47,7 @@ function App() {
   const [loadingMeta, setLoadingMeta] = useState(false);
 
   const [error, setError] = useState(null);
+  const [txError, setTxError] = useState(null);
   const [assetMeta, setAssetMeta] = useState(null);
   const [txResult, setTxResult] = useState(null);
   const [theme, setTheme] = useState(() => {
