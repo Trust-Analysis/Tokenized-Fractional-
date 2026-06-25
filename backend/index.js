@@ -54,6 +54,10 @@ export function validateRwaBody(body) {
   return null;
 }
 
+function cacheKey(contractId) {
+  return `rwa:${contractId}`;
+}
+
 function adminAuth(req, res, next) {
   const apiKey = req.headers['x-api-key'];
   const expected = process.env.ADMIN_API_KEY || 'dev-key-change-in-production';
@@ -96,8 +100,32 @@ const writeLimiter = rateLimit({
 });
 
 // ── Routes ────────────────────────────────────────────────────────────────────
-app.get('/health', (_req, res) => {
-  res.json({ status: 'ok', timestamp: new Date().toISOString() });
+app.get('/health', async (_req, res) => {
+  const deps = {
+    storage: { status: 'ok' },
+    redis: { status: 'not_configured' },
+  };
+
+  // Check Redis if configured
+  if (process.env.REDIS_URL) {
+    try {
+      const Redis = (await import('ioredis')).default;
+      const pingClient = new Redis(process.env.REDIS_URL, {
+        lazyConnect: true,
+        connectTimeout: 2000,
+        maxRetriesPerRequest: 0,
+      });
+      await pingClient.connect();
+      await pingClient.ping();
+      pingClient.disconnect();
+      deps.redis = { status: 'ok' };
+    } catch {
+      deps.redis = { status: 'error', message: 'Redis configured but unreachable' };
+      return res.status(503).json({ status: 'degraded', timestamp: new Date().toISOString(), dependencies: deps });
+    }
+  }
+
+  res.json({ status: 'ok', timestamp: new Date().toISOString(), dependencies: deps });
 });
 
 // GET /api/rwa?page=1&limit=20&assetType=real_estate&search=coffee
@@ -133,6 +161,9 @@ app.get('/api/rwa', (req, res) => {
     data: assets,
     pagination: { total, page: pageNum, limit: pageSize, totalPages },
   });
+
+  // Cache the full asset list (fire-and-forget)
+  cacheSet('rwa:all', { data: assets, pagination: { total, page: pageNum, limit: pageSize, totalPages } }).catch(() => {});
 });
 
 app.get('/api/rwa/:contractId', async (req, res) => {
@@ -144,7 +175,11 @@ app.get('/api/rwa/:contractId', async (req, res) => {
   const data = loadData();
   const asset = data[contractId];
   if (!asset) return res.status(404).json({ error: 'Asset metadata not found' });
-  res.json({ contractId, ...asset });
+
+  const result = { contractId, ...asset };
+  // Cache individual asset (fire-and-forget)
+  cacheSet(cacheKey(contractId), result).catch(() => {});
+  res.json(result);
 });
 
 app.post('/api/rwa', adminAuth, writeLimiter, async (req, res) => {
@@ -172,6 +207,9 @@ app.post('/api/rwa', adminAuth, writeLimiter, async (req, res) => {
   };
   saveData(data);
 
+  // Invalidate caches (fire-and-forget)
+  cacheDel('rwa:all').catch(() => {});
+
   req.log?.info({ contractId }, 'Asset created/updated');
   res.status(201).json({ contractId, ...data[contractId] });
 });
@@ -183,6 +221,9 @@ app.delete('/api/rwa/:contractId', adminAuth, writeLimiter, async (req, res) => 
 
   delete data[contractId];
   saveData(data);
+
+  // Invalidate caches (fire-and-forget)
+  cacheDel('rwa:all', cacheKey(contractId)).catch(() => {});
 
   req.log?.info({ contractId }, 'Asset deleted');
   res.json({ message: 'Asset metadata deleted', contractId });
