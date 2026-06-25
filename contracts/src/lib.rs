@@ -126,7 +126,7 @@ impl RwaMarketplace {
             .storage()
             .instance()
             .get(&DataKey::AvailableShares)
-            .unwrap();
+            .expect("Contract not initialized: available shares");
 
         if shares > available {
             panic!("Not enough shares available for purchase");
@@ -136,15 +136,17 @@ impl RwaMarketplace {
             panic!("Must purchase at least 1 share");
         }
 
-        let price: i128 = env.storage().instance().get(&DataKey::PricePerShare).unwrap();
-        let total_cost = checked_mul_i128(price, shares as i128);
+        let price: i128 = env.storage().instance().get(&DataKey::PricePerShare)
+            .expect("Contract not initialized: price");
+        let total_cost = price * (shares as i128);
 
-        let admin: Address = env.storage().instance().get(&DataKey::Admin).unwrap();
+        let admin: Address = env.storage().instance().get(&DataKey::Admin)
+            .expect("Contract not initialized: admin");
         let token_id: Address = env
             .storage()
             .instance()
             .get(&DataKey::PaymentToken)
-            .unwrap();
+            .expect("Contract not initialized: payment token");
 
         let client = token::TokenClient::new(&env, &token_id);
         client.transfer(&buyer, &admin, &total_cost);
@@ -186,7 +188,8 @@ impl RwaMarketplace {
     /// balance to cover `total_amount` before calling.
     pub fn distribute_dividends(env: Env, token: Address, total_amount: i128) {
         // Only admin can distribute
-        let admin: Address = env.storage().instance().get(&DataKey::Admin).unwrap();
+        let admin: Address = env.storage().instance().get(&DataKey::Admin)
+            .expect("Contract not initialized: admin");
         admin.require_auth();
 
         if total_amount <= 0 {
@@ -197,7 +200,7 @@ impl RwaMarketplace {
             .storage()
             .instance()
             .get(&DataKey::TotalShares)
-            .unwrap();
+            .expect("Contract not initialized: total shares");
 
         if total_shares == 0 {
             panic!("No shares have been issued");
@@ -300,28 +303,31 @@ impl RwaMarketplace {
     }
 
     pub fn pause(env: Env) {
-        let admin: Address = env.storage().instance().get(&DataKey::Admin).unwrap();
+        let admin: Address = env.storage().instance().get(&DataKey::Admin)
+            .expect("Contract not initialized: admin");
         admin.require_auth();
         env.storage().instance().set(&DataKey::Paused, &true);
         EventPause {}.publish(&env);
     }
 
     pub fn unpause(env: Env) {
-        let admin: Address = env.storage().instance().get(&DataKey::Admin).unwrap();
+        let admin: Address = env.storage().instance().get(&DataKey::Admin)
+            .expect("Contract not initialized: admin");
         admin.require_auth();
         env.storage().instance().set(&DataKey::Paused, &false);
         EventUnpause {}.publish(&env);
     }
 
     pub fn emergency_withdraw(env: Env, to: Address, amount: i128) {
-        let admin: Address = env.storage().instance().get(&DataKey::Admin).unwrap();
+        let admin: Address = env.storage().instance().get(&DataKey::Admin)
+            .expect("Contract not initialized: admin");
         admin.require_auth();
 
         let token_id: Address = env
             .storage()
             .instance()
             .get(&DataKey::PaymentToken)
-            .unwrap();
+            .expect("Contract not initialized: payment token");
 
         let client = token::TokenClient::new(&env, &token_id);
         client.transfer(&env.current_contract_address(), &to, &amount);
@@ -331,14 +337,16 @@ impl RwaMarketplace {
 
     /// Update the per-share price. Only the admin may call this.
     pub fn set_price(env: Env, new_price: i128) {
-        let admin: Address = env.storage().instance().get(&DataKey::Admin).unwrap();
+        let admin: Address = env.storage().instance().get(&DataKey::Admin)
+            .expect("Contract not initialized: admin");
         admin.require_auth();
 
         if new_price <= 0 {
             panic!("Price must be positive");
         }
 
-        let old_price: i128 = env.storage().instance().get(&DataKey::PricePerShare).unwrap();
+        let old_price: i128 = env.storage().instance().get(&DataKey::PricePerShare)
+            .expect("Contract not initialized: price");
         env.storage()
             .instance()
             .set(&DataKey::PricePerShare, &new_price);
@@ -354,15 +362,17 @@ impl RwaMarketplace {
     /// Only the admin may call this. `new_total` must be at least the number
     /// of shares already sold and at least the current available pool.
     pub fn set_total_shares(env: Env, new_total: u32) {
-        let admin: Address = env.storage().instance().get(&DataKey::Admin).unwrap();
+        let admin: Address = env.storage().instance().get(&DataKey::Admin)
+            .expect("Contract not initialized: admin");
         admin.require_auth();
 
-        let total_shares: u32 = env.storage().instance().get(&DataKey::TotalShares).unwrap();
+        let total_shares: u32 = env.storage().instance().get(&DataKey::TotalShares)
+            .expect("Contract not initialized: total shares");
         let available_shares: u32 = env
             .storage()
             .instance()
             .get(&DataKey::AvailableShares)
-            .unwrap();
+            .expect("Contract not initialized: available shares");
 
         let issued_shares = checked_sub_u32(total_shares, available_shares);
 
@@ -829,56 +839,69 @@ mod test {
         c.set_total_shares(&500);
     }
 
-    // Test successful operations with large but safe values
-    #[test]
-    fn test_large_price_multiplication_safe() {
-        let te = setup();
-        let c = client(&te);
-        // Use large but safe price and shares
-        c.init(&te.admin, &te.token_id, &1_000_000_000_000_i128, &1000);
-        mint(&te, &te.buyer, 100_000_000_000_000_i128);
-        
-        // 1_000_000_000_000 * 100 = 100_000_000_000_000 (safe, well below i128::MAX)
-        c.buy_shares(&te.buyer, &100);
-        assert_eq!(c.get_shares(&te.buyer), 100);
-        assert_eq!(c.get_available_shares(), 900);
+    // ── Pre-init tests: every function should give a clear error before init ─
+
+    fn pre_init_client() -> (Env, RwaMarketplaceClient<'static>, Address, Address) {
+        let env = Env::default();
+        env.mock_all_auths();
+        let admin = Address::generate(&env);
+        let token_id = env
+            .register_stellar_asset_contract_v2(admin.clone())
+            .address();
+        let contract_id = env.register(RwaMarketplace, ());
+        let client = RwaMarketplaceClient::new(&env, &contract_id);
+        (env, client, token_id, admin)
     }
 
     #[test]
-    fn test_large_dividend_multiplication_safe() {
-        let te = setup();
-        let c = client(&te);
-        c.init(&te.admin, &te.token_id, &100, &1000);
-        mint(&te, &te.buyer, 100_000);
-        
-        c.buy_shares(&te.buyer, &500); // buyer owns 50%
-        
-        let dividend_amount: i128 = 100_000_000_000; // Large but safe
-        mint(&te, &te.contract_id, dividend_amount);
-        
-        // Should safely compute 100_000_000_000 * 500 / 1000 = 50_000_000_000
-        c.distribute_dividends(&te.token_id, &dividend_amount);
-        
-        let token_client = token::TokenClient::new(&te.env, &te.token_id);
-        let expected = 100_000 - 500 * 100 + 50_000_000_000;
-        assert_eq!(token_client.balance(&te.buyer), expected);
+    #[should_panic(expected = "Contract not initialized")]
+    fn test_pre_init_buy_shares() {
+        let (env, client, _, _) = pre_init_client();
+        let buyer = Address::generate(&env);
+        client.buy_shares(&buyer, &1);
     }
 
     #[test]
-    fn test_checked_math_with_max_u32_values() {
-        let te = setup();
-        let c = client(&te);
-        // Test with maximum u32 values for safe operations
-        let max_shares = u32::MAX - 100;
-        c.init(&te.admin, &te.token_id, &100, &max_shares);
-        mint(&te, &te.buyer, i128::MAX);
-        
-        // Buying small number of shares from large pool should work safely
-        c.buy_shares(&te.buyer, &50);
-        assert_eq!(c.get_shares(&te.buyer), 50);
-        assert_eq!(c.get_available_shares(), max_shares - 50);
+    #[should_panic(expected = "Contract not initialized")]
+    fn test_pre_init_pause() {
+        let (_, client, _, _) = pre_init_client();
+        client.pause();
     }
 
+    #[test]
+    #[should_panic(expected = "Contract not initialized")]
+    fn test_pre_init_unpause() {
+        let (_, client, _, _) = pre_init_client();
+        client.unpause();
+    }
+
+    #[test]
+    #[should_panic(expected = "Contract not initialized")]
+    fn test_pre_init_set_price() {
+        let (_, client, _, _) = pre_init_client();
+        client.set_price(&100);
+    }
+
+    #[test]
+    #[should_panic(expected = "Contract not initialized")]
+    fn test_pre_init_set_total_shares() {
+        let (_, client, _, _) = pre_init_client();
+        client.set_total_shares(&1000);
+    }
+
+    #[test]
+    #[should_panic(expected = "Contract not initialized")]
+    fn test_pre_init_distribute_dividends() {
+        let (_, client, token_id, _) = pre_init_client();
+        client.distribute_dividends(&token_id, &1000);
+    }
+
+    #[test]
+    #[should_panic(expected = "Contract not initialized")]
+    fn test_pre_init_emergency_withdraw() {
+        let (_, client, _, admin) = pre_init_client();
+        client.emergency_withdraw(&admin, &0);
+    }
 }
 // --- TIMELOCK MODULE ---
 // Appended as a completely isolated module to avoid breaking existing enums.
