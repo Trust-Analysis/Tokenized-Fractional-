@@ -16,7 +16,18 @@ pub enum DataKey {
     AvailableShares,
     Paused,
     Balance(Address),
-    Holders, // ← NEW: registry of all unique holder addresses
+    VestingSchedules(Address),
+    Holders, // registry of all unique holder addresses
+}
+
+#[contracttype]
+#[derive(Clone)]
+pub struct VestingSchedule {
+    pub start: u64,
+    pub cliff: u64,
+    pub duration: u64,
+    pub total_amount: u32,
+    pub claimed_amount: u32,
 }
 
 #[contractevent(data_format = "vec")]
@@ -167,16 +178,8 @@ impl RwaMarketplace {
             .persistent()
             .set(&DataKey::Balance(buyer.clone()), &new_balance);
 
-        // Register as new holder only on first purchase (prev_balance was 0)
-        if prev_balance == 0 {
-            let mut holders: Vec<Address> = env
-                .storage()
-                .instance()
-                .get(&DataKey::Holders)
-                .unwrap_or_else(|| Vec::new(&env));
-            holders.push_back(buyer.clone());
-            env.storage().instance().set(&DataKey::Holders, &holders);
-        }
+        // Register as new holder only on first purchase or if not registered yet
+        Self::register_holder(&env, buyer.clone());
 
         EventBuyShares { buyer, shares, total_cost }.publish(&env);
     }
@@ -257,6 +260,198 @@ impl RwaMarketplace {
             holder_count,
         }
         .publish(&env);
+    }
+
+    /// Register a holder if not already present.
+    fn register_holder(env: &Env, owner: Address) {
+        let mut holders: Vec<Address> = env
+            .storage()
+            .instance()
+            .get(&DataKey::Holders)
+            .unwrap_or_else(|| Vec::new(env));
+        for holder in holders.iter() {
+            if holder == owner {
+                return;
+            }
+        }
+        holders.push_back(owner);
+        env.storage().instance().set(&DataKey::Holders, &holders);
+    }
+
+    fn load_vesting_schedules(env: &Env, owner: &Address) -> Vec<VestingSchedule> {
+        env.storage()
+            .persistent()
+            .get(&DataKey::VestingSchedules(owner.clone()))
+            .unwrap_or_else(|| Vec::new(env))
+    }
+
+    fn set_vesting_schedules(env: &Env, owner: &Address, schedules: &Vec<VestingSchedule>) {
+        env.storage()
+            .persistent()
+            .set(&DataKey::VestingSchedules(owner.clone()), schedules);
+    }
+
+    fn compute_vested_amount(schedule: &VestingSchedule, timestamp: u64) -> u32 {
+        let start = schedule.start;
+        let cliff_time = start.saturating_add(schedule.cliff);
+        let vesting_end = start.saturating_add(schedule.duration);
+
+        if timestamp < cliff_time {
+            return 0;
+        }
+        if timestamp >= vesting_end || schedule.duration <= schedule.cliff {
+            return schedule.total_amount;
+        }
+
+        let vested_duration = timestamp.saturating_sub(cliff_time);
+        let total_vesting_duration = schedule.duration.saturating_sub(schedule.cliff);
+        let vested = (schedule.total_amount as u128)
+            .saturating_mul(vested_duration as u128)
+            / (total_vesting_duration as u128);
+        vested as u32
+    }
+
+    fn total_owned_shares(env: &Env, owner: &Address) -> u32 {
+        let liquid: u32 = env
+            .storage()
+            .persistent()
+            .get(&DataKey::Balance(owner.clone()))
+            .unwrap_or(0);
+        let schedules = Self::load_vesting_schedules(env, owner);
+        let mut locked: u32 = 0;
+        for schedule in schedules.iter() {
+            locked = locked.saturating_add(schedule.total_amount.saturating_sub(schedule.claimed_amount));
+        }
+        liquid.saturating_add(locked)
+    }
+
+    fn calc_claimable_vested_shares(env: &Env, owner: &Address, timestamp: u64) -> u32 {
+        let schedules = Self::load_vesting_schedules(env, owner);
+        let mut claimable: u32 = 0;
+        for schedule in schedules.iter() {
+            let vested = Self::compute_vested_amount(&schedule, timestamp);
+            let available = vested.saturating_sub(schedule.claimed_amount);
+            claimable = claimable.saturating_add(available);
+        }
+        claimable
+    }
+
+    pub fn buy_vested_shares(env: Env, buyer: Address, shares: u32, duration: u64) {
+        buyer.require_auth();
+
+        if env.storage().instance().get(&DataKey::Paused).unwrap_or(false) {
+            panic!("Marketplace is paused");
+        }
+
+        if shares == 0 {
+            panic!("Must purchase at least 1 share");
+        }
+
+        if duration == 0 {
+            panic!("Vesting duration must be positive");
+        }
+
+        let available: u32 = env
+            .storage()
+            .instance()
+            .get(&DataKey::AvailableShares)
+            .unwrap();
+
+        if shares > available {
+            panic!("Not enough shares available for purchase");
+        }
+
+        let price: i128 = env.storage().instance().get(&DataKey::PricePerShare).unwrap();
+        let total_cost = price * (shares as i128);
+
+        let admin: Address = env.storage().instance().get(&DataKey::Admin).unwrap();
+        let token_id: Address = env
+            .storage()
+            .instance()
+            .get(&DataKey::PaymentToken)
+            .unwrap();
+
+        let client = token::TokenClient::new(&env, &token_id);
+        client.transfer(&buyer, &admin, &total_cost);
+
+        env.storage()
+            .instance()
+            .set(&DataKey::AvailableShares, &(available - shares));
+
+        let now = env.ledger().timestamp();
+        let schedule = VestingSchedule {
+            start: now,
+            cliff: 0,
+            duration,
+            total_amount: shares,
+            claimed_amount: 0,
+        };
+
+        let mut schedules = Self::load_vesting_schedules(&env, &buyer);
+        schedules.push_back(schedule);
+        Self::set_vesting_schedules(&env, &buyer, &schedules);
+
+        Self::register_holder(&env, buyer.clone());
+
+        EventBuyShares { buyer, shares, total_cost }.publish(&env);
+    }
+
+    pub fn claim_vested_shares(env: Env, claimer: Address) {
+        claimer.require_auth();
+
+        let now = env.ledger().timestamp();
+        let mut schedules = Self::load_vesting_schedules(&env, &claimer);
+
+        let mut total_claimable: u32 = 0;
+        let mut updated_schedules: Vec<VestingSchedule> = Vec::new(&env);
+
+        for schedule in schedules.iter() {
+            let vested = Self::compute_vested_amount(&schedule, now);
+            let available = vested.saturating_sub(schedule.claimed_amount);
+            if available > 0 {
+                total_claimable = total_claimable.saturating_add(available);
+                let mut schedule = schedule.clone();
+                schedule.claimed_amount = schedule.claimed_amount.saturating_add(available);
+                if schedule.claimed_amount < schedule.total_amount {
+                    updated_schedules.push_back(schedule);
+                }
+            } else {
+                updated_schedules.push_back(schedule.clone());
+            }
+        }
+
+        if total_claimable == 0 {
+            panic!("No vested shares available to claim");
+        }
+
+        let prev_balance: u32 = env
+            .storage()
+            .persistent()
+            .get(&DataKey::Balance(claimer.clone()))
+            .unwrap_or(0);
+        let new_balance = prev_balance.saturating_add(total_claimable);
+        env.storage()
+            .persistent()
+            .set(&DataKey::Balance(claimer.clone()), &new_balance);
+
+        Self::set_vesting_schedules(&env, &claimer, &updated_schedules);
+    }
+
+    pub fn get_vesting_schedules(env: Env, owner: Address) -> Vec<VestingSchedule> {
+        Self::load_vesting_schedules(&env, &owner)
+    }
+
+    pub fn get_claimable_vested_shares(env: Env, owner: Address) -> u32 {
+        Self::calc_claimable_vested_shares(&env, &owner, env.ledger().timestamp())
+    }
+
+    pub fn get_locked_shares(env: Env, owner: Address) -> u32 {
+        let schedules = Self::load_vesting_schedules(&env, &owner);
+        let mut locked: u32 = 0;
+        for schedule in schedules.iter() {
+            locked = locked.saturating_add(schedule.total_amount.saturating_sub(schedule.claimed_amount));
+        }
+        locked
     }
 
     /// Returns the current list of registered holders.
@@ -404,7 +599,7 @@ impl RwaMarketplace {
 #[cfg(test)]
 mod test {
     use super::*;
-    use soroban_sdk::{testutils::Address as _, token, Env};
+    use soroban_sdk::{testutils::{Address as _, Ledger as _}, token, Env};
 
     struct TestEnv {
         env: Env,
