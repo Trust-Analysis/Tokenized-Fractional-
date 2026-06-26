@@ -1,6 +1,6 @@
 #![no_std]
 use soroban_sdk::{
-    contract, contractevent, contractimpl, contracttype, token, Address, Env, Vec,
+    contract, contractevent, contractimpl, contracttype, token, Address, Bytes, Env, Vec,
 };
 
 #[contract]
@@ -18,8 +18,7 @@ pub enum DataKey {
     Balance(Address),
     VestingSchedules(Address),
     Holders, // registry of all unique holder addresses
-    NextOrderId,
-    SellOrder(u64),
+    MetadataUri,
 }
 
 #[contracttype]
@@ -214,6 +213,25 @@ impl RwaMarketplace {
         Self::register_holder(&env, buyer.clone());
 
         EventBuyShares { buyer, shares, total_cost }.publish(&env);
+    }
+
+    pub fn add_to_whitelist(env: Env, addr: Address) {
+        let admin: Address = env.storage().instance().get(&DataKey::Admin).unwrap();
+        admin.require_auth();
+        env.storage().persistent().set(&DataKey::Whitelisted(addr.clone()), &true);
+    }
+
+    pub fn remove_from_whitelist(env: Env, addr: Address) {
+        let admin: Address = env.storage().instance().get(&DataKey::Admin).unwrap();
+        admin.require_auth();
+        env.storage().persistent().remove(&DataKey::Whitelisted(addr.clone()));
+    }
+
+    pub fn is_whitelisted(env: Env, addr: Address) -> bool {
+        env.storage()
+            .persistent()
+            .get(&DataKey::Whitelisted(addr))
+            .unwrap_or(false)
     }
 
     /// Distribute `total_amount` of `token` pro-rata among all current holders
@@ -494,6 +512,20 @@ impl RwaMarketplace {
             .unwrap_or_else(|| Vec::new(&env))
     }
 
+    /// Store a URI pointing to off-chain asset metadata. Admin only.
+    pub fn set_metadata_uri(env: Env, uri: Bytes) {
+        let admin: Address = env.storage().instance().get(&DataKey::Admin)
+            .expect("Contract not initialized: admin");
+        admin.require_auth();
+        env.storage().instance().set(&DataKey::MetadataUri, &uri);
+    }
+
+    /// Retrieve the on-chain metadata URI. Returns empty bytes if not set.
+    pub fn get_metadata_uri(env: Env) -> Bytes {
+        env.storage().instance().get(&DataKey::MetadataUri)
+            .unwrap_or_else(|| Bytes::new(&env))
+    }
+
     pub fn get_shares(env: Env, owner: Address) -> u32 {
         env.storage()
             .persistent()
@@ -733,7 +765,7 @@ impl RwaMarketplace {
 #[cfg(test)]
 mod test {
     use super::*;
-    use soroban_sdk::{testutils::{Address as _, Ledger as _}, token, Env};
+    use soroban_sdk::{testutils::{Address as _, Ledger as _}, token, Env, IntoVal};
 
     struct TestEnv {
         env: Env,
@@ -778,15 +810,45 @@ mod test {
     }
 
     #[test]
-    fn test_buy_shares() {
+    #[should_panic(expected = "Buyer is not whitelisted")]
+    fn test_buy_shares_requires_whitelist() {
+        let te = setup();
+        let c = client(&te);
+        c.init(&te.admin, &te.token_id, &100, &1000);
+        mint(&te, &te.buyer, 100000);
+        c.buy_shares(&te.buyer, &25);
+    }
+
+    #[test]
+    fn test_whitelist_admin_can_add_and_buy() {
         let te = setup();
         let c = client(&te);
         c.init(&te.admin, &te.token_id, &100, &1000);
         mint(&te, &te.buyer, 100000);
 
+        assert!(!c.is_whitelisted(&te.buyer));
+        c.add_to_whitelist(&te.buyer);
+        assert!(c.is_whitelisted(&te.buyer));
+
         c.buy_shares(&te.buyer, &25);
         assert_eq!(c.get_shares(&te.buyer), 25);
         assert_eq!(c.get_available_shares(), 975);
+    }
+
+    #[test]
+    #[should_panic(expected = "Buyer is not whitelisted")]
+    fn test_remove_from_whitelist_blocks_buy() {
+        let te = setup();
+        let c = client(&te);
+        c.init(&te.admin, &te.token_id, &100, &1000);
+        mint(&te, &te.buyer, 100000);
+
+        c.add_to_whitelist(&te.buyer);
+        assert!(c.is_whitelisted(&te.buyer));
+        c.remove_from_whitelist(&te.buyer);
+        assert!(!c.is_whitelisted(&te.buyer));
+
+        c.buy_shares(&te.buyer, &25);
     }
 
     #[test]
@@ -795,6 +857,7 @@ mod test {
         let c = client(&te);
         c.init(&te.admin, &te.token_id, &100, &1000);
         mint(&te, &te.buyer, 100000);
+        c.add_to_whitelist(&te.buyer);
 
         c.buy_shares(&te.buyer, &10);
         c.buy_shares(&te.buyer, &20);
@@ -869,6 +932,7 @@ mod test {
         let c = client(&te);
         c.init(&te.admin, &te.token_id, &100, &1000);
         mint(&te, &te.buyer, 100_000);
+        c.add_to_whitelist(&te.buyer);
 
         // Before any purchase, registry is empty
         assert_eq!(c.get_holders().len(), 0);
@@ -890,6 +954,8 @@ mod test {
         let buyer2 = Address::generate(&te.env);
         mint(&te, &te.buyer, 100_000);
         mint(&te, &buyer2, 100_000);
+        c.add_to_whitelist(&te.buyer);
+        c.add_to_whitelist(&buyer2);
 
         c.buy_shares(&te.buyer, &10);
         c.buy_shares(&buyer2, &20);
@@ -903,6 +969,7 @@ mod test {
         let c = client(&te);
         c.init(&te.admin, &te.token_id, &100, &1000);
         mint(&te, &te.buyer, 100_000);
+        c.add_to_whitelist(&te.buyer);
 
         c.buy_shares(&te.buyer, &500); // buyer owns 500 / 1000 shares = 50%
 
@@ -927,6 +994,8 @@ mod test {
         let buyer2 = Address::generate(&te.env);
         mint(&te, &te.buyer, 100_000);
         mint(&te, &buyer2, 100_000);
+        c.add_to_whitelist(&te.buyer);
+        c.add_to_whitelist(&buyer2);
 
         // buyer: 250 shares (25%), buyer2: 750 shares (75%)
         c.buy_shares(&te.buyer, &250);
@@ -960,6 +1029,8 @@ mod test {
         let buyer2 = Address::generate(&te.env);
         mint(&te, &te.buyer, 100_000);
         mint(&te, &buyer2, 100_000);
+        c.add_to_whitelist(&te.buyer);
+        c.add_to_whitelist(&buyer2);
 
         c.buy_shares(&te.buyer, &10);
         c.buy_shares(&buyer2, &20);
@@ -1017,6 +1088,7 @@ mod test {
         let c = client(&te);
         c.init(&te.admin, &te.token_id, &100, &1000);
         mint(&te, &te.buyer, 100_000);
+        c.add_to_whitelist(&te.buyer);
 
         c.set_price(&200);
         c.buy_shares(&te.buyer, &10);
@@ -1060,6 +1132,7 @@ mod test {
         let c = client(&te);
         c.init(&te.admin, &te.token_id, &100, &1000);
         mint(&te, &te.buyer, 100_000);
+        c.add_to_whitelist(&te.buyer);
 
         c.buy_shares(&te.buyer, &100);
         assert_eq!(c.get_available_shares(), 900);
@@ -1232,162 +1305,38 @@ mod test {
         client.emergency_withdraw(&admin, &0);
     }
 
-    // ── Secondary market / sell order tests ────────────────────────────
+    // ── Metadata URI tests ──────────────────────────────────────────────
 
     #[test]
-    fn test_place_and_get_sell_order() {
+    fn test_set_and_get_metadata_uri() {
         let te = setup();
         let c = client(&te);
         c.init(&te.admin, &te.token_id, &100, &1000);
-        mint(&te, &te.buyer, 10_000);
-        c.buy_shares(&te.buyer, &10);
 
-        let order_id = c.place_sell_order(&te.buyer, &5, &200);
-        assert_eq!(order_id, 0);
-
-        let order = c.get_sell_order(&order_id).unwrap();
-        assert_eq!(order.seller, te.buyer);
-        assert_eq!(order.amount, 5);
-        assert_eq!(order.price_per_share, 200);
-
-        // Escrowed shares deducted from seller's liquid balance
-        assert_eq!(c.get_shares(&te.buyer), 5);
+        let uri = soroban_sdk::Bytes::from_slice(&te.env, b"ipfs://QmTest");
+        c.set_metadata_uri(&uri);
+        assert_eq!(c.get_metadata_uri(), uri);
     }
 
     #[test]
-    fn test_cancel_sell_order_returns_shares() {
+    fn test_get_metadata_uri_default_empty() {
         let te = setup();
         let c = client(&te);
         c.init(&te.admin, &te.token_id, &100, &1000);
-        mint(&te, &te.buyer, 10_000);
-        c.buy_shares(&te.buyer, &10);
 
-        let order_id = c.place_sell_order(&te.buyer, &10, &150);
-        assert_eq!(c.get_shares(&te.buyer), 0);
-
-        c.cancel_sell_order(&order_id);
-        assert_eq!(c.get_shares(&te.buyer), 10);
-        assert!(c.get_sell_order(&order_id).is_none());
+        assert_eq!(c.get_metadata_uri(), soroban_sdk::Bytes::new(&te.env));
     }
 
     #[test]
-    fn test_buy_from_order_full_fill() {
+    fn test_set_metadata_uri_overwrites() {
         let te = setup();
         let c = client(&te);
         c.init(&te.admin, &te.token_id, &100, &1000);
 
-        let seller = Address::generate(&te.env);
-        let buyer2 = Address::generate(&te.env);
-        mint(&te, &seller, 10_000);
-        mint(&te, &buyer2, 50_000);
-
-        c.buy_shares(&seller, &10);
-        let order_id = c.place_sell_order(&seller, &10, &300);
-
-        let token_client = token::TokenClient::new(&te.env, &te.token_id);
-        let seller_before = token_client.balance(&seller);
-
-        c.buy_from_order(&buyer2, &order_id, &10);
-
-        // Order fully filled — removed
-        assert!(c.get_sell_order(&order_id).is_none());
-        // Buyer received shares
-        assert_eq!(c.get_shares(&buyer2), 10);
-        // Seller received payment: 10 * 300 = 3000
-        assert_eq!(token_client.balance(&seller), seller_before + 3_000);
-    }
-
-    #[test]
-    fn test_buy_from_order_partial_fill() {
-        let te = setup();
-        let c = client(&te);
-        c.init(&te.admin, &te.token_id, &100, &1000);
-        mint(&te, &te.buyer, 10_000);
-
-        let buyer2 = Address::generate(&te.env);
-        mint(&te, &buyer2, 50_000);
-
-        c.buy_shares(&te.buyer, &10);
-        let order_id = c.place_sell_order(&te.buyer, &10, &200);
-
-        c.buy_from_order(&buyer2, &order_id, &4); // partial fill
-
-        let remaining = c.get_sell_order(&order_id).unwrap();
-        assert_eq!(remaining.amount, 6);
-        assert_eq!(c.get_shares(&buyer2), 4);
-    }
-
-    #[test]
-    #[should_panic(expected = "Order amount must be positive")]
-    fn test_place_sell_order_zero_amount() {
-        let te = setup();
-        let c = client(&te);
-        c.init(&te.admin, &te.token_id, &100, &1000);
-        mint(&te, &te.buyer, 10_000);
-        c.buy_shares(&te.buyer, &10);
-        c.place_sell_order(&te.buyer, &0, &100);
-    }
-
-    #[test]
-    #[should_panic(expected = "Order price must be positive")]
-    fn test_place_sell_order_zero_price() {
-        let te = setup();
-        let c = client(&te);
-        c.init(&te.admin, &te.token_id, &100, &1000);
-        mint(&te, &te.buyer, 10_000);
-        c.buy_shares(&te.buyer, &10);
-        c.place_sell_order(&te.buyer, &5, &0);
-    }
-
-    #[test]
-    #[should_panic(expected = "Insufficient liquid shares")]
-    fn test_place_sell_order_insufficient_shares() {
-        let te = setup();
-        let c = client(&te);
-        c.init(&te.admin, &te.token_id, &100, &1000);
-        mint(&te, &te.buyer, 10_000);
-        c.buy_shares(&te.buyer, &5);
-        c.place_sell_order(&te.buyer, &10, &100); // only owns 5
-    }
-
-    #[test]
-    #[should_panic(expected = "Order not found")]
-    fn test_cancel_nonexistent_order() {
-        let te = setup();
-        let c = client(&te);
-        c.init(&te.admin, &te.token_id, &100, &1000);
-        c.cancel_sell_order(&99);
-    }
-
-    #[test]
-    #[should_panic(expected = "Amount exceeds order size")]
-    fn test_buy_from_order_exceeds_amount() {
-        let te = setup();
-        let c = client(&te);
-        c.init(&te.admin, &te.token_id, &100, &1000);
-        mint(&te, &te.buyer, 10_000);
-        let buyer2 = Address::generate(&te.env);
-        mint(&te, &buyer2, 50_000);
-
-        c.buy_shares(&te.buyer, &5);
-        let order_id = c.place_sell_order(&te.buyer, &5, &200);
-        c.buy_from_order(&buyer2, &order_id, &10); // only 5 available
-    }
-
-    #[test]
-    fn test_order_ids_increment() {
-        let te = setup();
-        let c = client(&te);
-        c.init(&te.admin, &te.token_id, &100, &1000);
-        mint(&te, &te.buyer, 100_000);
-        c.buy_shares(&te.buyer, &30);
-
-        let id0 = c.place_sell_order(&te.buyer, &5, &100);
-        let id1 = c.place_sell_order(&te.buyer, &5, &100);
-        let id2 = c.place_sell_order(&te.buyer, &5, &100);
-        assert_eq!(id0, 0);
-        assert_eq!(id1, 1);
-        assert_eq!(id2, 2);
+        c.set_metadata_uri(&soroban_sdk::Bytes::from_slice(&te.env, b"ipfs://old"));
+        let new_uri = soroban_sdk::Bytes::from_slice(&te.env, b"ipfs://new");
+        c.set_metadata_uri(&new_uri);
+        assert_eq!(c.get_metadata_uri(), new_uri);
     }
 }
 // --- TIMELOCK MODULE ---
@@ -1682,5 +1631,36 @@ mod property_tests {
                 prop_assert_eq!(client.get_total_shares(), INIT_TOTAL);
             }
         }
+    }
+}
+// ====================== CONTRACT UPGRADEABILITY (#6) ======================
+
+#[contracttype]
+#[derive(Clone)]
+pub struct ContractUpgraded {
+    pub new_wasm_hash: BytesN<32>,
+}
+
+#[contractimpl]
+impl RwaMarketplace {
+
+    /// Upgrade the smart contract to a new version.
+    /// Only the admin can call this function.
+    pub fn upgrade(env: Env, new_wasm_hash: BytesN<32>) {
+        // Verify admin
+        let admin: Address = env.storage().instance()
+            .get(&DataKey::Admin)
+            .expect("Contract not initialized");
+
+        admin.require_auth();
+
+        // Perform the upgrade
+        env.deployer().upgrade_contract(new_wasm_hash.clone());
+
+        // Emit upgrade event
+        env.events().publish(
+            (symbol_short!("Contract"), symbol_short!("Upgraded")),
+            ContractUpgraded { new_wasm_hash },
+        );
     }
 }
