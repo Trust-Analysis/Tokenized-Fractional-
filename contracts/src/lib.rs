@@ -1501,3 +1501,34 @@ mod property_tests {
         }
     }
 }
+// ====================== CONTRACT UPGRADEABILITY (#6) ======================
+
+#[contracttype]
+#[derive(Clone)]
+pub struct ContractUpgraded {
+    pub new_wasm_hash: BytesN<32>,
+}
+
+#[contractimpl]
+impl RwaMarketplace {
+
+    /// Upgrade the smart contract to a new version.
+    /// Only the admin can call this function.
+    pub fn upgrade(env: Env, new_wasm_hash: BytesN<32>) {
+        // Verify admin
+        let admin: Address = env.storage().instance()
+            .get(&DataKey::Admin)
+            .expect("Contract not initialized");
+
+        admin.require_auth();
+
+        // Perform the upgrade
+        env.deployer().upgrade_contract(new_wasm_hash.clone());
+
+        // Emit upgrade event
+        env.events().publish(
+            (symbol_short!("Contract"), symbol_short!("Upgraded")),
+            ContractUpgraded { new_wasm_hash },
+        );
+    }
+}
