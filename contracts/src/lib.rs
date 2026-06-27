@@ -143,6 +143,14 @@ impl RwaMarketplace {
             panic!("Marketplace is already initialized");
         }
 
+        if price <= 0 {
+            panic!("Price must be greater than zero");
+        }
+
+        if total_shares == 0 {
+            panic!("Total shares must be greater than zero");
+        }
+
         env.storage().instance().set(&DataKey::Admin, &admin);
         env.storage().instance().set(&DataKey::PaymentToken, &payment_token);
         env.storage().instance().set(&DataKey::PricePerShare, &price);
@@ -895,6 +903,30 @@ mod test {
         let c = client(&te);
         c.init(&te.admin, &te.token_id, &100, &1000);
         c.init(&te.admin, &te.token_id, &100, &1000);
+    }
+
+    #[test]
+    #[should_panic(expected = "Price must be greater than zero")]
+    fn test_init_zero_price() {
+        let te = setup();
+        let c = client(&te);
+        c.init(&te.admin, &te.token_id, &0, &1000);
+    }
+
+    #[test]
+    #[should_panic(expected = "Price must be greater than zero")]
+    fn test_init_negative_price() {
+        let te = setup();
+        let c = client(&te);
+        c.init(&te.admin, &te.token_id, &-50, &1000);
+    }
+
+    #[test]
+    #[should_panic(expected = "Total shares must be greater than zero")]
+    fn test_init_zero_total_shares() {
+        let te = setup();
+        let c = client(&te);
+        c.init(&te.admin, &te.token_id, &100, &0);
     }
 
     #[test]
