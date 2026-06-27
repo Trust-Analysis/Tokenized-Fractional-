@@ -9,6 +9,8 @@ import * as Sentry from '@sentry/node';
 import { readFileSync, writeFileSync, existsSync } from 'fs';
 import { join, dirname } from 'path';
 import { fileURLToPath } from 'url';
+import swaggerUi from 'swagger-ui-express';
+import { swaggerSpec } from './docs.js';
 import { cacheGet, cacheSet, cacheDel } from './cache.js';
 
 const __dirname = dirname(fileURLToPath(import.meta.url));
@@ -125,6 +127,15 @@ const writeLimiter = rateLimit({
   message: { error: 'Too many write requests, please try again later' },
 });
 
+// ── API Documentation ──────────────────────────────────────────────────────────
+app.use('/api-docs', swaggerUi.serve, swaggerUi.setup(swaggerSpec, {
+  customSiteTitle: 'RWA Marketplace API Docs',
+}));
+
+app.get('/api-docs.json', (_req, res) => {
+  res.json(swaggerSpec);
+});
+
 // ── Routes ────────────────────────────────────────────────────────────────────
 
 // Admin API key verification endpoint
@@ -160,7 +171,46 @@ app.get('/health', async (_req, res) => {
   res.json({ status: 'ok', timestamp: new Date().toISOString(), dependencies: deps });
 });
 
-// GET /api/rwa?page=1&limit=20&assetType=real_estate&search=coffee
+/**
+ * @openapi
+ * /api/rwa:
+ *   get:
+ *     tags: [Assets]
+ *     summary: List all asset metadata
+ *     description: Returns a paginated, filterable list of all RWA assets.
+ *     parameters:
+ *       - in: query
+ *         name: page
+ *         schema:
+ *           type: integer
+ *           default: 1
+ *         description: Page number
+ *       - in: query
+ *         name: limit
+ *         schema:
+ *           type: integer
+ *           default: 20
+ *         description: Items per page (max 100)
+ *       - in: query
+ *         name: assetType
+ *         schema:
+ *           type: string
+ *         description: Filter by asset type (case-insensitive)
+ *         example: real_estate
+ *       - in: query
+ *         name: search
+ *         schema:
+ *           type: string
+ *         description: Full-text search on title and description
+ *         example: luxury
+ *     responses:
+ *       200:
+ *         description: Paginated list of assets
+ *         content:
+ *           application/json:
+ *             schema:
+ *               $ref: '#/components/schemas/PaginatedAssets'
+ */
 app.get('/api/rwa', (req, res) => {
   const data = loadData();
   let assets = Object.entries(data).map(([contractId, meta]) => ({ contractId, ...meta }));
@@ -198,6 +248,33 @@ app.get('/api/rwa', (req, res) => {
   cacheSet('rwa:all', { data: assets, pagination: { total, page: pageNum, limit: pageSize, totalPages } }).catch(() => {});
 });
 
+/**
+ * @openapi
+ * /api/rwa/{contractId}:
+ *   get:
+ *     tags: [Assets]
+ *     summary: Get asset metadata by contract ID
+ *     parameters:
+ *       - in: path
+ *         name: contractId
+ *         required: true
+ *         schema:
+ *           type: string
+ *         description: Soroban contract ID
+ *     responses:
+ *       200:
+ *         description: Asset metadata
+ *         content:
+ *           application/json:
+ *             schema:
+ *               $ref: '#/components/schemas/Asset'
+ *       404:
+ *         description: Asset not found
+ *         content:
+ *           application/json:
+ *             schema:
+ *               $ref: '#/components/schemas/Error'
+ */
 app.get('/api/rwa/:contractId', async (req, res) => {
   const { contractId } = req.params;
 
@@ -214,6 +291,41 @@ app.get('/api/rwa/:contractId', async (req, res) => {
   res.json(result);
 });
 
+/**
+ * @openapi
+ * /api/rwa:
+ *   post:
+ *     tags: [Assets]
+ *     summary: Create or update asset metadata
+ *     description: Requires admin API key via `x-api-key` header.
+ *     security:
+ *       - ApiKeyAuth: []
+ *     requestBody:
+ *       required: true
+ *       content:
+ *         application/json:
+ *           schema:
+ *             $ref: '#/components/schemas/AssetInput'
+ *     responses:
+ *       201:
+ *         description: Asset created or updated
+ *         content:
+ *           application/json:
+ *             schema:
+ *               $ref: '#/components/schemas/Asset'
+ *       400:
+ *         description: Validation error
+ *         content:
+ *           application/json:
+ *             schema:
+ *               $ref: '#/components/schemas/Error'
+ *       401:
+ *         description: Unauthorized
+ *         content:
+ *           application/json:
+ *             schema:
+ *               $ref: '#/components/schemas/Error'
+ */
 app.post('/api/rwa', adminAuth, writeLimiter, async (req, res) => {
   const { contractId, ...metadata } = req.body;
 
@@ -246,6 +358,47 @@ app.post('/api/rwa', adminAuth, writeLimiter, async (req, res) => {
   res.status(201).json({ contractId, ...data[contractId] });
 });
 
+/**
+ * @openapi
+ * /api/rwa/{contractId}:
+ *   delete:
+ *     tags: [Assets]
+ *     summary: Delete asset metadata
+ *     description: Requires admin API key via `x-api-key` header.
+ *     security:
+ *       - ApiKeyAuth: []
+ *     parameters:
+ *       - in: path
+ *         name: contractId
+ *         required: true
+ *         schema:
+ *           type: string
+ *         description: Soroban contract ID
+ *     responses:
+ *       200:
+ *         description: Asset deleted
+ *         content:
+ *           application/json:
+ *             schema:
+ *               type: object
+ *               properties:
+ *                 message:
+ *                   type: string
+ *                 contractId:
+ *                   type: string
+ *       401:
+ *         description: Unauthorized
+ *         content:
+ *           application/json:
+ *             schema:
+ *               $ref: '#/components/schemas/Error'
+ *       404:
+ *         description: Asset not found
+ *         content:
+ *           application/json:
+ *             schema:
+ *               $ref: '#/components/schemas/Error'
+ */
 app.delete('/api/rwa/:contractId', adminAuth, writeLimiter, async (req, res) => {
   const { contractId } = req.params;
   const data = loadData();
