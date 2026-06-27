@@ -1,6 +1,7 @@
 import 'dotenv/config';
 import { randomUUID } from 'crypto';
 import express from 'express';
+import { Router } from 'express';
 import cors from 'cors';
 import helmet from 'helmet';
 import rateLimit from 'express-rate-limit';
@@ -153,6 +154,9 @@ app.get('/api/admin/verify', adminAuth, (_req, res) => {
   res.json({ ok: true });
 });
 
+// ── v1 Router ─────────────────────────────────────────────────────────────────
+const v1 = Router();
+
 app.get('/health', async (_req, res) => {
   const deps = {
     storage: { status: 'ok' },
@@ -183,7 +187,7 @@ app.get('/health', async (_req, res) => {
 
 /**
  * @openapi
- * /api/rwa:
+ * /api/v1/rwa:
  *   get:
  *     tags: [Assets]
  *     summary: List all asset metadata
@@ -221,7 +225,7 @@ app.get('/health', async (_req, res) => {
  *             schema:
  *               $ref: '#/components/schemas/PaginatedAssets'
  */
-app.get('/api/rwa', (req, res) => {
+v1.get('/rwa', (req, res) => {
   const data = loadData();
   let assets = Object.entries(data).map(([contractId, meta]) => ({ contractId, ...meta }));
 
@@ -260,7 +264,7 @@ app.get('/api/rwa', (req, res) => {
 
 /**
  * @openapi
- * /api/rwa/{contractId}:
+ * /api/v1/rwa/{contractId}:
  *   get:
  *     tags: [Assets]
  *     summary: Get asset metadata by contract ID
@@ -285,7 +289,7 @@ app.get('/api/rwa', (req, res) => {
  *             schema:
  *               $ref: '#/components/schemas/Error'
  */
-app.get('/api/rwa/:contractId', async (req, res) => {
+v1.get('/rwa/:contractId', async (req, res) => {
   const { contractId } = req.params;
 
   const cached = await cacheGet(cacheKey(contractId));
@@ -303,7 +307,7 @@ app.get('/api/rwa/:contractId', async (req, res) => {
 
 /**
  * @openapi
- * /api/rwa:
+ * /api/v1/rwa:
  *   post:
  *     tags: [Assets]
  *     summary: Create or update asset metadata
@@ -336,7 +340,7 @@ app.get('/api/rwa/:contractId', async (req, res) => {
  *             schema:
  *               $ref: '#/components/schemas/Error'
  */
-app.post('/api/rwa', adminAuth, writeLimiter, async (req, res) => {
+v1.post('/rwa', adminAuth, writeLimiter, async (req, res) => {
   const { contractId, ...metadata } = req.body;
 
   if (!contractId || !validateContractId(contractId)) {
@@ -370,7 +374,7 @@ app.post('/api/rwa', adminAuth, writeLimiter, async (req, res) => {
 
 /**
  * @openapi
- * /api/rwa/{contractId}:
+ * /api/v1/rwa/{contractId}:
  *   delete:
  *     tags: [Assets]
  *     summary: Delete asset metadata
@@ -409,7 +413,7 @@ app.post('/api/rwa', adminAuth, writeLimiter, async (req, res) => {
  *             schema:
  *               $ref: '#/components/schemas/Error'
  */
-app.delete('/api/rwa/:contractId', adminAuth, writeLimiter, async (req, res) => {
+v1.delete('/rwa/:contractId', adminAuth, writeLimiter, async (req, res) => {
   const { contractId } = req.params;
   const data = loadData();
   if (!data[contractId]) return res.status(404).json({ error: 'Asset metadata not found' });
@@ -423,6 +427,10 @@ app.delete('/api/rwa/:contractId', adminAuth, writeLimiter, async (req, res) => 
   req.log?.info({ contractId }, 'Asset deleted');
   res.json({ message: 'Asset metadata deleted', contractId });
 });
+
+// Mount versioned router and backward-compatible aliases
+app.use('/api/v1', v1);
+app.use('/api', v1); // legacy /api/rwa aliased to /api/v1/rwa
 
 app.use((_req, res) => {
   res.status(404).json({ error: 'Not found', requestId: _req.requestId });

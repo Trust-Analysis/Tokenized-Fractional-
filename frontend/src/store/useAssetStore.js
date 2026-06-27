@@ -36,7 +36,7 @@ export const useAssetStore = create((set, get) => ({
 
     set({ isFetchingMeta: true, metaError: null });
     try {
-      const res = await fetch(`${apiUrl}/api/rwa/${contractId}`);
+      const res = await fetch(`${apiUrl}/api/v1/rwa/${contractId}`);
       if (res.ok) {
         const data = await res.json();
         set({ assetMeta: data });
@@ -53,7 +53,7 @@ export const useAssetStore = create((set, get) => ({
   },
 
   /**
-   * Fetches ALL RWA assets from GET /api/rwa.
+   * Fetches ALL RWA assets from GET /api/v1/rwa.
    *
    * @param {string} apiUrl - Base URL of the metadata API
    */
@@ -63,7 +63,7 @@ export const useAssetStore = create((set, get) => ({
 
     set({ isFetchingAssets: true, assetsError: null });
     try {
-      const res = await fetch(`${apiUrl}/api/rwa`);
+      const res = await fetch(`${apiUrl}/api/v1/rwa`);
       if (res.ok) {
         const json = await res.json();
         set({ assets: json.data || [] });
