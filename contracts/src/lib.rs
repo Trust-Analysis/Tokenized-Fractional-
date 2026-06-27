@@ -24,6 +24,7 @@ pub enum DataKey {
     Whitelisted(Address),
     SellOrder(u64),
     NextOrderId,
+    MaxSharesPerUser,
 }
 
 #[contracttype]
@@ -132,6 +133,12 @@ pub struct EventSetTotalShares {
     new_total: u32,
 }
 
+#[contractevent(data_format = "vec")]
+pub struct EventSetMaxSharesPerUser {
+    old_max: u32,
+    new_max: u32,
+}
+
 // ── OVERFLOW-SAFE MATH HELPERS ──────────────────────────────────────
 /// Safely add two i128 values, panicking on overflow
 fn checked_add_i128(a: i128, b: i128) -> i128 {
@@ -224,6 +231,23 @@ impl RwaMarketplace {
             panic!("Must purchase at least 1 share");
         }
 
+        // Enforce per-address cap (current holdings + this purchase) before
+        // transferring any tokens. A cap of 0 means "no limit".
+        let prev_balance: u32 = env
+            .storage()
+            .persistent()
+            .get(&DataKey::Balance(buyer.clone()))
+            .unwrap_or(0);
+        let prospective_balance = checked_add_u32(prev_balance, shares);
+        let max_per_user: u32 = env
+            .storage()
+            .instance()
+            .get(&DataKey::MaxSharesPerUser)
+            .unwrap_or(0);
+        if max_per_user > 0 && prospective_balance > max_per_user {
+            panic!("Purchase exceeds max shares per user");
+        }
+
         let price: i128 = env.storage().instance().get(&DataKey::PricePerShare)
             .expect("Contract not initialized: price");
         let total_cost = checked_mul_i128(price, shares as i128);
@@ -244,13 +268,7 @@ impl RwaMarketplace {
             .instance()
             .set(&DataKey::AvailableShares, &new_available);
 
-        let prev_balance: u32 = env
-            .storage()
-            .persistent()
-            .get(&DataKey::Balance(buyer.clone()))
-            .unwrap_or(0);
-
-        let new_balance = checked_add_u32(prev_balance, shares);
+        let new_balance = prospective_balance;
         env.storage()
             .persistent()
             .set(&DataKey::Balance(buyer.clone()), &new_balance);
@@ -803,6 +821,40 @@ impl RwaMarketplace {
             new_total,
         }
         .publish(&env);
+    }
+
+    /// Set the maximum number of shares any single address may hold.
+    /// Only the admin may call this. A value of 0 disables the cap (unlimited).
+    /// The new cap is not applied retroactively to existing holders; it only
+    /// constrains future `buy_shares` purchases.
+    pub fn set_max_shares_per_user(env: Env, amount: u32) {
+        let admin: Address = env.storage().instance().get(&DataKey::Admin)
+            .expect("Contract not initialized: admin");
+        admin.require_auth();
+
+        let old_max: u32 = env
+            .storage()
+            .instance()
+            .get(&DataKey::MaxSharesPerUser)
+            .unwrap_or(0);
+
+        env.storage()
+            .instance()
+            .set(&DataKey::MaxSharesPerUser, &amount);
+
+        EventSetMaxSharesPerUser {
+            old_max,
+            new_max: amount,
+        }
+        .publish(&env);
+    }
+
+    /// Return the current per-address share cap. 0 means no limit.
+    pub fn get_max_shares_per_user(env: Env) -> u32 {
+        env.storage()
+            .instance()
+            .get(&DataKey::MaxSharesPerUser)
+            .unwrap_or(0)
     }
 
     /// List `amount` of the caller's liquid shares for sale at `price_per_share`.
@@ -1709,6 +1761,163 @@ mod test {
         c.set_dividend_schedule(&10, &1);
         te.env.ledger().set_timestamp(te.env.ledger().timestamp() + 2);
         c.process_scheduled_dividend();
+    }
+
+    // ── Max shares per user tests ───────────────────────────────────────
+
+    #[test]
+    fn test_max_shares_per_user_default_unlimited() {
+        let te = setup();
+        let c = client(&te);
+        c.init(&te.admin, &te.token_id, &100, &1000);
+
+        // Defaults to 0, meaning no cap is enforced.
+        assert_eq!(c.get_max_shares_per_user(), 0);
+    }
+
+    #[test]
+    fn test_set_and_get_max_shares_per_user() {
+        let te = setup();
+        let c = client(&te);
+        c.init(&te.admin, &te.token_id, &100, &1000);
+
+        c.set_max_shares_per_user(&50);
+        assert_eq!(c.get_max_shares_per_user(), 50);
+    }
+
+    #[test]
+    fn test_buy_within_cap_succeeds() {
+        let te = setup();
+        let c = client(&te);
+        c.init(&te.admin, &te.token_id, &100, &1000);
+        mint(&te, &te.buyer, 100_000);
+        c.add_to_whitelist(&te.buyer);
+
+        c.set_max_shares_per_user(&50);
+        c.buy_shares(&te.buyer, &50);
+        assert_eq!(c.get_shares(&te.buyer), 50);
+    }
+
+    #[test]
+    #[should_panic(expected = "Purchase exceeds max shares per user")]
+    fn test_buy_exceeding_cap_single_purchase() {
+        let te = setup();
+        let c = client(&te);
+        c.init(&te.admin, &te.token_id, &100, &1000);
+        mint(&te, &te.buyer, 100_000);
+        c.add_to_whitelist(&te.buyer);
+
+        c.set_max_shares_per_user(&50);
+        c.buy_shares(&te.buyer, &51);
+    }
+
+    #[test]
+    #[should_panic(expected = "Purchase exceeds max shares per user")]
+    fn test_cap_checks_current_holdings_plus_purchase() {
+        let te = setup();
+        let c = client(&te);
+        c.init(&te.admin, &te.token_id, &100, &1000);
+        mint(&te, &te.buyer, 100_000);
+        c.add_to_whitelist(&te.buyer);
+
+        c.set_max_shares_per_user(&50);
+        // First purchase is fine (40 <= 50).
+        c.buy_shares(&te.buyer, &40);
+        assert_eq!(c.get_shares(&te.buyer), 40);
+        // Second purchase pushes total to 60 > 50 → rejected.
+        c.buy_shares(&te.buyer, &20);
+    }
+
+    #[test]
+    fn test_buy_up_to_cap_across_multiple_purchases() {
+        let te = setup();
+        let c = client(&te);
+        c.init(&te.admin, &te.token_id, &100, &1000);
+        mint(&te, &te.buyer, 100_000);
+        c.add_to_whitelist(&te.buyer);
+
+        c.set_max_shares_per_user(&50);
+        c.buy_shares(&te.buyer, &30);
+        c.buy_shares(&te.buyer, &20); // exactly hits the cap
+        assert_eq!(c.get_shares(&te.buyer), 50);
+    }
+
+    #[test]
+    fn test_cap_does_not_block_transfer_when_rejected() {
+        let te = setup();
+        let c = client(&te);
+        c.init(&te.admin, &te.token_id, &100, &1000);
+        mint(&te, &te.buyer, 100_000);
+        c.add_to_whitelist(&te.buyer);
+
+        c.set_max_shares_per_user(&50);
+
+        // A purchase that exceeds the cap must revert before transferring any
+        // tokens. Use the non-panicking client to assert the call fails and
+        // that no balances or available shares changed.
+        let result = c.try_buy_shares(&te.buyer, &60);
+        assert!(result.is_err());
+
+        let token_client = token::TokenClient::new(&te.env, &te.token_id);
+        assert_eq!(token_client.balance(&te.buyer), 100_000);
+        assert_eq!(c.get_shares(&te.buyer), 0);
+        assert_eq!(c.get_available_shares(), 1000);
+    }
+
+    #[test]
+    fn test_cap_zero_means_unlimited() {
+        let te = setup();
+        let c = client(&te);
+        c.init(&te.admin, &te.token_id, &100, &1000);
+        mint(&te, &te.buyer, 1_000_000);
+        c.add_to_whitelist(&te.buyer);
+
+        c.set_max_shares_per_user(&50);
+        c.set_max_shares_per_user(&0); // disable cap
+        c.buy_shares(&te.buyer, &900);
+        assert_eq!(c.get_shares(&te.buyer), 900);
+    }
+
+    #[test]
+    fn test_raising_cap_allows_more_purchases() {
+        let te = setup();
+        let c = client(&te);
+        c.init(&te.admin, &te.token_id, &100, &1000);
+        mint(&te, &te.buyer, 100_000);
+        c.add_to_whitelist(&te.buyer);
+
+        c.set_max_shares_per_user(&50);
+        c.buy_shares(&te.buyer, &50);
+
+        c.set_max_shares_per_user(&100);
+        c.buy_shares(&te.buyer, &50);
+        assert_eq!(c.get_shares(&te.buyer), 100);
+    }
+
+    #[test]
+    fn test_cap_is_per_address_not_global() {
+        let te = setup();
+        let c = client(&te);
+        c.init(&te.admin, &te.token_id, &100, &1000);
+
+        let buyer2 = Address::generate(&te.env);
+        mint(&te, &te.buyer, 100_000);
+        mint(&te, &buyer2, 100_000);
+        c.add_to_whitelist(&te.buyer);
+        c.add_to_whitelist(&buyer2);
+
+        c.set_max_shares_per_user(&50);
+        c.buy_shares(&te.buyer, &50);
+        c.buy_shares(&buyer2, &50);
+        assert_eq!(c.get_shares(&te.buyer), 50);
+        assert_eq!(c.get_shares(&buyer2), 50);
+    }
+
+    #[test]
+    #[should_panic(expected = "Contract not initialized")]
+    fn test_pre_init_set_max_shares_per_user() {
+        let (_, client, _, _) = pre_init_client();
+        client.set_max_shares_per_user(&50);
     }
 }
 // --- TIMELOCK MODULE ---
