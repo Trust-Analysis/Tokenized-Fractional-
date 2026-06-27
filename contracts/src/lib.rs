@@ -1,6 +1,6 @@
 #![no_std]
 use soroban_sdk::{
-    contract, contractevent, contractimpl, contracttype, token, Address, Env, Vec,
+    contract, contractevent, contractimpl, contracttype, token, Address, Bytes, Env, Vec,
 };
 
 #[contract]
@@ -16,7 +16,49 @@ pub enum DataKey {
     AvailableShares,
     Paused,
     Balance(Address),
-    Holders, // ← NEW: registry of all unique holder addresses
+    VestingSchedules(Address),
+    Holders, // registry of all unique holder addresses
+    MetadataUri,
+}
+
+#[contracttype]
+#[derive(Clone)]
+pub struct VestingSchedule {
+    pub start: u64,
+    pub cliff: u64,
+    pub duration: u64,
+    pub total_amount: u32,
+    pub claimed_amount: u32,
+}
+
+#[contracttype]
+#[derive(Clone)]
+pub struct SellOrder {
+    pub seller: Address,
+    pub amount: u32,
+    pub price_per_share: i128,
+}
+
+#[contractevent(data_format = "vec")]
+pub struct EventOrderPlaced {
+    order_id: u64,
+    seller: Address,
+    amount: u32,
+    price_per_share: i128,
+}
+
+#[contractevent(data_format = "vec")]
+pub struct EventOrderCancelled {
+    order_id: u64,
+    seller: Address,
+}
+
+#[contractevent(data_format = "vec")]
+pub struct EventOrderFilled {
+    order_id: u64,
+    buyer: Address,
+    amount: u32,
+    total_cost: i128,
 }
 
 #[contractevent(data_format = "vec")]
@@ -64,6 +106,32 @@ pub struct EventSetPrice {
 pub struct EventSetTotalShares {
     old_total: u32,
     new_total: u32,
+}
+
+// ── OVERFLOW-SAFE MATH HELPERS ──────────────────────────────────────
+/// Safely add two i128 values, panicking on overflow
+fn checked_add_i128(a: i128, b: i128) -> i128 {
+    a.checked_add(b).unwrap_or_else(|| panic!("Arithmetic overflow: cannot add {} + {}", a, b))
+}
+
+/// Safely subtract two i128 values, panicking on underflow
+fn checked_sub_i128(a: i128, b: i128) -> i128 {
+    a.checked_sub(b).unwrap_or_else(|| panic!("Arithmetic underflow: cannot subtract {} from {}", b, a))
+}
+
+/// Safely multiply two i128 values, panicking on overflow
+fn checked_mul_i128(a: i128, b: i128) -> i128 {
+    a.checked_mul(b).unwrap_or_else(|| panic!("Arithmetic overflow: cannot multiply {} * {}", a, b))
+}
+
+/// Safely add two u32 values, panicking on overflow
+fn checked_add_u32(a: u32, b: u32) -> u32 {
+    a.checked_add(b).unwrap_or_else(|| panic!("Arithmetic overflow: cannot add {} + {}", a, b))
+}
+
+/// Safely subtract two u32 values, panicking on underflow
+fn checked_sub_u32(a: u32, b: u32) -> u32 {
+    a.checked_sub(b).unwrap_or_else(|| panic!("Arithmetic underflow: cannot subtract {} from {}", b, a))
 }
 
 #[contractimpl]
@@ -133,9 +201,10 @@ impl RwaMarketplace {
         let client = token::TokenClient::new(&env, &token_id);
         client.transfer(&buyer, &admin, &total_cost);
 
+        let new_available = checked_sub_u32(available, shares);
         env.storage()
             .instance()
-            .set(&DataKey::AvailableShares, &(available - shares));
+            .set(&DataKey::AvailableShares, &new_available);
 
         let prev_balance: u32 = env
             .storage()
@@ -143,23 +212,34 @@ impl RwaMarketplace {
             .get(&DataKey::Balance(buyer.clone()))
             .unwrap_or(0);
 
-        let new_balance = prev_balance + shares;
+        let new_balance = checked_add_u32(prev_balance, shares);
         env.storage()
             .persistent()
             .set(&DataKey::Balance(buyer.clone()), &new_balance);
 
-        // Register as new holder only on first purchase (prev_balance was 0)
-        if prev_balance == 0 {
-            let mut holders: Vec<Address> = env
-                .storage()
-                .instance()
-                .get(&DataKey::Holders)
-                .unwrap_or_else(|| Vec::new(&env));
-            holders.push_back(buyer.clone());
-            env.storage().instance().set(&DataKey::Holders, &holders);
-        }
+        // Register as new holder only on first purchase or if not registered yet
+        Self::register_holder(&env, buyer.clone());
 
         EventBuyShares { buyer, shares, total_cost }.publish(&env);
+    }
+
+    pub fn add_to_whitelist(env: Env, addr: Address) {
+        let admin: Address = env.storage().instance().get(&DataKey::Admin).unwrap();
+        admin.require_auth();
+        env.storage().persistent().set(&DataKey::Whitelisted(addr.clone()), &true);
+    }
+
+    pub fn remove_from_whitelist(env: Env, addr: Address) {
+        let admin: Address = env.storage().instance().get(&DataKey::Admin).unwrap();
+        admin.require_auth();
+        env.storage().persistent().remove(&DataKey::Whitelisted(addr.clone()));
+    }
+
+    pub fn is_whitelisted(env: Env, addr: Address) -> bool {
+        env.storage()
+            .persistent()
+            .get(&DataKey::Whitelisted(addr))
+            .unwrap_or(false)
     }
 
     /// Distribute `total_amount` of `token` pro-rata among all current holders
@@ -218,9 +298,9 @@ impl RwaMarketplace {
             active_holders.push_back(holder.clone());
 
             // Pro-rata: holder_amount = total_amount * holder_shares / total_shares
-            // Use i128 arithmetic to avoid overflow
+            // Use checked arithmetic to avoid overflow
             let holder_amount: i128 =
-                (total_amount * (holder_shares as i128)) / (total_shares as i128);
+                checked_mul_i128(total_amount, holder_shares as i128) / (total_shares as i128);
 
             if holder_amount > 0 {
                 client.transfer(&contract_addr, &holder, &holder_amount);
@@ -240,12 +320,218 @@ impl RwaMarketplace {
         .publish(&env);
     }
 
+    /// Register a holder if not already present.
+    fn register_holder(env: &Env, owner: Address) {
+        let mut holders: Vec<Address> = env
+            .storage()
+            .instance()
+            .get(&DataKey::Holders)
+            .unwrap_or_else(|| Vec::new(env));
+        for holder in holders.iter() {
+            if holder == owner {
+                return;
+            }
+        }
+        holders.push_back(owner);
+        env.storage().instance().set(&DataKey::Holders, &holders);
+    }
+
+    fn load_vesting_schedules(env: &Env, owner: &Address) -> Vec<VestingSchedule> {
+        env.storage()
+            .persistent()
+            .get(&DataKey::VestingSchedules(owner.clone()))
+            .unwrap_or_else(|| Vec::new(env))
+    }
+
+    fn set_vesting_schedules(env: &Env, owner: &Address, schedules: &Vec<VestingSchedule>) {
+        env.storage()
+            .persistent()
+            .set(&DataKey::VestingSchedules(owner.clone()), schedules);
+    }
+
+    fn compute_vested_amount(schedule: &VestingSchedule, timestamp: u64) -> u32 {
+        let start = schedule.start;
+        let cliff_time = start.saturating_add(schedule.cliff);
+        let vesting_end = start.saturating_add(schedule.duration);
+
+        if timestamp < cliff_time {
+            return 0;
+        }
+        if timestamp >= vesting_end || schedule.duration <= schedule.cliff {
+            return schedule.total_amount;
+        }
+
+        let vested_duration = timestamp.saturating_sub(cliff_time);
+        let total_vesting_duration = schedule.duration.saturating_sub(schedule.cliff);
+        let vested = (schedule.total_amount as u128)
+            .saturating_mul(vested_duration as u128)
+            / (total_vesting_duration as u128);
+        vested as u32
+    }
+
+    fn total_owned_shares(env: &Env, owner: &Address) -> u32 {
+        let liquid: u32 = env
+            .storage()
+            .persistent()
+            .get(&DataKey::Balance(owner.clone()))
+            .unwrap_or(0);
+        let schedules = Self::load_vesting_schedules(env, owner);
+        let mut locked: u32 = 0;
+        for schedule in schedules.iter() {
+            locked = locked.saturating_add(schedule.total_amount.saturating_sub(schedule.claimed_amount));
+        }
+        liquid.saturating_add(locked)
+    }
+
+    fn calc_claimable_vested_shares(env: &Env, owner: &Address, timestamp: u64) -> u32 {
+        let schedules = Self::load_vesting_schedules(env, owner);
+        let mut claimable: u32 = 0;
+        for schedule in schedules.iter() {
+            let vested = Self::compute_vested_amount(&schedule, timestamp);
+            let available = vested.saturating_sub(schedule.claimed_amount);
+            claimable = claimable.saturating_add(available);
+        }
+        claimable
+    }
+
+    pub fn buy_vested_shares(env: Env, buyer: Address, shares: u32, duration: u64) {
+        buyer.require_auth();
+
+        if env.storage().instance().get(&DataKey::Paused).unwrap_or(false) {
+            panic!("Marketplace is paused");
+        }
+
+        if shares == 0 {
+            panic!("Must purchase at least 1 share");
+        }
+
+        if duration == 0 {
+            panic!("Vesting duration must be positive");
+        }
+
+        let available: u32 = env
+            .storage()
+            .instance()
+            .get(&DataKey::AvailableShares)
+            .unwrap();
+
+        if shares > available {
+            panic!("Not enough shares available for purchase");
+        }
+
+        let price: i128 = env.storage().instance().get(&DataKey::PricePerShare).unwrap();
+        let total_cost = price * (shares as i128);
+
+        let admin: Address = env.storage().instance().get(&DataKey::Admin).unwrap();
+        let token_id: Address = env
+            .storage()
+            .instance()
+            .get(&DataKey::PaymentToken)
+            .unwrap();
+
+        let client = token::TokenClient::new(&env, &token_id);
+        client.transfer(&buyer, &admin, &total_cost);
+
+        env.storage()
+            .instance()
+            .set(&DataKey::AvailableShares, &(available - shares));
+
+        let now = env.ledger().timestamp();
+        let schedule = VestingSchedule {
+            start: now,
+            cliff: 0,
+            duration,
+            total_amount: shares,
+            claimed_amount: 0,
+        };
+
+        let mut schedules = Self::load_vesting_schedules(&env, &buyer);
+        schedules.push_back(schedule);
+        Self::set_vesting_schedules(&env, &buyer, &schedules);
+
+        Self::register_holder(&env, buyer.clone());
+
+        EventBuyShares { buyer, shares, total_cost }.publish(&env);
+    }
+
+    pub fn claim_vested_shares(env: Env, claimer: Address) {
+        claimer.require_auth();
+
+        let now = env.ledger().timestamp();
+        let mut schedules = Self::load_vesting_schedules(&env, &claimer);
+
+        let mut total_claimable: u32 = 0;
+        let mut updated_schedules: Vec<VestingSchedule> = Vec::new(&env);
+
+        for schedule in schedules.iter() {
+            let vested = Self::compute_vested_amount(&schedule, now);
+            let available = vested.saturating_sub(schedule.claimed_amount);
+            if available > 0 {
+                total_claimable = total_claimable.saturating_add(available);
+                let mut schedule = schedule.clone();
+                schedule.claimed_amount = schedule.claimed_amount.saturating_add(available);
+                if schedule.claimed_amount < schedule.total_amount {
+                    updated_schedules.push_back(schedule);
+                }
+            } else {
+                updated_schedules.push_back(schedule.clone());
+            }
+        }
+
+        if total_claimable == 0 {
+            panic!("No vested shares available to claim");
+        }
+
+        let prev_balance: u32 = env
+            .storage()
+            .persistent()
+            .get(&DataKey::Balance(claimer.clone()))
+            .unwrap_or(0);
+        let new_balance = prev_balance.saturating_add(total_claimable);
+        env.storage()
+            .persistent()
+            .set(&DataKey::Balance(claimer.clone()), &new_balance);
+
+        Self::set_vesting_schedules(&env, &claimer, &updated_schedules);
+    }
+
+    pub fn get_vesting_schedules(env: Env, owner: Address) -> Vec<VestingSchedule> {
+        Self::load_vesting_schedules(&env, &owner)
+    }
+
+    pub fn get_claimable_vested_shares(env: Env, owner: Address) -> u32 {
+        Self::calc_claimable_vested_shares(&env, &owner, env.ledger().timestamp())
+    }
+
+    pub fn get_locked_shares(env: Env, owner: Address) -> u32 {
+        let schedules = Self::load_vesting_schedules(&env, &owner);
+        let mut locked: u32 = 0;
+        for schedule in schedules.iter() {
+            locked = locked.saturating_add(schedule.total_amount.saturating_sub(schedule.claimed_amount));
+        }
+        locked
+    }
+
     /// Returns the current list of registered holders.
     pub fn get_holders(env: Env) -> Vec<Address> {
         env.storage()
             .instance()
             .get(&DataKey::Holders)
             .unwrap_or_else(|| Vec::new(&env))
+    }
+
+    /// Store a URI pointing to off-chain asset metadata. Admin only.
+    pub fn set_metadata_uri(env: Env, uri: Bytes) {
+        let admin: Address = env.storage().instance().get(&DataKey::Admin)
+            .expect("Contract not initialized: admin");
+        admin.require_auth();
+        env.storage().instance().set(&DataKey::MetadataUri, &uri);
+    }
+
+    /// Retrieve the on-chain metadata URI. Returns empty bytes if not set.
+    pub fn get_metadata_uri(env: Env) -> Bytes {
+        env.storage().instance().get(&DataKey::MetadataUri)
+            .unwrap_or_else(|| Bytes::new(&env))
     }
 
     pub fn get_shares(env: Env, owner: Address) -> u32 {
@@ -355,7 +641,7 @@ impl RwaMarketplace {
             .get(&DataKey::AvailableShares)
             .expect("Contract not initialized: available shares");
 
-        let issued_shares = total_shares - available_shares;
+        let issued_shares = checked_sub_u32(total_shares, available_shares);
 
         if new_total < available_shares {
             panic!("New total must be at least available shares");
@@ -365,7 +651,7 @@ impl RwaMarketplace {
             panic!("New total cannot be less than issued shares");
         }
 
-        let new_available = new_total - issued_shares;
+        let new_available = checked_sub_u32(new_total, issued_shares);
 
         env.storage()
             .instance()
@@ -380,12 +666,114 @@ impl RwaMarketplace {
         }
         .publish(&env);
     }
+
+    /// List `amount` of the caller's liquid shares for sale at `price_per_share`.
+    /// Shares are escrowed in the contract until filled or cancelled.
+    pub fn place_sell_order(env: Env, seller: Address, amount: u32, price_per_share: i128) -> u64 {
+        seller.require_auth();
+
+        if amount == 0 {
+            panic!("Order amount must be positive");
+        }
+        if price_per_share <= 0 {
+            panic!("Order price must be positive");
+        }
+
+        let balance: u32 = env.storage().persistent()
+            .get(&DataKey::Balance(seller.clone())).unwrap_or(0);
+        if amount > balance {
+            panic!("Insufficient liquid shares to place order");
+        }
+
+        // Escrow: deduct from seller's liquid balance
+        env.storage().persistent()
+            .set(&DataKey::Balance(seller.clone()), &checked_sub_u32(balance, amount));
+
+        let order_id: u64 = env.storage().instance()
+            .get(&DataKey::NextOrderId).unwrap_or(0);
+        let next_id = checked_add_i128(order_id as i128, 1) as u64;
+        env.storage().instance().set(&DataKey::NextOrderId, &next_id);
+
+        env.storage().persistent().set(
+            &DataKey::SellOrder(order_id),
+            &SellOrder { seller: seller.clone(), amount, price_per_share },
+        );
+
+        EventOrderPlaced { order_id, seller, amount, price_per_share }.publish(&env);
+        order_id
+    }
+
+    /// Cancel an open sell order and return escrowed shares to the seller.
+    pub fn cancel_sell_order(env: Env, order_id: u64) {
+        let order: SellOrder = env.storage().persistent()
+            .get(&DataKey::SellOrder(order_id))
+            .unwrap_or_else(|| panic!("Order not found"));
+
+        order.seller.require_auth();
+
+        // Return escrowed shares
+        let balance: u32 = env.storage().persistent()
+            .get(&DataKey::Balance(order.seller.clone())).unwrap_or(0);
+        env.storage().persistent()
+            .set(&DataKey::Balance(order.seller.clone()), &checked_add_u32(balance, order.amount));
+
+        env.storage().persistent().remove(&DataKey::SellOrder(order_id));
+
+        EventOrderCancelled { order_id, seller: order.seller }.publish(&env);
+    }
+
+    /// Buy `amount` shares from an open sell order, paying the seller directly.
+    pub fn buy_from_order(env: Env, buyer: Address, order_id: u64, amount: u32) {
+        buyer.require_auth();
+
+        if amount == 0 {
+            panic!("Purchase amount must be positive");
+        }
+
+        let mut order: SellOrder = env.storage().persistent()
+            .get(&DataKey::SellOrder(order_id))
+            .unwrap_or_else(|| panic!("Order not found"));
+
+        if amount > order.amount {
+            panic!("Amount exceeds order size");
+        }
+
+        let total_cost = checked_mul_i128(order.price_per_share, amount as i128);
+
+        let token_id: Address = env.storage().instance()
+            .get(&DataKey::PaymentToken)
+            .expect("Contract not initialized: payment token");
+
+        token::TokenClient::new(&env, &token_id)
+            .transfer(&buyer, &order.seller, &total_cost);
+
+        // Credit buyer's liquid balance
+        let buyer_balance: u32 = env.storage().persistent()
+            .get(&DataKey::Balance(buyer.clone())).unwrap_or(0);
+        env.storage().persistent()
+            .set(&DataKey::Balance(buyer.clone()), &checked_add_u32(buyer_balance, amount));
+        Self::register_holder(&env, buyer.clone());
+
+        order.amount = checked_sub_u32(order.amount, amount);
+        if order.amount == 0 {
+            env.storage().persistent().remove(&DataKey::SellOrder(order_id));
+        } else {
+            env.storage().persistent().set(&DataKey::SellOrder(order_id), &order);
+        }
+
+        EventOrderFilled { order_id, buyer, amount, total_cost }.publish(&env);
+    }
+
+    /// Get an open sell order by id, returning None if it doesn't exist.
+    pub fn get_sell_order(env: Env, order_id: u64) -> Option<SellOrder> {
+        env.storage().persistent().get(&DataKey::SellOrder(order_id))
+    }
 }
 
 #[cfg(test)]
 mod test {
     use super::*;
-    use soroban_sdk::{testutils::Address as _, token, Env};
+    use soroban_sdk::{testutils::{Address as _, Ledger as _}, token, Env, IntoVal};
 
     struct TestEnv {
         env: Env,
@@ -430,15 +818,45 @@ mod test {
     }
 
     #[test]
-    fn test_buy_shares() {
+    #[should_panic(expected = "Buyer is not whitelisted")]
+    fn test_buy_shares_requires_whitelist() {
+        let te = setup();
+        let c = client(&te);
+        c.init(&te.admin, &te.token_id, &100, &1000);
+        mint(&te, &te.buyer, 100000);
+        c.buy_shares(&te.buyer, &25);
+    }
+
+    #[test]
+    fn test_whitelist_admin_can_add_and_buy() {
         let te = setup();
         let c = client(&te);
         c.init(&te.admin, &te.token_id, &100, &1000);
         mint(&te, &te.buyer, 100000);
 
+        assert!(!c.is_whitelisted(&te.buyer));
+        c.add_to_whitelist(&te.buyer);
+        assert!(c.is_whitelisted(&te.buyer));
+
         c.buy_shares(&te.buyer, &25);
         assert_eq!(c.get_shares(&te.buyer), 25);
         assert_eq!(c.get_available_shares(), 975);
+    }
+
+    #[test]
+    #[should_panic(expected = "Buyer is not whitelisted")]
+    fn test_remove_from_whitelist_blocks_buy() {
+        let te = setup();
+        let c = client(&te);
+        c.init(&te.admin, &te.token_id, &100, &1000);
+        mint(&te, &te.buyer, 100000);
+
+        c.add_to_whitelist(&te.buyer);
+        assert!(c.is_whitelisted(&te.buyer));
+        c.remove_from_whitelist(&te.buyer);
+        assert!(!c.is_whitelisted(&te.buyer));
+
+        c.buy_shares(&te.buyer, &25);
     }
 
     #[test]
@@ -447,6 +865,7 @@ mod test {
         let c = client(&te);
         c.init(&te.admin, &te.token_id, &100, &1000);
         mint(&te, &te.buyer, 100000);
+        c.add_to_whitelist(&te.buyer);
 
         c.buy_shares(&te.buyer, &10);
         c.buy_shares(&te.buyer, &20);
@@ -545,6 +964,7 @@ mod test {
         let c = client(&te);
         c.init(&te.admin, &te.token_id, &100, &1000);
         mint(&te, &te.buyer, 100_000);
+        c.add_to_whitelist(&te.buyer);
 
         // Before any purchase, registry is empty
         assert_eq!(c.get_holders().len(), 0);
@@ -566,6 +986,8 @@ mod test {
         let buyer2 = Address::generate(&te.env);
         mint(&te, &te.buyer, 100_000);
         mint(&te, &buyer2, 100_000);
+        c.add_to_whitelist(&te.buyer);
+        c.add_to_whitelist(&buyer2);
 
         c.buy_shares(&te.buyer, &10);
         c.buy_shares(&buyer2, &20);
@@ -579,6 +1001,7 @@ mod test {
         let c = client(&te);
         c.init(&te.admin, &te.token_id, &100, &1000);
         mint(&te, &te.buyer, 100_000);
+        c.add_to_whitelist(&te.buyer);
 
         c.buy_shares(&te.buyer, &500); // buyer owns 500 / 1000 shares = 50%
 
@@ -603,6 +1026,8 @@ mod test {
         let buyer2 = Address::generate(&te.env);
         mint(&te, &te.buyer, 100_000);
         mint(&te, &buyer2, 100_000);
+        c.add_to_whitelist(&te.buyer);
+        c.add_to_whitelist(&buyer2);
 
         // buyer: 250 shares (25%), buyer2: 750 shares (75%)
         c.buy_shares(&te.buyer, &250);
@@ -636,6 +1061,8 @@ mod test {
         let buyer2 = Address::generate(&te.env);
         mint(&te, &te.buyer, 100_000);
         mint(&te, &buyer2, 100_000);
+        c.add_to_whitelist(&te.buyer);
+        c.add_to_whitelist(&buyer2);
 
         c.buy_shares(&te.buyer, &10);
         c.buy_shares(&buyer2, &20);
@@ -693,6 +1120,7 @@ mod test {
         let c = client(&te);
         c.init(&te.admin, &te.token_id, &100, &1000);
         mint(&te, &te.buyer, 100_000);
+        c.add_to_whitelist(&te.buyer);
 
         c.set_price(&200);
         c.buy_shares(&te.buyer, &10);
@@ -736,6 +1164,7 @@ mod test {
         let c = client(&te);
         c.init(&te.admin, &te.token_id, &100, &1000);
         mint(&te, &te.buyer, 100_000);
+        c.add_to_whitelist(&te.buyer);
 
         c.buy_shares(&te.buyer, &100);
         assert_eq!(c.get_available_shares(), 900);
@@ -767,14 +1196,80 @@ mod test {
     }
 
     #[test]
-    #[should_panic(expected = "New total cannot be less than issued shares")]
-    fn test_set_total_shares_below_issued() {
+    #[should_panic(expected = "Arithmetic overflow")]
+    fn test_buy_shares_price_overflow() {
+        let te = setup();
+        let c = client(&te);
+        // Use very high price that will overflow when multiplied by shares
+        c.init(&te.admin, &te.token_id, &i128::MAX, &1000);
+        mint(&te, &te.buyer, i128::MAX);
+        
+        // This should panic because price * shares overflows
+        c.buy_shares(&te.buyer, &2);
+    }
+
+    #[test]
+    #[should_panic(expected = "Not enough shares available")]
+    fn test_buy_shares_overbuy() {
         let te = setup();
         let c = client(&te);
         c.init(&te.admin, &te.token_id, &100, &1000);
         mint(&te, &te.buyer, 100_000);
+        
+        // Buy more shares than available (caught by logic check, not arithmetic)
+        c.buy_shares(&te.buyer, &2000);
+    }
 
+    #[test]
+    #[should_panic(expected = "Arithmetic overflow")]
+    fn test_buy_shares_balance_overflow() {
+        let te = setup();
+        let c = client(&te);
+        c.init(&te.admin, &te.token_id, &1, &u32::MAX);
+        mint(&te, &te.buyer, i128::MAX);
+        
+        // Manually set high balance to test the checked_add_u32 in balance calculation
+        te.env.as_contract(&te.contract_id, || {
+            te.env.storage().persistent().set(&DataKey::Balance(te.buyer.clone()), &(u32::MAX - 10));
+            // Also set available shares high enough
+            te.env.storage().instance().set(&DataKey::AvailableShares, &1000u32);
+        });
+        
+        // Now buying 20 more shares should trigger overflow in checked_add_u32
+        c.buy_shares(&te.buyer, &20);
+    }
+
+    #[test]
+    #[should_panic(expected = "Arithmetic overflow")]
+    fn test_distribute_dividends_multiply_overflow() {
+        let te = setup();
+        let c = client(&te);
+        c.init(&te.admin, &te.token_id, &100, &1000);
+        mint(&te, &te.buyer, 100_000);
+        
+        c.buy_shares(&te.buyer, &500);
+        
+        // Use extremely large dividend amount that will overflow when multiplied by holder_shares
+        let huge_dividend: i128 = i128::MAX / 2;
+        mint(&te, &te.contract_id, huge_dividend);
+        
+        // This should panic because total_amount * holder_shares overflows
+        c.distribute_dividends(&te.token_id, &huge_dividend);
+    }
+
+    #[test]
+    #[should_panic(expected = "New total cannot be less than issued shares")]
+    fn test_set_total_shares_below_issued_logic_check() {
+        let te = setup();
+        let c = client(&te);
+        c.init(&te.admin, &te.token_id, &100, &1000);
+        mint(&te, &te.buyer, 100_000);
+        
+        // Buy some shares to create issued_shares
         c.buy_shares(&te.buyer, &600);
+        
+        // Try to set new_total to less than issued_shares
+        // This is caught by the logic check before any arithmetic
         c.set_total_shares(&500);
     }
 
@@ -840,6 +1335,40 @@ mod test {
     fn test_pre_init_emergency_withdraw() {
         let (_, client, _, admin) = pre_init_client();
         client.emergency_withdraw(&admin, &0);
+    }
+
+    // ── Metadata URI tests ──────────────────────────────────────────────
+
+    #[test]
+    fn test_set_and_get_metadata_uri() {
+        let te = setup();
+        let c = client(&te);
+        c.init(&te.admin, &te.token_id, &100, &1000);
+
+        let uri = soroban_sdk::Bytes::from_slice(&te.env, b"ipfs://QmTest");
+        c.set_metadata_uri(&uri);
+        assert_eq!(c.get_metadata_uri(), uri);
+    }
+
+    #[test]
+    fn test_get_metadata_uri_default_empty() {
+        let te = setup();
+        let c = client(&te);
+        c.init(&te.admin, &te.token_id, &100, &1000);
+
+        assert_eq!(c.get_metadata_uri(), soroban_sdk::Bytes::new(&te.env));
+    }
+
+    #[test]
+    fn test_set_metadata_uri_overwrites() {
+        let te = setup();
+        let c = client(&te);
+        c.init(&te.admin, &te.token_id, &100, &1000);
+
+        c.set_metadata_uri(&soroban_sdk::Bytes::from_slice(&te.env, b"ipfs://old"));
+        let new_uri = soroban_sdk::Bytes::from_slice(&te.env, b"ipfs://new");
+        c.set_metadata_uri(&new_uri);
+        assert_eq!(c.get_metadata_uri(), new_uri);
     }
 }
 // --- TIMELOCK MODULE ---
@@ -1134,5 +1663,36 @@ mod property_tests {
                 prop_assert_eq!(client.get_total_shares(), INIT_TOTAL);
             }
         }
+    }
+}
+// ====================== CONTRACT UPGRADEABILITY (#6) ======================
+
+#[contracttype]
+#[derive(Clone)]
+pub struct ContractUpgraded {
+    pub new_wasm_hash: BytesN<32>,
+}
+
+#[contractimpl]
+impl RwaMarketplace {
+
+    /// Upgrade the smart contract to a new version.
+    /// Only the admin can call this function.
+    pub fn upgrade(env: Env, new_wasm_hash: BytesN<32>) {
+        // Verify admin
+        let admin: Address = env.storage().instance()
+            .get(&DataKey::Admin)
+            .expect("Contract not initialized");
+
+        admin.require_auth();
+
+        // Perform the upgrade
+        env.deployer().upgrade_contract(new_wasm_hash.clone());
+
+        // Emit upgrade event
+        env.events().publish(
+            (symbol_short!("Contract"), symbol_short!("Upgraded")),
+            ContractUpgraded { new_wasm_hash },
+        );
     }
 }

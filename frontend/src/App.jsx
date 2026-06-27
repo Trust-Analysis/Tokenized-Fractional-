@@ -58,7 +58,6 @@ function App() {
 
   const [error, setError] = useState(null);
   const [txError, setTxError] = useState(null);
-  const [assetMeta, setAssetMeta] = useState(null);
   const [txResult, setTxResult] = useState(null);
   const [theme, setTheme] = useState(() => {
     return localStorage.getItem('theme') || 'dark';
@@ -112,22 +111,6 @@ function App() {
     clearAssets();
     setTxResult(null);
     setTxError(null);
-  };
-
-  const fetchMetadata = async () => {
-    if (CONTRACT_ID.length < 50) return;
-    setLoadingMeta(true);
-    try {
-      const res = await fetch(`${API_URL}/api/rwa/${CONTRACT_ID}`);
-      if (res.ok) {
-        const data = await res.json();
-        setAssetMeta(data);
-      }
-    } catch {
-      console.warn('Metadata server unreachable');
-    } finally {
-      setLoadingMeta(false);
-    }
   };
 
   const fetchShares = async () => {
