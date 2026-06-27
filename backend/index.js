@@ -1,4 +1,5 @@
 import 'dotenv/config';
+import { randomUUID } from 'crypto';
 import express from 'express';
 import cors from 'cors';
 import helmet from 'helmet';
@@ -85,7 +86,7 @@ function adminAuth(req, res, next) {
   const expected = process.env.ADMIN_API_KEY || 'dev-key-change-in-production';
   if (!apiKey || apiKey !== expected) {
     req.log?.warn({ hasKey: !!apiKey }, 'Unauthorized API key attempt');
-    return res.status(401).json({ error: 'Unauthorized: invalid or missing API key' });
+    return res.status(401).json({ error: 'Unauthorized: invalid or missing API key', requestId: req.requestId });
   }
   req.log?.info('Admin API key used');
   next();
@@ -101,13 +102,22 @@ if (process.env.SENTRY_DSN) {
 }
 
 app.use(helmet());
-app.use(cors({ origin: CORS_ORIGINS, methods: ['GET', 'POST', 'DELETE'], allowedHeaders: ['Content-Type', 'x-api-key'] }));
+app.use(cors({ origin: CORS_ORIGINS, methods: ['GET', 'POST', 'DELETE'], allowedHeaders: ['Content-Type', 'x-api-key', 'X-Request-ID'] }));
 app.use(express.json({ limit: '10kb' }));
+
+// ── Request ID middleware ──────────────────────────────────────────────────────
+app.use((req, res, next) => {
+  const id = req.headers['x-request-id'] || randomUUID();
+  req.requestId = id;
+  res.setHeader('X-Request-ID', id);
+  next();
+});
 
 // Request logging middleware (silent in test)
 app.use(pinoHttp({
   logger,
   autoLogging: { ignore: req => req.url === '/health' },
+  genReqId: req => req.requestId,
 }));
 
 const apiLimiter = rateLimit({
@@ -415,7 +425,7 @@ app.delete('/api/rwa/:contractId', adminAuth, writeLimiter, async (req, res) => 
 });
 
 app.use((_req, res) => {
-  res.status(404).json({ error: 'Not found' });
+  res.status(404).json({ error: 'Not found', requestId: _req.requestId });
 });
 
 // Sentry error handler must be registered before other error handlers
@@ -425,7 +435,7 @@ if (process.env.SENTRY_DSN) {
 
 app.use((err, req, res, _next) => {
   req.log?.error({ err }, 'Unhandled error');
-  res.status(500).json({ error: 'Internal server error' });
+  res.status(500).json({ error: 'Internal server error', requestId: req.requestId });
 });
 
 export { app };

@@ -26,6 +26,34 @@ afterAll(() => {
   if (existsSync('test-data.json')) unlinkSync('test-data.json');
 });
 
+// ── X-Request-ID ──────────────────────────────────────────────────────────────
+describe('X-Request-ID', () => {
+  test('response includes X-Request-ID header (auto-generated)', async () => {
+    const res = await request(app).get('/health');
+    expect(res.headers['x-request-id']).toMatch(
+      /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/
+    );
+  });
+
+  test('echoes back a supplied X-Request-ID', async () => {
+    const id = '12345678-1234-1234-1234-123456789abc';
+    const res = await request(app).get('/health').set('X-Request-ID', id);
+    expect(res.headers['x-request-id']).toBe(id);
+  });
+
+  test('404 response body includes requestId', async () => {
+    const res = await request(app).get('/does-not-exist');
+    expect(res.status).toBe(404);
+    expect(res.body.requestId).toBeDefined();
+  });
+
+  test('401 response body includes requestId', async () => {
+    const res = await request(app).post('/api/rwa').send(VALID_BODY);
+    expect(res.status).toBe(401);
+    expect(res.body.requestId).toBeDefined();
+  });
+});
+
 // ── Health check ──────────────────────────────────────────────────────────────
 describe('GET /health', () => {
   test('returns ok with dependency statuses (no Redis configured)', async () => {
