@@ -1,6 +1,6 @@
-import React, { useState, useEffect, useRef } from 'react';
-import { signTransaction } from '@stellar/freighter-api';
-import { rpc, TransactionBuilder, Networks, Contract, nativeToScVal } from '@stellar/stellar-sdk';
+import React, { useState, useEffect, useRef, useMemo } from 'react';
+import { Networks, nativeToScVal } from '@stellar/stellar-sdk';
+import { useSorobanRead, useSorobanWrite } from './hooks/useSoroban';
 
 import Button from './components/Button/Button';
 import Card from './components/Card/Card';
@@ -41,9 +41,11 @@ function App() {
 
   const {
     assets,
+    assetMeta,
     isFetchingAssets,
     assetsError,
     fetchAllAssets,
+    fetchMetadata,
     clearMeta,
     clearAssets,
   } = useAssetStore();
@@ -206,8 +208,6 @@ function App() {
         msg = 'Not enough shares available.';
       }
       addToast({ message: msg, type: 'error' });
-    } finally {
-      setLoadingBuy(false);
     }
   };
 
@@ -277,6 +277,8 @@ function App() {
         </button>
       </nav>
 
+      <ToastContainer />
+
       {view === 'portfolio' ? (
         <PortfolioPage />
       ) : view === 'admin' ? (
@@ -292,8 +294,6 @@ function App() {
           {walletError}
         </Alert>
       )}
-
-      <ToastContainer />
 
       {/* Contract not configured */}
       {CONTRACT_ID === 'C...' && (
