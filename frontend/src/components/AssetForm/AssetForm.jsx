@@ -47,7 +47,7 @@ export default function AssetForm({ apiKey, onAssetChange }) {
     setSuccess('');
 
     try {
-      const res = await fetch(`${API_URL}/api/rwa`, {
+      const res = await fetch(`${API_URL}/api/v1/rwa`, {
         method: 'POST',
         headers: {
           'Content-Type': 'application/json',
@@ -95,7 +95,7 @@ export default function AssetForm({ apiKey, onAssetChange }) {
     setSuccess('');
 
     try {
-      const res = await fetch(`${API_URL}/api/rwa/${contractId}`, {
+      const res = await fetch(`${API_URL}/api/v1/rwa/${contractId}`, {
         method: 'DELETE',
         headers: { 'x-api-key': apiKey },
       });

@@ -13,6 +13,7 @@ import AssetGrid from './components/AssetGrid/AssetGrid';
 import AdminPage from './components/AdminPage/AdminPage';
 import PortfolioPage from './components/PortfolioPage/PortfolioPage';
 import ToastContainer from './components/Toast/Toast';
+import ConfirmPurchase from './components/ConfirmPurchase/ConfirmPurchase';
 import styles from './App.module.css';
 
 import { useWalletStore } from './store/useWalletStore';
@@ -63,6 +64,7 @@ function App() {
 
   // ── Local UI state (not global — scoped to this component) ────────────────
   const [buyAmount, setBuyAmount] = useState(1);
+  const [confirmPending, setConfirmPending] = useState(false);
 
   // Granular loading states
   const [loadingMeta, setLoadingMeta] = useState(false);
@@ -156,6 +158,12 @@ function App() {
   const buySharesTx = useSorobanWrite('buy_shares');
   const loadingBuy = buySharesTx.loading;
 
+  // Hook for get_price (read-only, no args)
+  const { data: priceData } = useSorobanRead('get_price', [], {
+    skip: CONTRACT_ID.length < 50,
+  });
+  const pricePerShare = priceData?.retval ? Number(priceData.retval.u64()) : null;
+
   // ── Fetch chain data whenever wallet connects ──────────────────────────────
   useEffect(() => {
     if (publicKey) {
@@ -186,13 +194,16 @@ function App() {
   };
 
   // ── Transactions ───────────────────────────────────────────────────────────
-  const handleBuyShares = async () => {
+  const handleBuyShares = () => {
     if (!publicKey) return;
     if (buyAmount < 1) {
       addToast({ message: MUST_BUY_AT_LEAST_ONE_SHARE, type: 'error' });
       return;
     }
+    setConfirmPending(true);
+  };
 
+  const handleConfirmBuy = async () => {
     setError(null);
     setTxResult(null);
     setLastTxHash(null);
@@ -203,6 +214,7 @@ function App() {
 
       const submitRes = await buySharesTx.execute([scValBuyer, scValShares]);
 
+      setConfirmPending(false);
       const hash = submitRes.hash;
       setLastTxHash(hash);
       pendingToastRef.current = addToast({
@@ -212,6 +224,7 @@ function App() {
       });
     } catch (err) {
       console.error('Error buying shares:', err);
+      setConfirmPending(false);
       let msg = TX_FAILED_CHECK_BALANCE;
       if (err.message?.includes('paused')) {
         msg = TX_FAILED_PAUSED;
@@ -396,6 +409,16 @@ function App() {
         </Card>
       )}
         </>
+      )}
+
+      {confirmPending && (
+        <ConfirmPurchase
+          shares={buyAmount}
+          pricePerShare={pricePerShare}
+          onConfirm={handleConfirmBuy}
+          onCancel={() => setConfirmPending(false)}
+          loading={loadingBuy}
+        />
       )}
     </div>
   );
