@@ -4,6 +4,7 @@ import Card from '../Card/Card';
 import Skeleton from '../Skeleton/Skeleton';
 import Button from '../Button/Button';
 import Spinner from '../Spinner/Spinner';
+import CertificateTemplate from '../CertificateTemplate/CertificateTemplate';
 import { useWalletStore } from '../../store/useWalletStore';
 import { useAssetStore } from '../../store/useAssetStore';
 import { FAILED_TO_FETCH_PORTFOLIO_ASSET, FAILED_TO_LOAD_PORTFOLIO } from '../../constants/errors';
@@ -22,6 +23,7 @@ export default function PortfolioPage() {
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState(null);
   const [totalValue, setTotalValue] = useState(0);
+  const [certItem, setCertItem] = useState(null);
 
   const fetchPortfolio = useCallback(async () => {
     if (!publicKey || assets.length === 0) {
@@ -98,6 +100,21 @@ export default function PortfolioPage() {
       setLoading(false);
     }
   }, [publicKey, assets]);
+
+  const handleDownloadCertificate = useCallback((item) => {
+    if (!publicKey) return;
+    setCertItem({
+      contractId: item.contractId,
+      title: item.title,
+      shares: item.shares,
+      address: publicKey,
+      date: new Date().toISOString(),
+    });
+  }, [publicKey]);
+
+  const handleCertificateComplete = useCallback(() => {
+    setCertItem(null);
+  }, []);
 
   useEffect(() => {
     fetchPortfolio();
@@ -188,48 +205,69 @@ export default function PortfolioPage() {
                 <Skeleton variant="text" width="80px" height="1em" />
                 <Skeleton variant="text" width="80px" height="1em" />
                 <Skeleton variant="text" width="100px" height="1em" />
+                <Skeleton variant="text" width="60px" height="1em" />
               </div>
             </Card>
           ))
         ) : (
-          <div className={styles.tableHeader}>
-            <span className={styles.colAsset}>Asset</span>
-            <span className={styles.colShares}>Shares</span>
-            <span className={styles.colPrice}>Price</span>
-            <span className={styles.colValue}>Total Value</span>
-          </div>
-        )}
+          <>
+            <div className={`${styles.tableHeader} ${styles.tableHeaderWithAction}`}>
+              <span className={styles.colAsset}>Asset</span>
+              <span className={styles.colShares}>Shares</span>
+              <span className={styles.colPrice}>Price</span>
+              <span className={styles.colValue}>Total Value</span>
+              <span className={styles.colAction}>Certificate</span>
+            </div>
 
-        {holdings.map((item) => (
-          <Card key={item.contractId} className={styles.rowCard}>
-            <div className={styles.row}>
-              <div className={styles.assetInfo}>
-                {item.imageUrl ? (
-                  <img src={item.imageUrl} alt={item.title} className={styles.assetThumb} loading="lazy" />
-                ) : (
-                  <div className={styles.thumbPlaceholder}>
-                    <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round">
-                      <rect x="3" y="3" width="18" height="18" rx="2" ry="2"></rect>
-                      <circle cx="8.5" cy="8.5" r="1.5"></circle>
-                      <polyline points="21 15 16 10 5 21"></polyline>
-                    </svg>
+            {holdings.map((item) => (
+              <Card key={item.contractId} className={styles.rowCard}>
+                <div className={styles.row}>
+                  <div className={styles.assetInfo}>
+                    {item.imageUrl ? (
+                      <img src={item.imageUrl} alt={item.title} className={styles.assetThumb} loading="lazy" />
+                    ) : (
+                      <div className={styles.thumbPlaceholder}>
+                        <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round">
+                          <rect x="3" y="3" width="18" height="18" rx="2" ry="2"></rect>
+                          <circle cx="8.5" cy="8.5" r="1.5"></circle>
+                          <polyline points="21 15 16 10 5 21"></polyline>
+                        </svg>
+                      </div>
+                    )}
+                    <div>
+                      <span className={styles.assetName}>{item.title}</span>
+                      <span className={styles.contractId} title={item.contractId}>
+                        {item.contractId.slice(0, 8)}…
+                      </span>
+                    </div>
                   </div>
-                )}
-                <div>
-                  <span className={styles.assetName}>{item.title}</span>
-                  <span className={styles.contractId} title={item.contractId}>
-                    {item.contractId.slice(0, 8)}…
+                  <span className={styles.colShares}>{item.shares}</span>
+                  <span className={styles.colPrice}>{item.price.toLocaleString()}</span>
+                  <span className={`${styles.colValue} ${item.shares > 0 ? styles.valuePositive : ''}`}>
+                    {item.value.toLocaleString()}
+                  </span>
+                  <span className={styles.colAction}>
+                    {item.shares > 0 && (
+                      <Button
+                        onClick={() => handleDownloadCertificate(item)}
+                        variant="secondary"
+                        size="sm"
+                        className={styles.certButton}
+                      >
+                        <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" style={{ marginRight: '4px' }}>
+                          <path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"></path>
+                          <polyline points="7 10 12 15 17 10"></polyline>
+                          <line x1="12" y1="15" x2="12" y2="3"></line>
+                        </svg>
+                        PDF
+                      </Button>
+                    )}
                   </span>
                 </div>
-              </div>
-              <span className={styles.colShares}>{item.shares}</span>
-              <span className={styles.colPrice}>{item.price.toLocaleString()}</span>
-              <span className={`${styles.colValue} ${item.shares > 0 ? styles.valuePositive : ''}`}>
-                {item.value.toLocaleString()}
-              </span>
-            </div>
-          </Card>
-        ))}
+              </Card>
+            ))}
+          </>
+        )}
 
         {!loading && holdings.length === 0 && (
           <Card className={styles.card}>
@@ -242,8 +280,18 @@ export default function PortfolioPage() {
               <p className={styles.stateSubtext}>You don't own any shares yet. Browse assets in the marketplace.</p>
             </div>
           </Card>
-        )}
+        ))}
       </div>
+
+      {certItem && (
+        <CertificateTemplate
+          assetName={certItem.title}
+          shares={certItem.shares}
+          ownerAddress={certItem.address}
+          issueDate={certItem.date}
+          onComplete={handleCertificateComplete}
+        />
+      )}
     </div>
   );
 }

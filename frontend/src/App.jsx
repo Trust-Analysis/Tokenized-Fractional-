@@ -229,6 +229,19 @@ function App() {
       <header className={styles.header}>
         <div className={styles.titleArea}>
           <div className={styles.titleRow}>
+            <a
+              href="https://github.com/Trust-Analysis/Tokenized-Fractional-"
+              target="_blank"
+              rel="noreferrer noopener"
+              className={styles.repoAvatarLink}
+              title="View repository on GitHub"
+            >
+              <img
+                src="https://github.com/Trust-Analysis.png"
+                alt="Repo avatar"
+                className={styles.repoAvatar}
+              />
+            </a>
             <h1 className={styles.title}>RWA Marketplace</h1>
             <Badge variant={isTestnet ? 'success' : 'danger'}>
               {isTestnet ? 'TESTNET' : 'MAINNET'}
