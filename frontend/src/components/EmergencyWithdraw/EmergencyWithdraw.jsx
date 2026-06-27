@@ -1,8 +1,9 @@
-import React, { useState } from 'react';
+import React, { useState, useRef } from 'react';
 import Button from '../Button/Button';
 import Input from '../Input/Input';
-import Alert from '../Alert/Alert';
 import styles from './EmergencyWithdraw.module.css';
+import { useToastStore } from '../../store/useToastStore';
+import useTransactionStatus from '../../hooks/useTransactionStatus';
 
 const CONTRACT_ID = import.meta.env.VITE_CONTRACT_ID || 'C...';
 const RPC_URL = import.meta.env.VITE_RPC_URL || 'https://soroban-testnet.stellar.org:443';
@@ -10,25 +11,48 @@ const NETWORK_PASSPHRASE = import.meta.env.VITE_NETWORK_PASSPHRASE || 'Test SDF 
 
 export default function EmergencyWithdraw({ publicKey }) {
   const [loading, setLoading] = useState(false);
-  const [error, setError] = useState('');
-  const [success, setSuccess] = useState('');
   const [amount, setAmount] = useState('');
+  const [lastTxHash, setLastTxHash] = useState(null);
+  const addToast = useToastStore((s) => s.addToast);
+  const removeToast = useToastStore((s) => s.removeToast);
+  const pendingToastRef = useRef(null);
+  const notifiedRef = useRef({});
+  const txStatus = useTransactionStatus(lastTxHash);
+
+  React.useEffect(() => {
+    if (!lastTxHash || notifiedRef.current[lastTxHash]) return;
+
+    if (txStatus === 'confirmed') {
+      notifiedRef.current[lastTxHash] = true;
+      if (pendingToastRef.current) {
+        removeToast(pendingToastRef.current);
+        pendingToastRef.current = null;
+      }
+      addToast({ message: 'Emergency withdraw confirmed', type: 'success', txHash: lastTxHash });
+    } else if (txStatus === 'failed') {
+      notifiedRef.current[lastTxHash] = true;
+      if (pendingToastRef.current) {
+        removeToast(pendingToastRef.current);
+        pendingToastRef.current = null;
+      }
+      addToast({ message: 'Emergency withdraw transaction failed', type: 'error', txHash: lastTxHash });
+    }
+  }, [lastTxHash, txStatus]);
 
   const handleWithdraw = async () => {
     if (!publicKey || CONTRACT_ID.length < 50) {
-      setError('Wallet must be connected and contract must be configured');
+      addToast({ message: 'Wallet must be connected and contract must be configured', type: 'error' });
       return;
     }
     const parsedAmount = BigInt(amount);
     if (!amount || parsedAmount <= 0) {
-      setError('Enter a valid positive amount to withdraw');
+      addToast({ message: 'Enter a valid positive amount to withdraw', type: 'error' });
       return;
     }
     if (!confirm(`Emergency withdraw ${amount} tokens from the contract to ${publicKey.slice(0, 8)}…? Continue?`)) return;
 
     setLoading(true);
-    setError('');
-    setSuccess('');
+    setLastTxHash(null);
 
     try {
       const { signTransaction } = await import('@stellar/freighter-api');
@@ -64,9 +88,16 @@ export default function EmergencyWithdraw({ publicKey }) {
         TransactionBuilder.fromXDR(signedTxXdr, NETWORK_PASSPHRASE)
       );
 
-      setSuccess(`Emergency withdraw submitted! Tx: ${submitRes.hash}`);
+      const hash = submitRes.hash;
+      setLastTxHash(hash);
+      pendingToastRef.current = addToast({
+        message: 'Emergency withdraw submitted, waiting for confirmation…',
+        type: 'pending',
+        txHash: hash,
+      });
+      setAmount('');
     } catch (err) {
-      setError(err.message || 'Emergency withdraw failed');
+      addToast({ message: err.message || 'Emergency withdraw failed', type: 'error' });
     } finally {
       setLoading(false);
     }
@@ -76,12 +107,9 @@ export default function EmergencyWithdraw({ publicKey }) {
     <div className={styles.container}>
       <h3 className={styles.heading}>Emergency Withdraw</h3>
       <p className={styles.warning}>
-        This will withdraw all tokens from the contract back to the admin address.
+        This will withdraw tokens from the contract back to the admin address.
         Only use this in emergency situations.
       </p>
-
-      {error && <Alert variant="error">{error}</Alert>}
-      {success && <Alert variant="success">{success}</Alert>}
 
       <div className={styles.inputRow}>
         <Input
@@ -90,8 +118,6 @@ export default function EmergencyWithdraw({ publicKey }) {
           value={amount}
           onChange={(e) => {
             setAmount(e.target.value);
-            setError('');
-            setSuccess('');
           }}
           min="1"
           disabled={loading}

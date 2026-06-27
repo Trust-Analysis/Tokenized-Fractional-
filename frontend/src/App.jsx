@@ -1,4 +1,4 @@
-import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect, useRef } from 'react';
 import { signTransaction } from '@stellar/freighter-api';
 import { rpc, TransactionBuilder, Networks, Contract, nativeToScVal } from '@stellar/stellar-sdk';
 
@@ -12,10 +12,13 @@ import Spinner from './components/Spinner/Spinner';
 import AssetGrid from './components/AssetGrid/AssetGrid';
 import AdminPage from './components/AdminPage/AdminPage';
 import PortfolioPage from './components/PortfolioPage/PortfolioPage';
+import ToastContainer from './components/Toast/Toast';
 import styles from './App.module.css';
 
 import { useWalletStore } from './store/useWalletStore';
 import { useAssetStore } from './store/useAssetStore';
+import { useToastStore } from './store/useToastStore';
+import useTransactionStatus from './hooks/useTransactionStatus';
 
 const CONTRACT_ID = import.meta.env.VITE_CONTRACT_ID || 'C...';
 const RPC_URL = import.meta.env.VITE_RPC_URL || 'https://soroban-testnet.stellar.org:443';
@@ -59,6 +62,13 @@ function App() {
   const [error, setError] = useState(null);
   const [txError, setTxError] = useState(null);
   const [txResult, setTxResult] = useState(null);
+  const [lastTxHash, setLastTxHash] = useState(null);
+  const addToast = useToastStore((s) => s.addToast);
+  const removeToast = useToastStore((s) => s.removeToast);
+  const txStatus = useTransactionStatus(lastTxHash);
+  const pendingToastRef = useRef(null);
+  const notifiedRef = useRef({});
+
   const [theme, setTheme] = useState(() => {
     return localStorage.getItem('theme') || 'dark';
   });
@@ -75,6 +85,30 @@ function App() {
   const toggleTheme = () => {
     setTheme((prev) => (prev === 'dark' ? 'light' : 'dark'));
   };
+
+  // ── Poll transaction status and update toasts ──────────────────────────────
+  useEffect(() => {
+    if (!lastTxHash || notifiedRef.current[lastTxHash]) return;
+
+    if (txStatus === 'confirmed') {
+      notifiedRef.current[lastTxHash] = true;
+      if (pendingToastRef.current) {
+        removeToast(pendingToastRef.current);
+        pendingToastRef.current = null;
+      }
+      addToast({ message: 'Transaction confirmed', type: 'success', txHash: lastTxHash });
+      setTxResult(null);
+      fetchShares();
+    } else if (txStatus === 'failed') {
+      notifiedRef.current[lastTxHash] = true;
+      if (pendingToastRef.current) {
+        removeToast(pendingToastRef.current);
+        pendingToastRef.current = null;
+      }
+      addToast({ message: 'Transaction failed', type: 'error', txHash: lastTxHash });
+      setTxError(null);
+    }
+  }, [lastTxHash, txStatus]);
 
   // ── On mount: re-validate Freighter session ────────────────────────────────
   // The persisted publicKey lets the UI render instantly; checkConnection()
@@ -147,13 +181,14 @@ function App() {
   const handleBuyShares = async () => {
     if (!publicKey) return;
     if (buyAmount < 1) {
-      setTxError('Must buy at least 1 share');
+      addToast({ message: 'Must buy at least 1 share', type: 'error' });
       return;
     }
 
     setLoadingBuy(true);
     setError(null);
     setTxResult(null);
+    setLastTxHash(null);
 
     try {
       const account = await server.getAccount(publicKey);
@@ -187,17 +222,22 @@ function App() {
         TransactionBuilder.fromXDR(signedTxXdr, NETWORK_PASSPHRASE)
       );
 
-      setTxResult(`Transaction submitted! Hash: ${submitRes.hash}`);
-      await fetchShares();
+      const hash = submitRes.hash;
+      setLastTxHash(hash);
+      pendingToastRef.current = addToast({
+        message: 'Transaction submitted, waiting for confirmation…',
+        type: 'pending',
+        txHash: hash,
+      });
     } catch (err) {
       console.error('Error buying shares:', err);
+      let msg = 'Transaction failed. Check your token balance and try again.';
       if (err.message?.includes('paused')) {
-        setTxError('Marketplace is currently paused. Try again later.');
+        msg = 'Marketplace is currently paused. Try again later.';
       } else if (err.message?.includes('Not enough shares')) {
-        setTxError('Not enough shares available.');
-      } else {
-        setTxError('Transaction failed. Check your token balance and try again.');
+        msg = 'Not enough shares available.';
       }
+      addToast({ message: msg, type: 'error' });
     } finally {
       setLoadingBuy(false);
     }
@@ -285,19 +325,7 @@ function App() {
         </Alert>
       )}
 
-      {/* Transaction errors */}
-      {txError && (
-        <Alert variant="error">
-          {txError}
-        </Alert>
-      )}
-
-      {/* Transaction success */}
-      {txResult && (
-        <Alert variant="success">
-          {txResult}
-        </Alert>
-      )}
+      <ToastContainer />
 
       {/* Contract not configured */}
       {CONTRACT_ID === 'C...' && (
