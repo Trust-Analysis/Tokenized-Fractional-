@@ -117,6 +117,10 @@ npm run dev
 
 Open `http://localhost:5173`, connect your Freighter wallet, and buy shares.
 
+## Troubleshooting & FAQ
+
+For solutions to common issues (such as "Freighter not detected", transaction failures, network timeouts, or backend connectivity issues), refer to the [FAQ and Troubleshooting Guide](docs/FAQ.md).
+
 ## Smart Contract API
 
 | Function | Description | Auth |
