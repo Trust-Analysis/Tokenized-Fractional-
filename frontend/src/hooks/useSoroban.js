@@ -1,18 +1,11 @@
 import { useState, useEffect, useCallback, useRef } from 'react';
 import { signTransaction } from '@stellar/freighter-api';
-import {
-  rpc,
-  TransactionBuilder,
-  Networks,
-  Contract,
-} from '@stellar/stellar-sdk';
+import { rpc, TransactionBuilder, Networks, Contract } from '@stellar/stellar-sdk';
 import { useWalletStore } from '../store/useWalletStore';
 
 const CONTRACT_ID = import.meta.env.VITE_CONTRACT_ID || 'C...';
-const RPC_URL =
-  import.meta.env.VITE_RPC_URL || 'https://soroban-testnet.stellar.org:443';
-const NETWORK_PASSPHRASE =
-  import.meta.env.VITE_NETWORK_PASSPHRASE || Networks.TESTNET;
+const RPC_URL = import.meta.env.VITE_RPC_URL || 'https://soroban-testnet.stellar.org:443';
+const NETWORK_PASSPHRASE = import.meta.env.VITE_NETWORK_PASSPHRASE || Networks.TESTNET;
 
 const server = new rpc.Server(RPC_URL);
 
@@ -204,21 +197,16 @@ export function useSorobanWrite(fnName) {
         }
 
         tx = rpc.assembleTransaction(tx, simulation).build();
-        const { signedTxXdr, error: signError } = await signTransaction(
-          tx.toXDR(),
-          {
-            networkPassphrase: NETWORK_PASSPHRASE,
-          }
-        );
+        const { signedTxXdr, error: signError } = await signTransaction(tx.toXDR(), {
+          networkPassphrase: NETWORK_PASSPHRASE,
+        });
 
         if (signError || !signedTxXdr) {
-          throw new Error(
-            signError?.message || 'Freighter transaction signing failed'
-          );
+          throw new Error(signError?.message || 'Freighter transaction signing failed');
         }
 
         const submitRes = await server.sendTransaction(
-          TransactionBuilder.fromXDR(signedTxXdr, NETWORK_PASSPHRASE)
+          TransactionBuilder.fromXDR(signedTxXdr, NETWORK_PASSPHRASE),
         );
 
         setResult(submitRes);
@@ -237,7 +225,7 @@ export function useSorobanWrite(fnName) {
         setLoading(false);
       }
     },
-    [publicKey, fnName]
+    [publicKey, fnName],
   );
 
   return { execute, loading, error, result, setError, setResult };
