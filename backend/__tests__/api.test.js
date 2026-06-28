@@ -224,6 +224,82 @@ describe('DELETE /api/rwa/:contractId', () => {
   });
 });
 
+// ── PATCH /api/rwa/:contractId ────────────────────────────────────────────────
+describe('PATCH /api/rwa/:contractId', () => {
+  const ID = 'C' + 'P'.repeat(55);
+
+  beforeAll(async () => {
+    await request(app).post('/api/rwa').set('x-api-key', API_KEY)
+      .send({ contractId: ID, title: 'Original Title', location: 'Original Location', description: 'Original description', assetType: 'Real Estate' });
+  });
+
+  test('rejects without API key', async () => {
+    const res = await request(app).patch(`/api/rwa/${ID}`).send({ title: 'New Title' });
+    expect(res.status).toBe(401);
+  });
+
+  test('updates single field', async () => {
+    const res = await request(app)
+      .patch(`/api/rwa/${ID}`)
+      .set('x-api-key', API_KEY)
+      .send({ title: 'Updated Title' });
+    expect(res.status).toBe(200);
+    expect(res.body.title).toBe('Updated Title');
+    expect(res.body.location).toBe('Original Location'); // unchanged
+  });
+
+  test('updates multiple fields', async () => {
+    const res = await request(app)
+      .patch(`/api/rwa/${ID}`)
+      .set('x-api-key', API_KEY)
+      .send({ location: 'New Location', imageUrl: 'ipfs://hash' });
+    expect(res.status).toBe(200);
+    expect(res.body.location).toBe('New Location');
+    expect(res.body.imageUrl).toBe('ipfs://hash');
+    expect(res.body.title).toBe('Updated Title'); // from previous patch
+  });
+
+  test('rejects empty request body', async () => {
+    const res = await request(app)
+      .patch(`/api/rwa/${ID}`)
+      .set('x-api-key', API_KEY)
+      .send({});
+    expect(res.status).toBe(400);
+    expect(res.body.error).toMatch(/at least one field/i);
+  });
+
+  test('returns 404 for non-existent asset', async () => {
+    const unknown = 'C' + 'Z'.repeat(55);
+    const res = await request(app)
+      .patch(`/api/rwa/${unknown}`)
+      .set('x-api-key', API_KEY)
+      .send({ title: 'New Title' });
+    expect(res.status).toBe(404);
+  });
+
+  test('updates updatedAt timestamp', async () => {
+    const before = new Date().toISOString();
+    const res = await request(app)
+      .patch(`/api/rwa/${ID}`)
+      .set('x-api-key', API_KEY)
+      .send({ description: 'Updated description' });
+    const after = new Date().toISOString();
+    expect(res.status).toBe(200);
+    expect(new Date(res.body.updatedAt).getTime()).toBeGreaterThanOrEqual(new Date(before).getTime());
+    expect(new Date(res.body.updatedAt).getTime()).toBeLessThanOrEqual(new Date(after).getTime());
+  });
+
+  test('ignores unknown fields', async () => {
+    const res = await request(app)
+      .patch(`/api/rwa/${ID}`)
+      .set('x-api-key', API_KEY)
+      .send({ title: 'Another Title', unknownField: 'should be ignored' });
+    expect(res.status).toBe(200);
+    expect(res.body.title).toBe('Another Title');
+    expect(res.body.unknownField).toBeUndefined();
+  });
+});
+
 // ── Versioned routes: GET /api/v1/rwa ─────────────────────────────────────────
 describe('GET /api/v1/rwa', () => {
   const ID_A = 'C' + 'A'.repeat(55);

@@ -220,7 +220,8 @@ This will start an Nginx server on `http://localhost:80` that proxies requests:
 | Function | Description | Auth |
 |---|---|---|
 | `init` | Initialize marketplace | Admin |
-| `buy_shares` | Purchase fractional shares | Buyer |
+| `buy_shares` | Purchase fractional shares (mints NFT certificate per share if configured) | Buyer |
+| `set_nft_contract` | Configure NFT contract for certificate minting | Admin |
 | `get_shares` | Query user balance | None |
 | `get_available_shares` | Query remaining shares | None |
 | `get_total_shares` | Query total shares | None |
@@ -230,6 +231,12 @@ This will start an Nginx server on `http://localhost:80` that proxies requests:
 | `unpause` | Unpause marketplace | Admin |
 | `emergency_withdraw` | Withdraw tokens from contract | Admin |
 
+### NFT Share Certificates
+
+When users buy shares, they receive **SEP-41 compliant NFT certificates** representing their ownership. These NFTs can be viewed in wallets, transferred peer-to-peer, and traded on secondary marketplaces.
+
+👉 **[See NFT Certificates Documentation](docs/NFT_CERTIFICATES.md)** for setup, deployment, and integration details.
+
 ## Backend API
 
 | Method | Endpoint | Auth | Description |
@@ -238,6 +245,7 @@ This will start an Nginx server on `http://localhost:80` that proxies requests:
 | `GET` | `/api/rwa` | No | List all assets |
 | `GET` | `/api/rwa/:contractId` | No | Get asset metadata |
 | `POST` | `/api/rwa` | `x-api-key` | Create/update asset |
+| `PATCH` | `/api/rwa/:contractId` | `x-api-key` | Partial update (specific fields only) |
 | `DELETE` | `/api/rwa/:contractId` | `x-api-key` | Delete asset |
 
 Interactive API documentation is available at [`/api-docs`](http://localhost:3001/api-docs) (Swagger UI) and [`/api-docs.json`](http://localhost:3001/api-docs.json) (raw OpenAPI spec) when the backend is running.

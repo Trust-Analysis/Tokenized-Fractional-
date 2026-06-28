@@ -1,10 +1,6 @@
-[workspace]
-members = [".", "nft"]
-resolver = "2"
-
 [package]
-name = "rwa-marketplace"
-version = "0.2.0"
+name = "share-certificate-nft"
+version = "0.1.0"
 edition = "2021"
 
 [lib]
@@ -12,6 +8,8 @@ crate-type = ["cdylib", "rlib"]
 
 [dependencies]
 soroban-sdk = "26.1.0"
+stellar-tokens = "0.7.1"
+stellar-macros = "0.7.1"
 
 [profile.release]
 opt-level = "z"
@@ -20,6 +18,4 @@ debug = false
 
 [dev-dependencies]
 soroban-sdk = { version = "26.1.0", features = ["testutils"] }
-proptest = "1.4"
-share-certificate-nft = { path = "nft" }
 stellar-tokens = { version = "0.7.1", features = ["testutils"] }

@@ -8,7 +8,11 @@ const RPC_URL = import.meta.env.VITE_RPC_URL || 'https://soroban-testnet.stellar
 const NETWORK_PASSPHRASE = import.meta.env.VITE_NETWORK_PASSPHRASE || Networks.TESTNET;
 
 const server = new rpc.Server(RPC_URL);
-const contract = new Contract(CONTRACT_ID);
+
+function getContract() {
+  if (CONTRACT_ID.length < 50) return null;
+  try { return new Contract(CONTRACT_ID); } catch { return null; }
+}
 
 /**
  * useStellarContract
@@ -16,7 +20,7 @@ const contract = new Contract(CONTRACT_ID);
  */
 export function useStellarContract() {
   return {
-    contract,
+    contract: getContract(),
     server,
     contractId: CONTRACT_ID,
     networkPassphrase: NETWORK_PASSPHRASE,
@@ -94,7 +98,7 @@ export function useSorobanRead(fnName, args = [], options = {}) {
         fee: '100',
         networkPassphrase: NETWORK_PASSPHRASE,
       })
-        .addOperation(contract.call(fnName, ...args))
+        .addOperation(getContract().call(fnName, ...args))
         .setTimeout(30)
         .build();
 
@@ -182,7 +186,7 @@ export function useSorobanWrite(fnName) {
         fee: options.fee || '10000',
         networkPassphrase: NETWORK_PASSPHRASE,
       })
-        .addOperation(contract.call(fnName, ...args))
+        .addOperation(getContract().call(fnName, ...args))
         .setTimeout(30)
         .build();
 

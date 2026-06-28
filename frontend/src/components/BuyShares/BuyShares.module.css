@@ -63,3 +63,33 @@
   from { opacity: 0; transform: translateY(-4px); }
   to   { opacity: 1; transform: translateY(0); }
 }
+
+.tokenRow {
+  display: flex;
+  align-items: center;
+  gap: var(--spacing-sm);
+  margin-bottom: var(--spacing-sm);
+}
+
+.tokenLabel {
+  font-size: var(--font-size-sm);
+  color: var(--text-secondary);
+  white-space: nowrap;
+}
+
+.tokenSelect {
+  flex: 1;
+  max-width: 20rem;
+  background-color: var(--bg-input, var(--bg-surface));
+  border: 1px solid var(--border-color);
+  border-radius: var(--radius-sm);
+  color: var(--text-primary);
+  font-size: var(--font-size-sm);
+  padding: 0.3rem 0.5rem;
+  font-family: monospace;
+}
+
+.tokenSelect:disabled {
+  opacity: 0.6;
+  cursor: not-allowed;
+}
