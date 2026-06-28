@@ -1923,9 +1923,9 @@ mod test {
     #[test]
     #[should_panic(expected = "Buyer is not whitelisted")]
     fn test_pre_init_buy_shares() {
-        let (env, client, _, _) = pre_init_client();
+        let (env, client, token_id, _) = pre_init_client();
         let buyer = Address::generate(&env);
-        client.buy_shares(&buyer, &1);
+        client.buy_shares(&buyer, &1, &token_id);
     }
 
     #[test]
@@ -1989,9 +1989,9 @@ mod test {
     #[test]
     #[should_panic(expected = "Contract not initialized")]
     fn test_pre_init_buy_vested_shares() {
-        let (env, client, _, _) = pre_init_client();
+        let (env, client, token_id, _) = pre_init_client();
         let buyer = Address::generate(&env);
-        client.buy_vested_shares(&buyer, &1, &3600);
+        client.buy_vested_shares(&buyer, &1, &3600, &token_id);
     }
 
     // ── Metadata URI tests ──────────────────────────────────────────────
@@ -2309,7 +2309,7 @@ mod test {
         // A purchase that exceeds the cap must revert before transferring any
         // tokens. Use the non-panicking client to assert the call fails and
         // that no balances or available shares changed.
-        let result = c.try_buy_shares(&te.buyer, &60);
+        let result = c.try_buy_shares(&te.buyer, &60, &te.token_id);
         assert!(result.is_err());
 
         let token_client = token::TokenClient::new(&te.env, &te.token_id);
@@ -2910,7 +2910,7 @@ mod property_tests {
                         if paused || shares > available {
                             continue;
                         }
-                        client.buy_shares(&buyers[buyer_idx], &shares);
+                        client.buy_shares(&buyers[buyer_idx], &shares, &token_id);
                         balances[buyer_idx] += shares;
                         available -= shares;
                     }
@@ -3012,7 +3012,7 @@ mod property_tests {
                 if shares > available {
                     continue;
                 }
-                client.buy_shares(&buyer, &shares);
+                client.buy_shares(&buyer, &shares, &token_id);
                 total_bought += shares;
 
                 // available + total_bought == INIT_TOTAL
