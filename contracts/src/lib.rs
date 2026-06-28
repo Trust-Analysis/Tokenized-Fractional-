@@ -27,6 +27,9 @@ pub enum DataKey {
     MaxSharesPerUser,
     /// Allowance(owner, spender) → approved amount
     Allowance(Address, Address),
+    BuybackConfig,
+    BuybackBudget,
+    LastBuyback,
 }
 
 #[contracttype]
@@ -52,6 +55,31 @@ pub struct SellOrder {
 pub struct DividendSchedule {
     pub amount_per_share: i128,
     pub interval: u64,
+}
+
+#[contracttype]
+#[derive(Clone)]
+pub struct AutoBuybackConfig {
+    /// Minimum seconds that must elapse between auto-buyback executions.
+    pub interval: u64,
+    /// Maximum shares that can be bought back in a single auto-buyback call.
+    pub max_amount: u32,
+    /// Total token budget remaining for auto-buybacks.
+    pub budget: i128,
+}
+
+#[contractevent(data_format = "vec")]
+pub struct EventBuybackShares {
+    seller: Address,
+    amount: u32,
+    total_cost: i128,
+}
+
+#[contractevent(data_format = "vec")]
+pub struct EventAutoBuybackConfig {
+    interval: u64,
+    max_amount: u32,
+    budget: i128,
 }
 
 #[contractevent(data_format = "vec")]
@@ -1084,6 +1112,157 @@ impl RwaMarketplace {
     /// Get an open sell order by id, returning None if it doesn't exist.
     pub fn get_sell_order(env: Env, order_id: u64) -> Option<SellOrder> {
         env.storage().persistent().get(&DataKey::SellOrder(order_id))
+    }
+
+    // ── Buyback ────────────────────────────────────────────────────────────
+
+    /// Contract buys back `amount` shares from `seller` at the current
+    /// `price_per_share`. The contract must hold sufficient payment-token
+    /// balance. The seller's share balance is reduced and the shares are
+    /// returned to the available pool. Seller auth is required.
+    pub fn buyback_shares(env: Env, seller: Address, amount: u32) {
+        seller.require_auth();
+
+        if amount == 0 {
+            panic!("Buyback amount must be positive");
+        }
+
+        let seller_balance: u32 = env
+            .storage()
+            .persistent()
+            .get(&DataKey::Balance(seller.clone()))
+            .unwrap_or(0);
+
+        if amount > seller_balance {
+            panic!("Seller has insufficient shares");
+        }
+
+        let price: i128 = env
+            .storage()
+            .instance()
+            .get(&DataKey::PricePerShare)
+            .expect("Contract not initialized: price");
+
+        let total_cost = checked_mul_i128(price, amount as i128);
+
+        let token_id: Address = env
+            .storage()
+            .instance()
+            .get(&DataKey::PaymentToken)
+            .expect("Contract not initialized: payment token");
+
+        // Transfer payment from contract to seller
+        token::TokenClient::new(&env, &token_id)
+            .transfer(&env.current_contract_address(), &seller, &total_cost);
+
+        // Reduce seller balance
+        env.storage().persistent().set(
+            &DataKey::Balance(seller.clone()),
+            &checked_sub_u32(seller_balance, amount),
+        );
+
+        // Return shares to available pool
+        let available: u32 = env
+            .storage()
+            .instance()
+            .get(&DataKey::AvailableShares)
+            .expect("Contract not initialized: available shares");
+        env.storage()
+            .instance()
+            .set(&DataKey::AvailableShares, &checked_add_u32(available, amount));
+
+        EventBuybackShares { seller, amount, total_cost }.publish(&env);
+    }
+
+    /// Admin sets the auto-buyback configuration.
+    /// `budget` tokens must already be held (or will be deposited) by the
+    /// contract. Calling this again replaces the previous configuration and
+    /// resets the `LastBuyback` timestamp.
+    pub fn auto_buyback_config(env: Env, interval: u64, max_amount: u32, budget: i128) {
+        let admin: Address = env
+            .storage()
+            .instance()
+            .get(&DataKey::Admin)
+            .expect("Contract not initialized: admin");
+        admin.require_auth();
+
+        if interval == 0 {
+            panic!("Interval must be positive");
+        }
+        if max_amount == 0 {
+            panic!("Max amount must be positive");
+        }
+        if budget <= 0 {
+            panic!("Budget must be positive");
+        }
+
+        let config = AutoBuybackConfig { interval, max_amount, budget };
+        env.storage().instance().set(&DataKey::BuybackConfig, &config);
+        env.storage().instance().set(&DataKey::BuybackBudget, &budget);
+        // Reset last-buyback so the first call is not gated
+        env.storage().instance().set(&DataKey::LastBuyback, &0u64);
+
+        EventAutoBuybackConfig { interval, max_amount, budget }.publish(&env);
+    }
+
+    /// Trigger an auto-buyback for `seller`. Callable by anyone.
+    /// Validates that:
+    ///   - a config exists
+    ///   - the interval since the last auto-buyback has elapsed
+    ///   - `amount` does not exceed `config.max_amount`
+    ///   - the remaining budget covers the cost
+    pub fn process_auto_buyback(env: Env, seller: Address, amount: u32) {
+        if amount == 0 {
+            panic!("Buyback amount must be positive");
+        }
+
+        let config: AutoBuybackConfig = env
+            .storage()
+            .instance()
+            .get(&DataKey::BuybackConfig)
+            .expect("Auto-buyback not configured");
+
+        let last: u64 = env
+            .storage()
+            .instance()
+            .get(&DataKey::LastBuyback)
+            .unwrap_or(0);
+
+        let now = env.ledger().timestamp();
+        if now < last.saturating_add(config.interval) {
+            panic!("Auto-buyback interval has not elapsed");
+        }
+
+        if amount > config.max_amount {
+            panic!("Amount exceeds auto-buyback max");
+        }
+
+        let price: i128 = env
+            .storage()
+            .instance()
+            .get(&DataKey::PricePerShare)
+            .expect("Contract not initialized: price");
+
+        let total_cost = checked_mul_i128(price, amount as i128);
+
+        let remaining_budget: i128 = env
+            .storage()
+            .instance()
+            .get(&DataKey::BuybackBudget)
+            .unwrap_or(0);
+
+        if total_cost > remaining_budget {
+            panic!("Insufficient auto-buyback budget");
+        }
+
+        // Update budget and timestamp before the external call (CEI pattern)
+        env.storage()
+            .instance()
+            .set(&DataKey::BuybackBudget, &checked_sub_i128(remaining_budget, total_cost));
+        env.storage().instance().set(&DataKey::LastBuyback, &now);
+
+        // Delegate to the core buyback, which requires seller auth
+        Self::buyback_shares(env, seller, amount);
     }
 }
 
@@ -2171,6 +2350,175 @@ mod test {
 
         c.transfer_shares(&te.buyer, &recipient, &10);
         assert_eq!(c.get_holders().len(), 2);
+    }
+
+    // ── Buyback tests ───────────────────────────────────────────────────
+
+    #[test]
+    fn test_buyback_shares_basic() {
+        let te = setup();
+        let c = client(&te);
+        c.init(&te.admin, &te.token_id, &100, &1000);
+        mint(&te, &te.buyer, 100_000);
+        c.add_to_whitelist(&te.buyer);
+        c.buy_shares(&te.buyer, &100);
+
+        // Fund contract so it can pay seller
+        mint(&te, &te.contract_id, 10_000);
+
+        let available_before = c.get_available_shares(); // 900
+        let token_client = token::TokenClient::new(&te.env, &te.token_id);
+        let seller_balance_before = token_client.balance(&te.buyer);
+
+        c.buyback_shares(&te.buyer, &50);
+
+        // Seller loses 50 shares, gains 50*100=5000 tokens
+        assert_eq!(c.get_shares(&te.buyer), 50);
+        assert_eq!(token_client.balance(&te.buyer), seller_balance_before + 5_000);
+        // Available increases by 50
+        assert_eq!(c.get_available_shares(), available_before + 50);
+    }
+
+    #[test]
+    #[should_panic(expected = "Buyback amount must be positive")]
+    fn test_buyback_shares_zero() {
+        let te = setup();
+        let c = client(&te);
+        c.init(&te.admin, &te.token_id, &100, &1000);
+        mint(&te, &te.buyer, 100_000);
+        c.add_to_whitelist(&te.buyer);
+        c.buy_shares(&te.buyer, &10);
+        c.buyback_shares(&te.buyer, &0);
+    }
+
+    #[test]
+    #[should_panic(expected = "Seller has insufficient shares")]
+    fn test_buyback_shares_insufficient() {
+        let te = setup();
+        let c = client(&te);
+        c.init(&te.admin, &te.token_id, &100, &1000);
+        mint(&te, &te.buyer, 100_000);
+        c.add_to_whitelist(&te.buyer);
+        c.buy_shares(&te.buyer, &10);
+        mint(&te, &te.contract_id, 1_000_000);
+        c.buyback_shares(&te.buyer, &20);
+    }
+
+    #[test]
+    fn test_auto_buyback_config_sets_values() {
+        let te = setup();
+        let c = client(&te);
+        c.init(&te.admin, &te.token_id, &100, &1000);
+        c.auto_buyback_config(&3600_u64, &50_u32, &100_000_i128);
+        // Config set without error; process should succeed after interval
+    }
+
+    #[test]
+    #[should_panic(expected = "Interval must be positive")]
+    fn test_auto_buyback_config_zero_interval() {
+        let te = setup();
+        let c = client(&te);
+        c.init(&te.admin, &te.token_id, &100, &1000);
+        c.auto_buyback_config(&0_u64, &10_u32, &1000_i128);
+    }
+
+    #[test]
+    #[should_panic(expected = "Max amount must be positive")]
+    fn test_auto_buyback_config_zero_max_amount() {
+        let te = setup();
+        let c = client(&te);
+        c.init(&te.admin, &te.token_id, &100, &1000);
+        c.auto_buyback_config(&3600_u64, &0_u32, &1000_i128);
+    }
+
+    #[test]
+    #[should_panic(expected = "Budget must be positive")]
+    fn test_auto_buyback_config_zero_budget() {
+        let te = setup();
+        let c = client(&te);
+        c.init(&te.admin, &te.token_id, &100, &1000);
+        c.auto_buyback_config(&3600_u64, &10_u32, &0_i128);
+    }
+
+    #[test]
+    fn test_process_auto_buyback_succeeds() {
+        let te = setup();
+        let c = client(&te);
+        c.init(&te.admin, &te.token_id, &100, &1000);
+        mint(&te, &te.buyer, 100_000);
+        c.add_to_whitelist(&te.buyer);
+        c.buy_shares(&te.buyer, &100);
+
+        // Fund contract and configure auto-buyback
+        mint(&te, &te.contract_id, 50_000);
+        c.auto_buyback_config(&3600_u64, &50_u32, &50_000_i128);
+
+        // Advance past interval
+        te.env.ledger().set_timestamp(te.env.ledger().timestamp() + 3601);
+
+        c.process_auto_buyback(&te.buyer, &30);
+
+        assert_eq!(c.get_shares(&te.buyer), 70);
+        assert_eq!(c.get_available_shares(), 930);
+    }
+
+    #[test]
+    #[should_panic(expected = "Auto-buyback interval has not elapsed")]
+    fn test_process_auto_buyback_too_soon() {
+        let te = setup();
+        let c = client(&te);
+        c.init(&te.admin, &te.token_id, &100, &1000);
+        mint(&te, &te.buyer, 100_000);
+        c.add_to_whitelist(&te.buyer);
+        c.buy_shares(&te.buyer, &100);
+        mint(&te, &te.contract_id, 50_000);
+        c.auto_buyback_config(&3600_u64, &50_u32, &50_000_i128);
+
+        // Do NOT advance time — should fail immediately
+        c.process_auto_buyback(&te.buyer, &10);
+    }
+
+    #[test]
+    #[should_panic(expected = "Amount exceeds auto-buyback max")]
+    fn test_process_auto_buyback_exceeds_max() {
+        let te = setup();
+        let c = client(&te);
+        c.init(&te.admin, &te.token_id, &100, &1000);
+        mint(&te, &te.buyer, 100_000);
+        c.add_to_whitelist(&te.buyer);
+        c.buy_shares(&te.buyer, &100);
+        mint(&te, &te.contract_id, 50_000);
+        c.auto_buyback_config(&3600_u64, &20_u32, &50_000_i128);
+
+        te.env.ledger().set_timestamp(te.env.ledger().timestamp() + 3601);
+        c.process_auto_buyback(&te.buyer, &30);
+    }
+
+    #[test]
+    #[should_panic(expected = "Insufficient auto-buyback budget")]
+    fn test_process_auto_buyback_exceeds_budget() {
+        let te = setup();
+        let c = client(&te);
+        c.init(&te.admin, &te.token_id, &100, &1000);
+        mint(&te, &te.buyer, 100_000);
+        c.add_to_whitelist(&te.buyer);
+        c.buy_shares(&te.buyer, &100);
+
+        // Budget of 500 → can afford only 5 shares at price 100
+        mint(&te, &te.contract_id, 500);
+        c.auto_buyback_config(&3600_u64, &50_u32, &500_i128);
+
+        te.env.ledger().set_timestamp(te.env.ledger().timestamp() + 3601);
+        c.process_auto_buyback(&te.buyer, &10); // 10 * 100 = 1000 > 500
+    }
+
+    #[test]
+    #[should_panic(expected = "Auto-buyback not configured")]
+    fn test_process_auto_buyback_not_configured() {
+        let te = setup();
+        let c = client(&te);
+        c.init(&te.admin, &te.token_id, &100, &1000);
+        c.process_auto_buyback(&te.buyer, &10);
     }
 }
 // --- TIMELOCK MODULE ---
