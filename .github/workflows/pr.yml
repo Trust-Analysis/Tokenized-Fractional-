@@ -53,6 +53,7 @@ jobs:
           VITE_RPC_URL: https://soroban-testnet.stellar.org:443
           VITE_NETWORK_PASSPHRASE: "Test SDF Network ; September 2015"
           VITE_API_URL: http://localhost:3001
+          VITE_MOCK_WALLET: "true"
       - run: npx playwright install --with-deps chromium
         working-directory: frontend
       - run: npm run test:e2e
@@ -62,6 +63,7 @@ jobs:
           VITE_RPC_URL: https://soroban-testnet.stellar.org:443
           VITE_NETWORK_PASSPHRASE: "Test SDF Network ; September 2015"
           VITE_API_URL: http://localhost:3001
+          VITE_MOCK_WALLET: "true"
       - uses: actions/upload-artifact@v4
         if: failure()
         with:

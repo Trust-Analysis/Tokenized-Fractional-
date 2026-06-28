@@ -301,6 +301,37 @@ function App() {
   });
   const pricePerShare = priceData?.retval ? Number(priceData.retval.u64()) : null;
 
+  const [acceptedTokens, setAcceptedTokens] = useState([]);
+  const [paymentToken, setPaymentToken] = useState('');
+
+  useEffect(() => {
+    if (!publicKey || CONTRACT_ID.length < 50) return;
+    (async () => {
+      try {
+        const { rpc, Contract, TransactionBuilder, Address } = await import('@stellar/stellar-sdk');
+        const server = new rpc.Server(import.meta.env.VITE_RPC_URL || 'https://soroban-testnet.stellar.org:443');
+        const contract = new Contract(CONTRACT_ID);
+        const account = await server.getAccount(publicKey);
+        const tx = new TransactionBuilder(account, {
+          fee: '100',
+          networkPassphrase: NETWORK_PASSPHRASE,
+        })
+          .addOperation(contract.call('get_accepted_tokens'))
+          .setTimeout(30)
+          .build();
+        const sim = await server.simulateTransaction(tx);
+        if (sim.result?.retval) {
+          const vec = sim.result.retval.vec();
+          const list = vec ? vec.map((v) => Address.fromScVal(v).toString()) : [];
+          setAcceptedTokens(list);
+          if (list.length > 0) setPaymentToken(list[0]);
+        }
+      } catch {
+        // silently fall back — buyer will use default
+      }
+    })();
+  }, [publicKey]);
+
   useEffect(() => {
     if (publicKey) fetchMetadata(CONTRACT_ID, API_URL);
   }, [publicKey]);
@@ -336,7 +367,8 @@ function App() {
     try {
       const scValBuyer = nativeToScVal(publicKey, { type: 'address' });
       const scValShares = nativeToScVal(buyAmount, { type: 'u32' });
-      const submitRes = await buySharesTx.execute([scValBuyer, scValShares]);
+      const scValToken = nativeToScVal(paymentToken, { type: 'address' });
+      const submitRes = await buySharesTx.execute([scValBuyer, scValShares, scValToken]);
       setConfirmPending(false);
       const { hash } = submitRes;
       setLastTxHash(hash);

@@ -3,6 +3,7 @@ import AdminAuth from '../AdminAuth/AdminAuth';
 import AssetForm from '../AssetForm/AssetForm';
 import PauseControl from '../PauseControl/PauseControl';
 import EmergencyWithdraw from '../EmergencyWithdraw/EmergencyWithdraw';
+import PaymentTokenManager from '../PaymentTokenManager/PaymentTokenManager';
 import Button from '../Button/Button';
 import { AUTH_FAILED } from '../../constants/errors';
 import styles from './AdminPage.module.css';
@@ -52,6 +53,7 @@ export default function AdminPage({ publicKey, onDisconnect }) {
         <AssetForm apiKey={apiKey} onAssetChange={handleAssetChange} />
         <PauseControl publicKey={publicKey} />
         <EmergencyWithdraw publicKey={publicKey} />
+        <PaymentTokenManager publicKey={publicKey} />
       </div>
     </div>
   );
