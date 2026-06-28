@@ -9,22 +9,31 @@ import styles from './BuyShares.module.css';
 /**
  * BuyShares — displays share balance and a form to purchase fractional shares.
  *
- * @param {number}  shares       - Current share balance
- * @param {boolean} loadingShares - Fetching share balance
- * @param {boolean} loadingBuy   - Transaction in progress
- * @param {function} onBuy        - Called with (amount) when user clicks Buy
+ * @param {number}   shares          - Current share balance
+ * @param {boolean}  loadingShares   - Fetching share balance
+ * @param {boolean}  loadingBuy      - Transaction in progress
+ * @param {function} onBuy           - Called with (amount) when user clicks Buy
+ * @param {string[]} acceptedTokens  - List of accepted payment token addresses
+ * @param {string}   paymentToken    - Currently selected payment token address
+ * @param {function} onTokenChange   - Called with token address when selection changes
  */
 export default function BuyShares({
   shares = 0,
   loadingShares = false,
   loadingBuy = false,
   onBuy,
+  acceptedTokens = [],
+  paymentToken = '',
+  onTokenChange,
 }) {
   const [buyAmount, setBuyAmount] = useState(1);
 
   const handleBuy = () => {
     if (onBuy) onBuy(buyAmount);
   };
+
+  const shortAddress = (addr) =>
+    addr ? `${addr.slice(0, 6)}…${addr.slice(-4)}` : '';
 
   return (
     <Card>
@@ -41,6 +50,28 @@ export default function BuyShares({
       </div>
       <hr className={styles.divider} />
       <h3 className={styles.purchaseHeader}>Buy Fractional Shares</h3>
+
+      {acceptedTokens.length > 1 && (
+        <div className={styles.tokenRow}>
+          <label htmlFor="payment-token-select" className={styles.tokenLabel}>
+            Pay with
+          </label>
+          <select
+            id="payment-token-select"
+            className={styles.tokenSelect}
+            value={paymentToken}
+            onChange={(e) => onTokenChange && onTokenChange(e.target.value)}
+            disabled={loadingBuy}
+          >
+            {acceptedTokens.map((t) => (
+              <option key={t} value={t} title={t}>
+                {shortAddress(t)}
+              </option>
+            ))}
+          </select>
+        </div>
+      )}
+
       <div className={styles.purchaseRow}>
         <Input
           id="buy-amount-input"

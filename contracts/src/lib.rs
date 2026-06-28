@@ -30,6 +30,7 @@ pub enum DataKey {
     BuybackConfig,
     BuybackBudget,
     LastBuyback,
+    AcceptedTokens,
 }
 
 #[contracttype]
@@ -80,6 +81,16 @@ pub struct EventAutoBuybackConfig {
     interval: u64,
     max_amount: u32,
     budget: i128,
+}
+
+#[contractevent(data_format = "vec")]
+pub struct EventAddPaymentToken {
+    token: Address,
+}
+
+#[contractevent(data_format = "vec")]
+pub struct EventRemovePaymentToken {
+    token: Address,
 }
 
 #[contractevent(data_format = "vec")]
@@ -237,10 +248,15 @@ impl RwaMarketplace {
         let holders: Vec<Address> = Vec::new(&env);
         env.storage().instance().set(&DataKey::Holders, &holders);
 
+        // Seed the accepted payment tokens list with the initial token
+        let mut accepted: Vec<Address> = Vec::new(&env);
+        accepted.push_back(payment_token.clone());
+        env.storage().instance().set(&DataKey::AcceptedTokens, &accepted);
+
         EventInit { admin, payment_token, price, total_shares }.publish(&env);
     }
 
-    pub fn buy_shares(env: Env, buyer: Address, shares: u32) {
+    pub fn buy_shares(env: Env, buyer: Address, shares: u32, payment_token: Address) {
         buyer.require_auth();
 
         if env.storage().instance().get(&DataKey::Paused).unwrap_or(false) {
@@ -292,19 +308,16 @@ impl RwaMarketplace {
             panic!("Purchase exceeds max shares per user");
         }
 
+        Self::require_accepted_token(&env, &payment_token);
+
         let price: i128 = env.storage().instance().get(&DataKey::PricePerShare)
             .expect("Contract not initialized: price");
         let total_cost = checked_mul_i128(price, shares as i128);
 
         let admin: Address = env.storage().instance().get(&DataKey::Admin)
             .expect("Contract not initialized: admin");
-        let token_id: Address = env
-            .storage()
-            .instance()
-            .get(&DataKey::PaymentToken)
-            .expect("Contract not initialized: payment token");
 
-        let client = token::TokenClient::new(&env, &token_id);
+        let client = token::TokenClient::new(&env, &payment_token);
         client.transfer(&buyer, &admin, &total_cost);
 
         let new_available = checked_sub_u32(available, shares);
@@ -342,6 +355,82 @@ impl RwaMarketplace {
             .persistent()
             .get(&DataKey::Whitelisted(addr))
             .unwrap_or(false)
+    }
+
+    /// Add a token to the accepted payment tokens list. Admin only.
+    pub fn add_payment_token(env: Env, token: Address) {
+        let admin: Address = env.storage().instance().get(&DataKey::Admin)
+            .expect("Contract not initialized: admin");
+        admin.require_auth();
+
+        let mut accepted: Vec<Address> = env.storage().instance()
+            .get(&DataKey::AcceptedTokens)
+            .unwrap_or_else(|| Vec::new(&env));
+
+        for t in accepted.iter() {
+            if t == token {
+                panic!("Token already accepted");
+            }
+        }
+        accepted.push_back(token.clone());
+        env.storage().instance().set(&DataKey::AcceptedTokens, &accepted);
+
+        EventAddPaymentToken { token }.publish(&env);
+    }
+
+    /// Remove a token from the accepted payment tokens list. Admin only.
+    /// The default `PaymentToken` (set at init) cannot be removed.
+    pub fn remove_payment_token(env: Env, token: Address) {
+        let admin: Address = env.storage().instance().get(&DataKey::Admin)
+            .expect("Contract not initialized: admin");
+        admin.require_auth();
+
+        let default_token: Address = env.storage().instance()
+            .get(&DataKey::PaymentToken)
+            .expect("Contract not initialized: payment token");
+        if token == default_token {
+            panic!("Cannot remove the default payment token");
+        }
+
+        let accepted: Vec<Address> = env.storage().instance()
+            .get(&DataKey::AcceptedTokens)
+            .unwrap_or_else(|| Vec::new(&env));
+
+        let mut updated: Vec<Address> = Vec::new(&env);
+        let mut found = false;
+        for t in accepted.iter() {
+            if t == token {
+                found = true;
+            } else {
+                updated.push_back(t);
+            }
+        }
+        if !found {
+            panic!("Token not in accepted list");
+        }
+        env.storage().instance().set(&DataKey::AcceptedTokens, &updated);
+
+        EventRemovePaymentToken { token }.publish(&env);
+    }
+
+    /// Return the list of accepted payment tokens.
+    pub fn get_accepted_tokens(env: Env) -> Vec<Address> {
+        env.storage().instance()
+            .get(&DataKey::AcceptedTokens)
+            .unwrap_or_else(|| Vec::new(&env))
+    }
+
+    /// Panic if `token` is not in the accepted payment tokens list.
+    fn require_accepted_token(env: &Env, token: &Address) {
+        let accepted: Vec<Address> = env.storage().instance()
+            .get(&DataKey::AcceptedTokens)
+            .unwrap_or_else(|| Vec::new(env));
+        for t in accepted.iter() {
+            if &t == token {
+                return;
+            }
+        }
+        panic!("Payment token not accepted");
     }
 
     /// Distribute `total_amount` of `token` pro-rata among all current holders
@@ -496,7 +585,7 @@ impl RwaMarketplace {
         claimable
     }
 
-    pub fn buy_vested_shares(env: Env, buyer: Address, shares: u32, duration: u64) {
+    pub fn buy_vested_shares(env: Env, buyer: Address, shares: u32, duration: u64, payment_token: Address) {
         buyer.require_auth();
 
         if env.storage().instance().get(&DataKey::Paused).unwrap_or(false) {
@@ -521,19 +610,16 @@ impl RwaMarketplace {
             panic!("Not enough shares available for purchase");
         }
 
+        Self::require_accepted_token(&env, &payment_token);
+
         let price: i128 = env.storage().instance().get(&DataKey::PricePerShare)
             .expect("Contract not initialized: price");
         let total_cost = price * (shares as i128);
 
         let admin: Address = env.storage().instance().get(&DataKey::Admin)
             .expect("Contract not initialized: admin");
-        let token_id: Address = env
-            .storage()
-            .instance()
-            .get(&DataKey::PaymentToken)
-            .expect("Contract not initialized: payment token");
 
-        let client = token::TokenClient::new(&env, &token_id);
+        let client = token::TokenClient::new(&env, &payment_token);
         client.transfer(&buyer, &admin, &total_cost);
 
         env.storage()
@@ -1320,7 +1406,7 @@ mod test {
         let c = client(&te);
         c.init(&te.admin, &te.token_id, &100, &1000);
         mint(&te, &te.buyer, 100000);
-        c.buy_shares(&te.buyer, &25);
+        c.buy_shares(&te.buyer, &25, &te.token_id);
     }
 
     #[test]
@@ -1334,7 +1420,7 @@ mod test {
         c.add_to_whitelist(&te.buyer);
         assert!(c.is_whitelisted(&te.buyer));
 
-        c.buy_shares(&te.buyer, &25);
+        c.buy_shares(&te.buyer, &25, &te.token_id);
         assert_eq!(c.get_shares(&te.buyer), 25);
         assert_eq!(c.get_available_shares(), 975);
     }
@@ -1352,7 +1438,7 @@ mod test {
         c.remove_from_whitelist(&te.buyer);
         assert!(!c.is_whitelisted(&te.buyer));
 
-        c.buy_shares(&te.buyer, &25);
+        c.buy_shares(&te.buyer, &25, &te.token_id);
     }
 
     #[test]
@@ -1363,8 +1449,8 @@ mod test {
         mint(&te, &te.buyer, 100000);
         c.add_to_whitelist(&te.buyer);
 
-        c.buy_shares(&te.buyer, &10);
-        c.buy_shares(&te.buyer, &20);
+        c.buy_shares(&te.buyer, &10, &te.token_id);
+        c.buy_shares(&te.buyer, &20, &te.token_id);
         assert_eq!(c.get_shares(&te.buyer), 30);
         assert_eq!(c.get_available_shares(), 970);
     }
@@ -1389,7 +1475,7 @@ mod test {
         let c = client(&te);
         c.init(&te.admin, &te.token_id, &100, &1000);
         c.pause();
-        c.buy_shares(&te.buyer, &1);
+        c.buy_shares(&te.buyer, &1, &te.token_id);
     }
 
     #[test]
@@ -1434,7 +1520,7 @@ mod test {
         c.add_to_whitelist(&te.buyer);
         mint(&te, &te.buyer, 100000);
         c.add_to_whitelist(&te.buyer);
-        c.buy_shares(&te.buyer, &20);
+        c.buy_shares(&te.buyer, &20, &te.token_id);
     }
 
     #[test]
@@ -1444,7 +1530,7 @@ mod test {
         let c = client(&te);
         c.init(&te.admin, &te.token_id, &100, &1000);
         c.add_to_whitelist(&te.buyer);
-        c.buy_shares(&te.buyer, &0);
+        c.buy_shares(&te.buyer, &0, &te.token_id);
     }
 
     #[test]
@@ -1468,11 +1554,11 @@ mod test {
         // Before any purchase, registry is empty
         assert_eq!(c.get_holders().len(), 0);
 
-        c.buy_shares(&te.buyer, &10);
+        c.buy_shares(&te.buyer, &10, &te.token_id);
         assert_eq!(c.get_holders().len(), 1);
 
         // Second buy by same buyer — should NOT add duplicate
-        c.buy_shares(&te.buyer, &5);
+        c.buy_shares(&te.buyer, &5, &te.token_id);
         assert_eq!(c.get_holders().len(), 1);
     }
 
@@ -1488,8 +1574,8 @@ mod test {
         c.add_to_whitelist(&te.buyer);
         c.add_to_whitelist(&buyer2);
 
-        c.buy_shares(&te.buyer, &10);
-        c.buy_shares(&buyer2, &20);
+        c.buy_shares(&te.buyer, &10, &te.token_id);
+        c.buy_shares(&buyer2, &20, &te.token_id);
 
         assert_eq!(c.get_holders().len(), 2);
     }
@@ -1502,7 +1588,7 @@ mod test {
         mint(&te, &te.buyer, 100_000);
         c.add_to_whitelist(&te.buyer);
 
-        c.buy_shares(&te.buyer, &500); // buyer owns 500 / 1000 shares = 50%
+        c.buy_shares(&te.buyer, &500, &te.token_id); // buyer owns 500 / 1000 shares = 50%
 
         // Mint dividend tokens to the contract
         let dividend_amount: i128 = 10_000;
@@ -1529,8 +1615,8 @@ mod test {
         c.add_to_whitelist(&buyer2);
 
         // buyer: 250 shares (25%), buyer2: 750 shares (75%)
-        c.buy_shares(&te.buyer, &250);
-        c.buy_shares(&buyer2, &750);
+        c.buy_shares(&te.buyer, &250, &te.token_id);
+        c.buy_shares(&buyer2, &750, &te.token_id);
 
         let dividend_amount: i128 = 10_000;
         mint(&te, &te.contract_id, dividend_amount);
@@ -1563,8 +1649,8 @@ mod test {
         c.add_to_whitelist(&te.buyer);
         c.add_to_whitelist(&buyer2);
 
-        c.buy_shares(&te.buyer, &10);
-        c.buy_shares(&buyer2, &20);
+        c.buy_shares(&te.buyer, &10, &te.token_id);
+        c.buy_shares(&buyer2, &20, &te.token_id);
         assert_eq!(c.get_holders().len(), 2);
 
         // Manually zero out buyer's balance to simulate a future sell/transfer
@@ -1622,7 +1708,7 @@ mod test {
         c.add_to_whitelist(&te.buyer);
 
         c.set_price(&200);
-        c.buy_shares(&te.buyer, &10);
+        c.buy_shares(&te.buyer, &10, &te.token_id);
 
         let token_client = token::TokenClient::new(&te.env, &te.token_id);
         assert_eq!(token_client.balance(&te.buyer), 100_000 - 10 * 200);
@@ -1665,7 +1751,7 @@ mod test {
         mint(&te, &te.buyer, 100_000);
         c.add_to_whitelist(&te.buyer);
 
-        c.buy_shares(&te.buyer, &100);
+        c.buy_shares(&te.buyer, &100, &te.token_id);
         assert_eq!(c.get_available_shares(), 900);
 
         c.set_total_shares(&1200);
@@ -1706,7 +1792,7 @@ mod test {
         c.add_to_whitelist(&te.buyer);
         
         // This should panic because price * shares overflows
-        c.buy_shares(&te.buyer, &2);
+        c.buy_shares(&te.buyer, &2, &te.token_id);
     }
 
     #[test]
@@ -1720,7 +1806,7 @@ mod test {
         c.add_to_whitelist(&te.buyer);
         
         // Buy more shares than available (caught by logic check, not arithmetic)
-        c.buy_shares(&te.buyer, &2000);
+        c.buy_shares(&te.buyer, &2000, &te.token_id);
     }
 
     #[test]
@@ -1741,7 +1827,7 @@ mod test {
         });
         
         // Now buying 20 more shares should trigger overflow in checked_add_u32
-        c.buy_shares(&te.buyer, &20);
+        c.buy_shares(&te.buyer, &20, &te.token_id);
     }
 
     #[test]
@@ -1754,7 +1840,7 @@ mod test {
         mint(&te, &te.buyer, 100_000);
         c.add_to_whitelist(&te.buyer);
         
-        c.buy_shares(&te.buyer, &500);
+        c.buy_shares(&te.buyer, &500, &te.token_id);
         
         // Use extremely large dividend amount that will overflow when multiplied by holder_shares
         let huge_dividend: i128 = i128::MAX / 2;
@@ -1775,7 +1861,7 @@ mod test {
         c.add_to_whitelist(&te.buyer);
         
         // Buy some shares to create issued_shares
-        c.buy_shares(&te.buyer, &600);
+        c.buy_shares(&te.buyer, &600, &te.token_id);
         
         // Try to set new_total to less than issued_shares
         // This is caught by the logic check before any arithmetic
@@ -1991,8 +2077,8 @@ mod test {
         c.add_to_whitelist(&te.buyer);
         c.add_to_whitelist(&buyer2);
 
-        c.buy_shares(&te.buyer, &300);
-        c.buy_shares(&buyer2, &700);
+        c.buy_shares(&te.buyer, &300, &te.token_id);
+        c.buy_shares(&buyer2, &700, &te.token_id);
         assert_eq!(c.get_available_shares(), 0);
 
         // Set schedule: 10 tokens per share, daily
@@ -2022,7 +2108,7 @@ mod test {
 
         mint(&te, &te.buyer, 100_000);
         c.add_to_whitelist(&te.buyer);
-        c.buy_shares(&te.buyer, &500);
+        c.buy_shares(&te.buyer, &500, &te.token_id);
 
         c.set_dividend_schedule(&1, &100);
         mint(&te, &te.contract_id, 500);
@@ -2040,7 +2126,7 @@ mod test {
 
         mint(&te, &te.buyer, 100_000);
         c.add_to_whitelist(&te.buyer);
-        c.buy_shares(&te.buyer, &500);
+        c.buy_shares(&te.buyer, &500, &te.token_id);
 
         c.set_dividend_schedule(&1, &100);
         mint(&te, &te.contract_id, 1000);
@@ -2060,7 +2146,7 @@ mod test {
 
         mint(&te, &te.buyer, 100_000);
         c.add_to_whitelist(&te.buyer);
-        c.buy_shares(&te.buyer, &500);
+        c.buy_shares(&te.buyer, &500, &te.token_id);
 
         c.set_dividend_schedule(&5, &3600); // every hour
         mint(&te, &te.contract_id, 2500);
@@ -2124,7 +2210,7 @@ mod test {
         c.add_to_whitelist(&te.buyer);
 
         c.set_max_shares_per_user(&50);
-        c.buy_shares(&te.buyer, &50);
+        c.buy_shares(&te.buyer, &50, &te.token_id);
         assert_eq!(c.get_shares(&te.buyer), 50);
     }
 
@@ -2138,7 +2224,7 @@ mod test {
         c.add_to_whitelist(&te.buyer);
 
         c.set_max_shares_per_user(&50);
-        c.buy_shares(&te.buyer, &51);
+        c.buy_shares(&te.buyer, &51, &te.token_id);
     }
 
     #[test]
@@ -2152,10 +2238,10 @@ mod test {
 
         c.set_max_shares_per_user(&50);
         // First purchase is fine (40 <= 50).
-        c.buy_shares(&te.buyer, &40);
+        c.buy_shares(&te.buyer, &40, &te.token_id);
         assert_eq!(c.get_shares(&te.buyer), 40);
         // Second purchase pushes total to 60 > 50 → rejected.
-        c.buy_shares(&te.buyer, &20);
+        c.buy_shares(&te.buyer, &20, &te.token_id);
     }
 
     #[test]
@@ -2167,8 +2253,8 @@ mod test {
         c.add_to_whitelist(&te.buyer);
 
         c.set_max_shares_per_user(&50);
-        c.buy_shares(&te.buyer, &30);
-        c.buy_shares(&te.buyer, &20); // exactly hits the cap
+        c.buy_shares(&te.buyer, &30, &te.token_id);
+        c.buy_shares(&te.buyer, &20, &te.token_id); // exactly hits the cap
         assert_eq!(c.get_shares(&te.buyer), 50);
     }
 
@@ -2204,7 +2290,7 @@ mod test {
 
         c.set_max_shares_per_user(&50);
         c.set_max_shares_per_user(&0); // disable cap
-        c.buy_shares(&te.buyer, &900);
+        c.buy_shares(&te.buyer, &900, &te.token_id);
         assert_eq!(c.get_shares(&te.buyer), 900);
     }
 
@@ -2217,10 +2303,10 @@ mod test {
         c.add_to_whitelist(&te.buyer);
 
         c.set_max_shares_per_user(&50);
-        c.buy_shares(&te.buyer, &50);
+        c.buy_shares(&te.buyer, &50, &te.token_id);
 
         c.set_max_shares_per_user(&100);
-        c.buy_shares(&te.buyer, &50);
+        c.buy_shares(&te.buyer, &50, &te.token_id);
         assert_eq!(c.get_shares(&te.buyer), 100);
     }
 
@@ -2237,8 +2323,8 @@ mod test {
         c.add_to_whitelist(&buyer2);
 
         c.set_max_shares_per_user(&50);
-        c.buy_shares(&te.buyer, &50);
-        c.buy_shares(&buyer2, &50);
+        c.buy_shares(&te.buyer, &50, &te.token_id);
+        c.buy_shares(&buyer2, &50, &te.token_id);
         assert_eq!(c.get_shares(&te.buyer), 50);
         assert_eq!(c.get_shares(&buyer2), 50);
     }
@@ -2259,7 +2345,7 @@ mod test {
         c.init(&te.admin, &te.token_id, &100, &1000);
         mint(&te, &te.buyer, 100_000);
         c.add_to_whitelist(&te.buyer);
-        c.buy_shares(&te.buyer, &50);
+        c.buy_shares(&te.buyer, &50, &te.token_id);
 
         let recipient = Address::generate(&te.env);
         c.transfer_shares(&te.buyer, &recipient, &20);
@@ -2276,7 +2362,7 @@ mod test {
         c.init(&te.admin, &te.token_id, &100, &1000);
         mint(&te, &te.buyer, 100_000);
         c.add_to_whitelist(&te.buyer);
-        c.buy_shares(&te.buyer, &10);
+        c.buy_shares(&te.buyer, &10, &te.token_id);
 
         let recipient = Address::generate(&te.env);
         c.transfer_shares(&te.buyer, &recipient, &20);
@@ -2290,7 +2376,7 @@ mod test {
         c.init(&te.admin, &te.token_id, &100, &1000);
         mint(&te, &te.buyer, 100_000);
         c.add_to_whitelist(&te.buyer);
-        c.buy_shares(&te.buyer, &10);
+        c.buy_shares(&te.buyer, &10, &te.token_id);
 
         let recipient = Address::generate(&te.env);
         c.transfer_shares(&te.buyer, &recipient, &0);
@@ -2303,7 +2389,7 @@ mod test {
         c.init(&te.admin, &te.token_id, &100, &1000);
         mint(&te, &te.buyer, 100_000);
         c.add_to_whitelist(&te.buyer);
-        c.buy_shares(&te.buyer, &50);
+        c.buy_shares(&te.buyer, &50, &te.token_id);
 
         let spender = Address::generate(&te.env);
         let recipient = Address::generate(&te.env);
@@ -2327,7 +2413,7 @@ mod test {
         c.init(&te.admin, &te.token_id, &100, &1000);
         mint(&te, &te.buyer, 100_000);
         c.add_to_whitelist(&te.buyer);
-        c.buy_shares(&te.buyer, &50);
+        c.buy_shares(&te.buyer, &50, &te.token_id);
 
         let spender = Address::generate(&te.env);
         let recipient = Address::generate(&te.env);
@@ -2343,7 +2429,7 @@ mod test {
         c.init(&te.admin, &te.token_id, &100, &1000);
         mint(&te, &te.buyer, 100_000);
         c.add_to_whitelist(&te.buyer);
-        c.buy_shares(&te.buyer, &50);
+        c.buy_shares(&te.buyer, &50, &te.token_id);
 
         let recipient = Address::generate(&te.env);
         assert_eq!(c.get_holders().len(), 1);
@@ -2361,7 +2447,7 @@ mod test {
         c.init(&te.admin, &te.token_id, &100, &1000);
         mint(&te, &te.buyer, 100_000);
         c.add_to_whitelist(&te.buyer);
-        c.buy_shares(&te.buyer, &100);
+        c.buy_shares(&te.buyer, &100, &te.token_id);
 
         // Fund contract so it can pay seller
         mint(&te, &te.contract_id, 10_000);
@@ -2387,7 +2473,7 @@ mod test {
         c.init(&te.admin, &te.token_id, &100, &1000);
         mint(&te, &te.buyer, 100_000);
         c.add_to_whitelist(&te.buyer);
-        c.buy_shares(&te.buyer, &10);
+        c.buy_shares(&te.buyer, &10, &te.token_id);
         c.buyback_shares(&te.buyer, &0);
     }
 
@@ -2399,7 +2485,7 @@ mod test {
         c.init(&te.admin, &te.token_id, &100, &1000);
         mint(&te, &te.buyer, 100_000);
         c.add_to_whitelist(&te.buyer);
-        c.buy_shares(&te.buyer, &10);
+        c.buy_shares(&te.buyer, &10, &te.token_id);
         mint(&te, &te.contract_id, 1_000_000);
         c.buyback_shares(&te.buyer, &20);
     }
@@ -2447,7 +2533,7 @@ mod test {
         c.init(&te.admin, &te.token_id, &100, &1000);
         mint(&te, &te.buyer, 100_000);
         c.add_to_whitelist(&te.buyer);
-        c.buy_shares(&te.buyer, &100);
+        c.buy_shares(&te.buyer, &100, &te.token_id);
 
         // Fund contract and configure auto-buyback
         mint(&te, &te.contract_id, 50_000);
@@ -2470,7 +2556,7 @@ mod test {
         c.init(&te.admin, &te.token_id, &100, &1000);
         mint(&te, &te.buyer, 100_000);
         c.add_to_whitelist(&te.buyer);
-        c.buy_shares(&te.buyer, &100);
+        c.buy_shares(&te.buyer, &100, &te.token_id);
         mint(&te, &te.contract_id, 50_000);
         c.auto_buyback_config(&3600_u64, &50_u32, &50_000_i128);
 
@@ -2486,7 +2572,7 @@ mod test {
         c.init(&te.admin, &te.token_id, &100, &1000);
         mint(&te, &te.buyer, 100_000);
         c.add_to_whitelist(&te.buyer);
-        c.buy_shares(&te.buyer, &100);
+        c.buy_shares(&te.buyer, &100, &te.token_id);
         mint(&te, &te.contract_id, 50_000);
         c.auto_buyback_config(&3600_u64, &20_u32, &50_000_i128);
 
@@ -2502,7 +2588,7 @@ mod test {
         c.init(&te.admin, &te.token_id, &100, &1000);
         mint(&te, &te.buyer, 100_000);
         c.add_to_whitelist(&te.buyer);
-        c.buy_shares(&te.buyer, &100);
+        c.buy_shares(&te.buyer, &100, &te.token_id);
 
         // Budget of 500 → can afford only 5 shares at price 100
         mint(&te, &te.contract_id, 500);

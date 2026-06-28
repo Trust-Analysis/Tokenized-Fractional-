@@ -2,7 +2,6 @@ import React, { useState, useEffect, useRef, useMemo } from 'react';
 import { Routes, Route, useNavigate, useLocation } from 'react-router-dom';
 import { Networks, nativeToScVal } from '@stellar/stellar-sdk';
 import { useTranslation } from 'react-i18next';
-import { useSorobanRead, useSorobanWrite } from './hooks/useSoroban';
 
 import Header from './components/Header/Header';
 import Navbar from './components/Navbar/Navbar';
@@ -34,7 +33,6 @@ import { useAssetStore } from './store/useAssetStore';
 import { useToastStore } from './store/useToastStore';
 import { useSorobanRead, useSorobanWrite } from './hooks/useSoroban';
 import useTransactionStatus from './hooks/useTransactionStatus';
-import { useSorobanRead, useSorobanWrite } from './hooks/useSoroban';
 
 const CONTRACT_ID = import.meta.env.VITE_CONTRACT_ID || 'C...';
 const NETWORK_PASSPHRASE = import.meta.env.VITE_NETWORK_PASSPHRASE || Networks.TESTNET;
@@ -191,6 +189,37 @@ function App() {
   const { data: priceData } = useSorobanRead('get_price', [], { skip: CONTRACT_ID.length < 50 });
   const pricePerShare = priceData?.retval ? Number(priceData.retval.u64()) : null;
 
+  const [acceptedTokens, setAcceptedTokens] = useState([]);
+  const [paymentToken, setPaymentToken] = useState('');
+
+  useEffect(() => {
+    if (!publicKey || CONTRACT_ID.length < 50) return;
+    (async () => {
+      try {
+        const { rpc, Contract, TransactionBuilder, Address } = await import('@stellar/stellar-sdk');
+        const server = new rpc.Server(import.meta.env.VITE_RPC_URL || 'https://soroban-testnet.stellar.org:443');
+        const contract = new Contract(CONTRACT_ID);
+        const account = await server.getAccount(publicKey);
+        const tx = new TransactionBuilder(account, {
+          fee: '100',
+          networkPassphrase: NETWORK_PASSPHRASE,
+        })
+          .addOperation(contract.call('get_accepted_tokens'))
+          .setTimeout(30)
+          .build();
+        const sim = await server.simulateTransaction(tx);
+        if (sim.result?.retval) {
+          const vec = sim.result.retval.vec();
+          const list = vec ? vec.map((v) => Address.fromScVal(v).toString()) : [];
+          setAcceptedTokens(list);
+          if (list.length > 0) setPaymentToken(list[0]);
+        }
+      } catch {
+        // silently fall back — buyer will use default
+      }
+    })();
+  }, [publicKey]);
+
   useEffect(() => {
     if (publicKey) fetchMetadata(CONTRACT_ID, API_URL);
   }, [publicKey]);
@@ -212,7 +241,8 @@ function App() {
     try {
       const scValBuyer = nativeToScVal(publicKey, { type: 'address' });
       const scValShares = nativeToScVal(buyAmount, { type: 'u32' });
-      const submitRes = await buySharesTx.execute([scValBuyer, scValShares]);
+      const scValToken = nativeToScVal(paymentToken, { type: 'address' });
+      const submitRes = await buySharesTx.execute([scValBuyer, scValShares, scValToken]);
       setConfirmPending(false);
       const hash = submitRes.hash;
       setLastTxHash(hash);
@@ -372,41 +402,15 @@ function App() {
 
       {/* ── Holdings + Buy Card ─────────────────────────────────────────── */}
       {publicKey && (
-        <Card>
-          <div className={styles.holdingsRow}>
-            <span className={styles.holdingsLabel}>{t('marketplace.shareBalance')}</span>
-            {loadingShares ? (
-              <span className={styles.holdingsValueLoading}>
-                <Spinner size="sm" label="Fetching share balance…" />
-                <Skeleton variant="text" width="3rem" height="1.6em" />
-              </span>
-            ) : (
-              <span className={styles.holdingsValue}>{shares}</span>
-            )}
-          </div>
-          <hr className={styles.divider} />
-          <h3 className={styles.purchaseHeader}>{t('marketplace.buyShares')}</h3>
-          <div className={styles.purchaseRow}>
-            <Input
-              id="buy-amount-input"
-              type="number"
-              value={buyAmount}
-              onChange={(e) => setBuyAmount(Math.max(1, Number(e.target.value)))}
-              min="1"
-              disabled={loadingBuy}
-              className={styles.buyInput}
-            />
-            <Button onClick={handleBuyShares} loading={loadingBuy} variant="primary">
-              {loadingBuy ? t('marketplace.processing') : t('marketplace.buyButton')}
-            </Button>
-          </div>
-          {loadingBuy && (
-            <div className={styles.buyLoadingHint}>
-              <Spinner size="sm" label="Processing transaction…" />
-              <span>Submitting transaction to the network…</span>
-            </div>
-          )}
-        </Card>
+        <BuyShares
+          shares={shares}
+          loadingShares={loadingShares}
+          loadingBuy={loadingBuy}
+          onBuy={handleBuyShares}
+          acceptedTokens={acceptedTokens}
+          paymentToken={paymentToken}
+          onTokenChange={setPaymentToken}
+        />
       )}
         </>
       )}
