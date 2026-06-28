@@ -75,6 +75,7 @@ describe('cache module', () => {
 describe('GET /api/rwa caching', () => {
   beforeAll(async () => {
     await request(app).post('/api/rwa').set('x-api-key', API_KEY).send(VALID_BODY);
+    await request(app).post(`/api/rwa/${VALID_ID}/approve`).set('x-api-key', API_KEY);
   });
 
   test('response is cached after first GET /api/rwa', async () => {
@@ -113,6 +114,7 @@ describe('GET /api/rwa/:contractId caching', () => {
   beforeAll(async () => {
     await request(app).post('/api/rwa').set('x-api-key', API_KEY)
       .send({ ...VALID_BODY, contractId: ID });
+    await request(app).post(`/api/rwa/${ID}/approve`).set('x-api-key', API_KEY);
   });
 
   test('individual asset is cached after first GET', async () => {
