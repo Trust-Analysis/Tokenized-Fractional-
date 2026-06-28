@@ -95,6 +95,13 @@ graph TB
 ## Documentation
 
 - [Architecture Overview & Diagrams](docs/architecture.md)
+- [Architecture Decision Records (ADRs)](docs/adr/README.md) — Technical decisions and rationale
+- [Performance Benchmarks](docs/performance.md) — Gas costs, API latency, frontend metrics
+- [Troubleshooting Guide](docs/troubleshooting.md) — Common issues and solutions
+- [Multi-Region Deployment](docs/multi-region-deployment.md) — Deployment strategy and failover
+- [NFT Certificates](docs/NFT_CERTIFICATES.md)
+- [NFT Quickstart](docs/NFT_QUICKSTART.md)
+- [FAQ](docs/FAQ.md)
 
 ## Prerequisites
 
