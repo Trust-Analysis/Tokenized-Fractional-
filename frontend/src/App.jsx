@@ -4,16 +4,15 @@ import { Networks, nativeToScVal } from '@stellar/stellar-sdk';
 import { useTranslation } from 'react-i18next';
 import { useSorobanRead, useSorobanWrite } from './hooks/useSoroban';
 
-import Button from './components/Button/Button';
+import Header from './components/Header/Header';
+import Navbar from './components/Navbar/Navbar';
 import Card from './components/Card/Card';
-import Input from './components/Input/Input';
-import Badge from './components/Badge/Badge';
 import Alert from './components/Alert/Alert';
 import Skeleton from './components/Skeleton/Skeleton';
-import Spinner from './components/Spinner/Spinner';
 import AssetGrid from './components/AssetGrid/AssetGrid';
 import AdminPage from './components/AdminPage/AdminPage';
 import PortfolioPage from './components/PortfolioPage/PortfolioPage';
+import BuyShares from './components/BuyShares/BuyShares';
 import ToastContainer from './components/Toast/Toast';
 import ConfirmPurchase from './components/ConfirmPurchase/ConfirmPurchase';
 import LanguageSwitcher from './components/LanguageSwitcher/LanguageSwitcher';
@@ -33,6 +32,7 @@ import {
 } from './constants/errors';
 import { useAssetStore } from './store/useAssetStore';
 import { useToastStore } from './store/useToastStore';
+import { useSorobanRead, useSorobanWrite } from './hooks/useSoroban';
 import useTransactionStatus from './hooks/useTransactionStatus';
 import { useSorobanRead, useSorobanWrite } from './hooks/useSoroban';
 
@@ -327,7 +327,7 @@ function App() {
       )}
 
       {/* ── Asset Metadata Card ─────────────────────────────────────────── */}
-      {loadingMeta ? (
+      {isFetchingMeta ? (
         <Card>
           <div className={styles.assetImageWrapper}>
             <Skeleton variant="rect" height="100%" style={{ borderRadius: 'var(--radius-sm)' }} />
