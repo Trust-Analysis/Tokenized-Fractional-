@@ -16,6 +16,7 @@ import * as Sentry from '@sentry/node';
 import { readFileSync, writeFileSync, existsSync } from 'fs';
 import { join, dirname } from 'path';
 import { fileURLToPath } from 'url';
+import { setTimeout } from 'timers/promises';
 import swaggerUi from 'swagger-ui-express';
 import { swaggerSpec } from './docs.js';
 import { cacheGet, cacheSet, cacheDel } from './cache.js';
@@ -106,6 +107,134 @@ const ASSET_STATUS = {
 
 function isApproved(asset) {
   return !asset.status || asset.status === ASSET_STATUS.APPROVED;
+}
+
+// ── Webhook helpers ────────────────────────────────────────────────────────────
+const WEBHOOK_EVENTS = {
+  CREATED: 'asset.created',
+  UPDATED: 'asset.updated',
+  DELETED: 'asset.deleted',
+  APPROVED: 'asset.approved',
+  REJECTED: 'asset.rejected',
+};
+
+const WEBHOOK_VALID_EVENTS = Object.values(WEBHOOK_EVENTS);
+
+function getWebhookFile() {
+  return join(__dirname, process.env.WEBHOOK_DATA_FILE || 'webhooks.json');
+}
+
+function loadWebhooks() {
+  const file = getWebhookFile();
+  if (!existsSync(file)) return {};
+  try {
+    return JSON.parse(readFileSync(file, 'utf-8'));
+  } catch {
+    logger.error('Corrupted webhook data file, starting fresh');
+    return {};
+  }
+}
+
+function saveWebhooks(data) {
+  writeFileSync(getWebhookFile(), JSON.stringify(data, null, 2), 'utf-8');
+}
+
+function validateWebhookBody(body) {
+  if (!body.url || typeof body.url !== 'string') return 'url is required';
+  try {
+    new URL(body.url);
+  } catch {
+    return 'url must be a valid URL';
+  }
+  if (!Array.isArray(body.events) || body.events.length === 0) {
+    return 'events must be a non-empty array';
+  }
+  const invalid = body.events.filter(e => !WEBHOOK_VALID_EVENTS.includes(e));
+  if (invalid.length > 0) {
+    return `Invalid events: ${invalid.join(', ')}. Valid: ${WEBHOOK_VALID_EVENTS.join(', ')}`;
+  }
+  return null;
+}
+
+function generateWebhookId() {
+  return 'wh_' + randomUUID().replace(/-/g, '').slice(0, 16);
+}
+
+async function deliverToWebhook(webhook, payload) {
+  const body = JSON.stringify(payload);
+  const headers = {
+    'Content-Type': 'application/json',
+    'X-Webhook-Event': payload.event,
+    'X-Webhook-Delivery': randomUUID(),
+  };
+
+  const response = await fetch(webhook.url, {
+    method: 'POST',
+    headers,
+    body,
+    signal: AbortSignal.timeout(5000),
+  });
+
+  if (!response.ok) {
+    throw new Error(`Webhook responded with ${response.status}`);
+  }
+}
+
+async function deliverWebhookWithRetry(webhook, payload, maxRetries = 3) {
+  let lastError;
+  for (let attempt = 1; attempt <= maxRetries; attempt++) {
+    try {
+      await deliverToWebhook(webhook, payload);
+      return;
+    } catch (err) {
+      lastError = err;
+      if (attempt < maxRetries) {
+        await setTimeout(1000 * attempt);
+      }
+    }
+  }
+  throw lastError;
+}
+
+async function fireWebhooks(event, data) {
+  const webhooks = loadWebhooks();
+  const active = Object.values(webhooks).filter(w => w.active && w.events.includes(event));
+  if (active.length === 0) {
+    logger.info({ event, webhookCount: Object.keys(webhooks).length }, 'No active webhooks for event');
+    return;
+  }
+  logger.info({ event, count: active.length, urls: active.map(w => w.url) }, 'Firing webhooks');
+
+  const payload = {
+    event,
+    timestamp: new Date().toISOString(),
+    data,
+  };
+
+  const results = await Promise.allSettled(
+    active.map(w => deliverWebhookWithRetry(w, payload)),
+  );
+
+  let changed = false;
+  active.forEach((webhook, i) => {
+    if (results[i].status === 'rejected') {
+      webhook.failureCount = (webhook.failureCount || 0) + 1;
+      webhook.lastFailureAt = new Date().toISOString();
+      if (webhook.failureCount >= 5) {
+        webhook.active = false;
+        logger.warn({ webhookId: webhook.id, url: webhook.url }, 'Webhook auto-disabled after 5 failures');
+      }
+    } else {
+      webhook.failureCount = 0;
+      webhook.lastSuccessAt = new Date().toISOString();
+    }
+    webhook.updatedAt = new Date().toISOString();
+    changed = true;
+  });
+
+  if (changed) {
+    saveWebhooks(webhooks);
+  }
 }
 
 // ── App ───────────────────────────────────────────────────────────────────────
@@ -492,6 +621,7 @@ v1.post('/rwa', adminAuth, writeLimiter, async (req, res) => {
 
   // Invalidate caches (fire-and-forget)
   cacheDel('rwa:all').catch(() => {});
+  fireWebhooks(WEBHOOK_EVENTS.CREATED, { contractId, ...data[contractId] }).catch(() => {});
 
   req.log?.info({ contractId }, 'Asset created/updated');
   res.status(201).json({ contractId, ...data[contractId] });
@@ -543,11 +673,13 @@ v1.delete('/rwa/:contractId', adminAuth, writeLimiter, async (req, res) => {
   const data = loadData();
   if (!data[contractId]) return res.status(404).json({ error: 'Asset metadata not found' });
 
+  const deleted = { contractId, ...data[contractId] };
   delete data[contractId];
   saveData(data);
 
   // Invalidate caches (fire-and-forget)
   cacheDel('rwa:all', cacheKey(contractId)).catch(() => {});
+  fireWebhooks(WEBHOOK_EVENTS.DELETED, deleted).catch(() => {});
 
   req.log?.info({ contractId }, 'Asset deleted');
   res.json({ message: 'Asset metadata deleted', contractId });
@@ -643,6 +775,7 @@ v1.patch('/rwa/:contractId', adminAuth, writeLimiter, async (req, res) => {
 
   // Invalidate caches (fire-and-forget)
   cacheDel('rwa:all', cacheKey(contractId)).catch(() => {});
+  fireWebhooks(WEBHOOK_EVENTS.UPDATED, { contractId, ...data[contractId] }).catch(() => {});
 
   req.log?.info({ contractId, fields: Object.keys(patch) }, 'Asset partially updated');
   res.json({ contractId, ...data[contractId] });
@@ -684,6 +817,7 @@ v1.post('/rwa/:contractId/approve', adminAuth, writeLimiter, async (req, res) =>
   saveData(data);
 
   cacheDel('rwa:all', cacheKey(contractId)).catch(() => {});
+  fireWebhooks(WEBHOOK_EVENTS.APPROVED, { contractId, ...data[contractId] }).catch(() => {});
   req.log?.info({ contractId }, 'Asset approved');
   res.json({ contractId, ...data[contractId] });
 });
@@ -724,8 +858,187 @@ v1.post('/rwa/:contractId/reject', adminAuth, writeLimiter, async (req, res) => 
   saveData(data);
 
   cacheDel('rwa:all', cacheKey(contractId)).catch(() => {});
+  fireWebhooks(WEBHOOK_EVENTS.REJECTED, { contractId, ...data[contractId] }).catch(() => {});
   req.log?.info({ contractId }, 'Asset rejected');
   res.json({ contractId, ...data[contractId] });
+});
+
+// ── Webhook CRUD routes (admin only) ──────────────────────────────────────────
+/**
+ * @openapi
+ * /api/v1/webhooks:
+ *   get:
+ *     tags: [Webhooks]
+ *     summary: List all webhooks (admin only)
+ *     security:
+ *       - ApiKeyAuth: []
+ *     responses:
+ *       200:
+ *         description: List of registered webhooks
+ *       401:
+ *         description: Unauthorized
+ */
+v1.get('/webhooks', adminAuth, (req, res) => {
+  const webhooks = loadWebhooks();
+  res.json(Object.values(webhooks));
+});
+
+/**
+ * @openapi
+ * /api/v1/webhooks:
+ *   post:
+ *     tags: [Webhooks]
+ *     summary: Register a new webhook (admin only)
+ *     security:
+ *       - ApiKeyAuth: []
+ *     requestBody:
+ *       required: true
+ *       content:
+ *         application/json:
+ *           schema:
+ *             $ref: '#/components/schemas/WebhookInput'
+ *     responses:
+ *       201:
+ *         description: Webhook created
+ *       400:
+ *         description: Validation error
+ *       401:
+ *         description: Unauthorized
+ */
+v1.post('/webhooks', adminAuth, writeLimiter, (req, res) => {
+  const error = validateWebhookBody(req.body);
+  if (error) return res.status(400).json({ error });
+
+  const id = generateWebhookId();
+  const now = new Date().toISOString();
+  const webhooks = loadWebhooks();
+  webhooks[id] = {
+    id,
+    url: req.body.url,
+    events: req.body.events,
+    secret: req.body.secret || '',
+    active: req.body.active !== false,
+    createdAt: now,
+    updatedAt: now,
+    lastSuccessAt: null,
+    lastFailureAt: null,
+    failureCount: 0,
+  };
+  saveWebhooks(webhooks);
+
+  req.log?.info({ webhookId: id, url: req.body.url }, 'Webhook created');
+  res.status(201).json(webhooks[id]);
+});
+
+/**
+ * @openapi
+ * /api/v1/webhooks/{id}:
+ *   get:
+ *     tags: [Webhooks]
+ *     summary: Get a webhook by ID (admin only)
+ *     security:
+ *       - ApiKeyAuth: []
+ *     parameters:
+ *       - in: path
+ *         name: id
+ *         required: true
+ *         schema:
+ *           type: string
+ *     responses:
+ *       200:
+ *         description: Webhook details
+ *       401:
+ *         description: Unauthorized
+ *       404:
+ *         description: Webhook not found
+ */
+v1.get('/webhooks/:id', adminAuth, (req, res) => {
+  const webhooks = loadWebhooks();
+  const wh = webhooks[req.params.id];
+  if (!wh) return res.status(404).json({ error: 'Webhook not found' });
+  res.json(wh);
+});
+
+/**
+ * @openapi
+ * /api/v1/webhooks/{id}:
+ *   patch:
+ *     tags: [Webhooks]
+ *     summary: Update a webhook (admin only)
+ *     security:
+ *       - ApiKeyAuth: []
+ *     parameters:
+ *       - in: path
+ *         name: id
+ *         required: true
+ *         schema:
+ *           type: string
+ *     requestBody:
+ *       required: true
+ *       content:
+ *         application/json:
+ *           schema:
+ *             $ref: '#/components/schemas/WebhookInput'
+ *     responses:
+ *       200:
+ *         description: Webhook updated
+ *       400:
+ *         description: Validation error
+ *       401:
+ *         description: Unauthorized
+ *       404:
+ *         description: Webhook not found
+ */
+v1.patch('/webhooks/:id', adminAuth, writeLimiter, (req, res) => {
+  const webhooks = loadWebhooks();
+  const wh = webhooks[req.params.id];
+  if (!wh) return res.status(404).json({ error: 'Webhook not found' });
+
+  const allowed = ['url', 'events', 'secret', 'active'];
+  allowed.forEach(f => {
+    if (f in req.body && req.body[f] !== undefined) {
+      wh[f] = req.body[f];
+    }
+  });
+
+  wh.updatedAt = new Date().toISOString();
+  saveWebhooks(webhooks);
+
+  req.log?.info({ webhookId: req.params.id }, 'Webhook updated');
+  res.json(wh);
+});
+
+/**
+ * @openapi
+ * /api/v1/webhooks/{id}:
+ *   delete:
+ *     tags: [Webhooks]
+ *     summary: Delete a webhook (admin only)
+ *     security:
+ *       - ApiKeyAuth: []
+ *     parameters:
+ *       - in: path
+ *         name: id
+ *         required: true
+ *         schema:
+ *           type: string
+ *     responses:
+ *       200:
+ *         description: Webhook deleted
+ *       401:
+ *         description: Unauthorized
+ *       404:
+ *         description: Webhook not found
+ */
+v1.delete('/webhooks/:id', adminAuth, writeLimiter, (req, res) => {
+  const webhooks = loadWebhooks();
+  if (!webhooks[req.params.id]) return res.status(404).json({ error: 'Webhook not found' });
+
+  delete webhooks[req.params.id];
+  saveWebhooks(webhooks);
+
+  req.log?.info({ webhookId: req.params.id }, 'Webhook deleted');
+  res.json({ message: 'Webhook deleted', id: req.params.id });
 });
 
 // Mount versioned router and backward-compatible aliases

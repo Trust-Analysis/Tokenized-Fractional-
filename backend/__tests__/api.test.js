@@ -5,6 +5,7 @@ process.env.DATA_FILE = 'test-data.json';
 
 import request from 'supertest';
 import { unlinkSync, existsSync } from 'fs';
+import crypto from 'crypto';
 import { app } from '../index.js';
 import { setClient } from '../cache.js';
 
@@ -696,6 +697,320 @@ describe('Asset Verification Workflow', () => {
       expect(res.status).toBe(200);
       expect(res.body.status).toBe('rejected');
     });
+  });
+});
+
+// ── Webhook Management ────────────────────────────────────────────────────────
+describe('Webhook Management', () => {
+  const WEBHOOK_URL = 'https://httpbin.org/post';
+  let webhookId;
+
+  describe('POST /api/webhooks', () => {
+    test('requires admin API key', async () => {
+      const res = await request(app)
+        .post('/api/webhooks')
+        .send({ url: WEBHOOK_URL, events: ['asset.created'] });
+      expect(res.status).toBe(401);
+    });
+
+    test('creates a webhook', async () => {
+      const res = await request(app)
+        .post('/api/webhooks')
+        .set('x-api-key', API_KEY)
+        .send({ url: WEBHOOK_URL, events: ['asset.created', 'asset.updated'], secret: 'whsec_test' });
+      expect(res.status).toBe(201);
+      expect(res.body.id).toMatch(/^wh_/);
+      expect(res.body.url).toBe(WEBHOOK_URL);
+      expect(res.body.events).toEqual(['asset.created', 'asset.updated']);
+      expect(res.body.secret).toBe('whsec_test');
+      expect(res.body.active).toBe(true);
+      expect(res.body.failureCount).toBe(0);
+      webhookId = res.body.id;
+    });
+
+    test('rejects missing url', async () => {
+      const res = await request(app)
+        .post('/api/webhooks')
+        .set('x-api-key', API_KEY)
+        .send({ events: ['asset.created'] });
+      expect(res.status).toBe(400);
+      expect(res.body.error).toMatch(/url/i);
+    });
+
+    test('rejects invalid url', async () => {
+      const res = await request(app)
+        .post('/api/webhooks')
+        .set('x-api-key', API_KEY)
+        .send({ url: 'not-a-url', events: ['asset.created'] });
+      expect(res.status).toBe(400);
+      expect(res.body.error).toMatch(/url/i);
+    });
+
+    test('rejects missing events', async () => {
+      const res = await request(app)
+        .post('/api/webhooks')
+        .set('x-api-key', API_KEY)
+        .send({ url: WEBHOOK_URL });
+      expect(res.status).toBe(400);
+      expect(res.body.error).toMatch(/events/i);
+    });
+
+    test('rejects invalid events', async () => {
+      const res = await request(app)
+        .post('/api/webhooks')
+        .set('x-api-key', API_KEY)
+        .send({ url: WEBHOOK_URL, events: ['invalid.event'] });
+      expect(res.status).toBe(400);
+      expect(res.body.error).toMatch(/Invalid events/i);
+    });
+
+    test('works on /api/v1/webhooks', async () => {
+      const res = await request(app)
+        .post('/api/v1/webhooks')
+        .set('x-api-key', API_KEY)
+        .send({ url: 'https://example.com/v1-hook', events: ['asset.deleted'] });
+      expect(res.status).toBe(201);
+      expect(res.body.url).toBe('https://example.com/v1-hook');
+    });
+
+    test('defaults active to true', async () => {
+      const res = await request(app)
+        .post('/api/webhooks')
+        .set('x-api-key', API_KEY)
+        .send({ url: WEBHOOK_URL, events: ['asset.created'] });
+      expect(res.status).toBe(201);
+      expect(res.body.active).toBe(true);
+    });
+  });
+
+  describe('GET /api/webhooks', () => {
+    test('requires admin API key', async () => {
+      const res = await request(app).get('/api/webhooks');
+      expect(res.status).toBe(401);
+    });
+
+    test('lists registered webhooks', async () => {
+      const res = await request(app).get('/api/webhooks').set('x-api-key', API_KEY);
+      expect(res.status).toBe(200);
+      expect(Array.isArray(res.body)).toBe(true);
+      expect(res.body.some(w => w.id === webhookId)).toBe(true);
+    });
+
+    test('works on /api/v1/webhooks', async () => {
+      const res = await request(app).get('/api/v1/webhooks').set('x-api-key', API_KEY);
+      expect(res.status).toBe(200);
+      expect(Array.isArray(res.body)).toBe(true);
+    });
+  });
+
+  describe('GET /api/webhooks/:id', () => {
+    test('requires admin API key', async () => {
+      const res = await request(app).get(`/api/webhooks/${webhookId}`);
+      expect(res.status).toBe(401);
+    });
+
+    test('returns webhook by id', async () => {
+      const res = await request(app).get(`/api/webhooks/${webhookId}`).set('x-api-key', API_KEY);
+      expect(res.status).toBe(200);
+      expect(res.body.id).toBe(webhookId);
+      expect(res.body.url).toBe(WEBHOOK_URL);
+    });
+
+    test('returns 404 for unknown id', async () => {
+      const res = await request(app).get('/api/webhooks/wh_unknown').set('x-api-key', API_KEY);
+      expect(res.status).toBe(404);
+    });
+  });
+
+  describe('PATCH /api/webhooks/:id', () => {
+    test('requires admin API key', async () => {
+      const res = await request(app).patch(`/api/webhooks/${webhookId}`).send({ active: false });
+      expect(res.status).toBe(401);
+    });
+
+    test('updates webhook fields', async () => {
+      const res = await request(app)
+        .patch(`/api/webhooks/${webhookId}`)
+        .set('x-api-key', API_KEY)
+        .send({ active: false, events: ['asset.created'] });
+      expect(res.status).toBe(200);
+      expect(res.body.active).toBe(false);
+      expect(res.body.events).toEqual(['asset.created']);
+    });
+
+    test('returns 404 for unknown id', async () => {
+      const res = await request(app)
+        .patch('/api/webhooks/wh_unknown')
+        .set('x-api-key', API_KEY)
+        .send({ active: true });
+      expect(res.status).toBe(404);
+    });
+  });
+
+  describe('DELETE /api/webhooks/:id', () => {
+    let deleteId;
+
+    beforeAll(async () => {
+      const res = await request(app)
+        .post('/api/webhooks')
+        .set('x-api-key', API_KEY)
+        .send({ url: WEBHOOK_URL, events: ['asset.created'] });
+      deleteId = res.body.id;
+    });
+
+    test('requires admin API key', async () => {
+      const res = await request(app).delete(`/api/webhooks/${deleteId}`);
+      expect(res.status).toBe(401);
+    });
+
+    test('deletes a webhook', async () => {
+      const res = await request(app)
+        .delete(`/api/webhooks/${deleteId}`)
+        .set('x-api-key', API_KEY);
+      expect(res.status).toBe(200);
+      expect(res.body.message).toMatch(/deleted/i);
+    });
+
+    test('returns 404 when already deleted', async () => {
+      const res = await request(app)
+        .delete(`/api/webhooks/${deleteId}`)
+        .set('x-api-key', API_KEY);
+      expect(res.status).toBe(404);
+    });
+
+    test('returns 404 for unknown id', async () => {
+      const res = await request(app)
+        .delete('/api/webhooks/wh_nonexistent')
+        .set('x-api-key', API_KEY);
+      expect(res.status).toBe(404);
+    });
+  });
+
+  describe('Webhook delivery on asset changes', () => {
+    let receivedPayloads = [];
+    let testServer;
+    let testServerUrl;
+    let whDeliveryId;
+
+    beforeAll(async () => {
+      const http = await import('http');
+      testServer = http.createServer((req, res) => {
+        let body = '';
+        req.on('data', chunk => { body += chunk; });
+        req.on('end', () => {
+          try {
+            receivedPayloads.push(JSON.parse(body));
+          } catch { /* ignore malformed */ }
+          res.writeHead(200, { 'Content-Type': 'application/json' });
+          res.end(JSON.stringify({ ok: true }));
+        });
+      });
+      await new Promise(resolve => testServer.listen(0, '127.0.0.1', resolve));
+      const addr = testServer.address();
+      testServerUrl = `http://127.0.0.1:${addr.port}/hooks`;
+
+      // Create a dedicated webhook pointing at our test server for all events
+      const whRes = await request(app)
+        .post('/api/webhooks')
+        .set('x-api-key', API_KEY)
+        .send({ url: testServerUrl, events: ['asset.created', 'asset.updated', 'asset.deleted', 'asset.approved', 'asset.rejected'], active: true });
+      whDeliveryId = whRes.body.id;
+    });
+
+    afterAll(async () => {
+      if (whDeliveryId) {
+        await request(app).delete(`/api/webhooks/${whDeliveryId}`).set('x-api-key', API_KEY).catch(() => {});
+      }
+      if (testServer) await new Promise(resolve => testServer.close(resolve));
+    });
+
+    // Helper: create asset, approve it, and return IDs
+    async function createAsset(title) {
+      const id = 'C' + crypto.randomUUID().replace(/-/g, '').repeat(2).slice(0, 55);
+      const res = await request(app)
+        .post('/api/rwa')
+        .set('x-api-key', API_KEY)
+        .send({ contractId: id, title, location: 'T', description: 'D', assetType: 'Test' });
+      return { id, res };
+    }
+
+    async function waitForEvent(event, timeout = 5000) {
+      const deadline = Date.now() + timeout;
+      while (Date.now() < deadline) {
+        const found = receivedPayloads.find(p => p.event === event);
+        if (found) return found;
+        await new Promise(r => setTimeout(r, 50));
+      }
+      throw new Error(`Timed out waiting for ${event}. Received: ${JSON.stringify(receivedPayloads)}`);
+    }
+
+    test('fires asset.created on POST', async () => {
+      const { id } = await createAsset('Created');
+      const payload = await waitForEvent('asset.created');
+      expect(payload.data.contractId).toBe(id);
+      expect(payload.timestamp).toBeDefined();
+    });
+
+    test('fires asset.approved on approve', async () => {
+      const { id } = await createAsset('To Approve');
+      receivedPayloads = [];
+
+      await request(app)
+        .post(`/api/rwa/${id}/approve`)
+        .set('x-api-key', API_KEY);
+
+      const payload = await waitForEvent('asset.approved');
+      expect(payload.data.contractId).toBe(id);
+    });
+
+    test('fires asset.updated on PATCH', async () => {
+      const { id } = await createAsset('To Update');
+      receivedPayloads = [];
+
+      await request(app)
+        .patch(`/api/rwa/${id}`)
+        .set('x-api-key', API_KEY)
+        .send({ title: 'Updated' });
+
+      const payload = await waitForEvent('asset.updated');
+      expect(payload.data.title).toBe('Updated');
+    });
+
+    test('fires asset.deleted on DELETE', async () => {
+      const { id } = await createAsset('To Delete');
+      receivedPayloads = [];
+
+      await request(app)
+        .delete(`/api/rwa/${id}`)
+        .set('x-api-key', API_KEY);
+
+      const payload = await waitForEvent('asset.deleted');
+      expect(payload.data.contractId).toBe(id);
+    });
+
+    test('retries on 5xx response', async () => {
+      const http = await import('http');
+      let failCount = 0;
+      const failServer = http.createServer((_req, res) => {
+        failCount++;
+        res.writeHead(500);
+        res.end();
+      });
+      await new Promise(resolve => failServer.listen(0, '127.0.0.1', resolve));
+      const port = failServer.address().port;
+
+      await request(app)
+        .post('/api/webhooks')
+        .set('x-api-key', API_KEY)
+        .send({ url: `http://127.0.0.1:${port}/fail`, events: ['asset.created'], active: true });
+
+      await createAsset('Fail Test');
+
+      await new Promise(resolve => setTimeout(resolve, 6000));
+      expect(failCount).toBeGreaterThanOrEqual(3);
+
+      await new Promise(resolve => failServer.close(resolve));
+    }, 15000);
   });
 });
 

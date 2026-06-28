@@ -90,6 +90,31 @@ const options = {
             },
           },
         },
+        Webhook: {
+          type: 'object',
+          properties: {
+            id: { type: 'string', description: 'Unique webhook ID (wh_...)', example: 'wh_abc123def456' },
+            url: { type: 'string', format: 'uri', description: 'URL to call on events' },
+            events: { type: 'array', items: { type: 'string', enum: ['asset.created', 'asset.updated', 'asset.deleted', 'asset.approved', 'asset.rejected'] }, description: 'Events to subscribe to' },
+            secret: { type: 'string', description: 'Optional secret for HMAC signing' },
+            active: { type: 'boolean', description: 'Whether the webhook is active' },
+            createdAt: { type: 'string', format: 'date-time' },
+            updatedAt: { type: 'string', format: 'date-time' },
+            lastSuccessAt: { type: 'string', format: 'date-time', nullable: true },
+            lastFailureAt: { type: 'string', format: 'date-time', nullable: true },
+            failureCount: { type: 'integer', description: 'Consecutive failure count' },
+          },
+        },
+        WebhookInput: {
+          type: 'object',
+          required: ['url', 'events'],
+          properties: {
+            url: { type: 'string', format: 'uri', description: 'URL to call on events' },
+            events: { type: 'array', items: { type: 'string', enum: ['asset.created', 'asset.updated', 'asset.deleted', 'asset.approved', 'asset.rejected'] }, description: 'Events to subscribe to' },
+            secret: { type: 'string', description: 'Optional secret for HMAC signing' },
+            active: { type: 'boolean', description: 'Whether the webhook is active (default true)' },
+          },
+        },
       },
     },
     paths: {
@@ -311,6 +336,80 @@ const options = {
             '200': { description: 'Asset rejected', content: { 'application/json': { schema: { $ref: '#/components/schemas/Asset' } } } },
             '401': { description: 'Unauthorized', content: { 'application/json': { schema: { $ref: '#/components/schemas/Error' } } } },
             '404': { description: 'Asset not found', content: { 'application/json': { schema: { $ref: '#/components/schemas/Error' } } } },
+          },
+        },
+      },
+      '/api/v1/webhooks': {
+        get: {
+          tags: ['Webhooks'],
+          summary: 'List all webhooks (admin only)',
+          security: [{ ApiKeyAuth: [] }],
+          responses: {
+            '200': {
+              description: 'List of registered webhooks',
+              content: { 'application/json': { schema: { type: 'array', items: { $ref: '#/components/schemas/Webhook' } } } },
+            },
+            '401': { description: 'Unauthorized', content: { 'application/json': { schema: { $ref: '#/components/schemas/Error' } } } },
+          },
+        },
+        post: {
+          tags: ['Webhooks'],
+          summary: 'Register a new webhook (admin only)',
+          security: [{ ApiKeyAuth: [] }],
+          requestBody: {
+            required: true,
+            content: { 'application/json': { schema: { $ref: '#/components/schemas/WebhookInput' } } },
+          },
+          responses: {
+            '201': { description: 'Webhook created', content: { 'application/json': { schema: { $ref: '#/components/schemas/Webhook' } } } },
+            '400': { description: 'Validation error', content: { 'application/json': { schema: { $ref: '#/components/schemas/Error' } } } },
+            '401': { description: 'Unauthorized', content: { 'application/json': { schema: { $ref: '#/components/schemas/Error' } } } },
+          },
+        },
+      },
+      '/api/v1/webhooks/{id}': {
+        get: {
+          tags: ['Webhooks'],
+          summary: 'Get a webhook by ID (admin only)',
+          security: [{ ApiKeyAuth: [] }],
+          parameters: [
+            { in: 'path', name: 'id', required: true, schema: { type: 'string' }, description: 'Webhook ID' },
+          ],
+          responses: {
+            '200': { description: 'Webhook details', content: { 'application/json': { schema: { $ref: '#/components/schemas/Webhook' } } } },
+            '401': { description: 'Unauthorized', content: { 'application/json': { schema: { $ref: '#/components/schemas/Error' } } } },
+            '404': { description: 'Webhook not found', content: { 'application/json': { schema: { $ref: '#/components/schemas/Error' } } } },
+          },
+        },
+        patch: {
+          tags: ['Webhooks'],
+          summary: 'Update a webhook (admin only)',
+          security: [{ ApiKeyAuth: [] }],
+          parameters: [
+            { in: 'path', name: 'id', required: true, schema: { type: 'string' }, description: 'Webhook ID' },
+          ],
+          requestBody: {
+            required: true,
+            content: { 'application/json': { schema: { $ref: '#/components/schemas/WebhookInput' } } },
+          },
+          responses: {
+            '200': { description: 'Webhook updated', content: { 'application/json': { schema: { $ref: '#/components/schemas/Webhook' } } } },
+            '400': { description: 'Validation error', content: { 'application/json': { schema: { $ref: '#/components/schemas/Error' } } } },
+            '401': { description: 'Unauthorized', content: { 'application/json': { schema: { $ref: '#/components/schemas/Error' } } } },
+            '404': { description: 'Webhook not found', content: { 'application/json': { schema: { $ref: '#/components/schemas/Error' } } } },
+          },
+        },
+        delete: {
+          tags: ['Webhooks'],
+          summary: 'Delete a webhook (admin only)',
+          security: [{ ApiKeyAuth: [] }],
+          parameters: [
+            { in: 'path', name: 'id', required: true, schema: { type: 'string' }, description: 'Webhook ID' },
+          ],
+          responses: {
+            '200': { description: 'Webhook deleted', content: { 'application/json': { schema: { type: 'object', properties: { message: { type: 'string' }, id: { type: 'string' } } } } } },
+            '401': { description: 'Unauthorized', content: { 'application/json': { schema: { $ref: '#/components/schemas/Error' } } } },
+            '404': { description: 'Webhook not found', content: { 'application/json': { schema: { $ref: '#/components/schemas/Error' } } } },
           },
         },
       },
