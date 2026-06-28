@@ -5,7 +5,9 @@ import styles from './Modal.module.css';
 export default function Modal({ title, children, actions, onClose }) {
   // Close on Escape key
   useEffect(() => {
-    const onKey = (e) => { if (e.key === 'Escape') onClose?.(); };
+    const onKey = (e) => {
+      if (e.key === 'Escape') onClose?.();
+    };
     document.addEventListener('keydown', onKey);
     return () => document.removeEventListener('keydown', onKey);
   }, [onClose]);
@@ -16,7 +18,9 @@ export default function Modal({ title, children, actions, onClose }) {
       role="dialog"
       aria-modal="true"
       aria-label={title}
-      onClick={(e) => { if (e.target === e.currentTarget) onClose?.(); }}
+      onClick={(e) => {
+        if (e.target === e.currentTarget) onClose?.();
+      }}
     >
       <div className={styles.modal}>
         {title && <h2 className={styles.title}>{title}</h2>}

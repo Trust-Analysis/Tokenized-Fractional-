@@ -13,7 +13,12 @@ import styles from './AssetGrid.module.css';
  * @param {string}   error        - Error message if fetch failed
  * @param {boolean}  isEmpty      - True when fetch succeeded but returned 0 assets
  */
-export default function AssetGrid({ assets = [], loading = false, error = null, isEmpty = false }) {
+export default function AssetGrid({
+  assets = [],
+  loading = false,
+  error = null,
+  isEmpty = false,
+}) {
   // ── Loading state ──────────────────────────────────────────────────────
   if (loading) {
     return (
@@ -21,12 +26,31 @@ export default function AssetGrid({ assets = [], loading = false, error = null, 
         {Array.from({ length: 6 }).map((_, i) => (
           <Card key={i}>
             <div className={styles.skeletonImage}>
-              <Skeleton variant="rect" height="100%" style={{ borderRadius: 'var(--radius-sm)' }} />
+              <Skeleton
+                variant="rect"
+                height="100%"
+                style={{ borderRadius: 'var(--radius-sm)' }}
+              />
             </div>
             <div className={styles.skeletonBody}>
-              <Skeleton variant="text" height="0.75rem" width="30%" style={{ marginBottom: 'var(--spacing-xs)' }} />
-              <Skeleton variant="text" height="1.1em" width="75%" style={{ marginBottom: 'var(--spacing-xs)' }} />
-              <Skeleton variant="text" height="0.9em" width="50%" style={{ marginBottom: 'var(--spacing-sm)' }} />
+              <Skeleton
+                variant="text"
+                height="0.75rem"
+                width="30%"
+                style={{ marginBottom: 'var(--spacing-xs)' }}
+              />
+              <Skeleton
+                variant="text"
+                height="1.1em"
+                width="75%"
+                style={{ marginBottom: 'var(--spacing-xs)' }}
+              />
+              <Skeleton
+                variant="text"
+                height="0.9em"
+                width="50%"
+                style={{ marginBottom: 'var(--spacing-sm)' }}
+              />
               <Skeleton variant="text" height="0.9em" width="40%" />
             </div>
           </Card>
@@ -40,10 +64,19 @@ export default function AssetGrid({ assets = [], loading = false, error = null, 
     return (
       <div className={styles.stateContainer}>
         <div className={styles.stateIcon}>
-          <svg width="48" height="48" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round">
-            <circle cx="12" cy="12" r="10"></circle>
-            <line x1="12" y1="8" x2="12" y2="12"></line>
-            <line x1="12" y1="16" x2="12.01" y2="16"></line>
+          <svg
+            width="48"
+            height="48"
+            viewBox="0 0 24 24"
+            fill="none"
+            stroke="currentColor"
+            strokeWidth="1.5"
+            strokeLinecap="round"
+            strokeLinejoin="round"
+          >
+            <circle cx="12" cy="12" r="10" />
+            <line x1="12" y1="8" x2="12" y2="12" />
+            <line x1="12" y1="16" x2="12.01" y2="16" />
           </svg>
         </div>
         <p className={styles.stateText}>{FAILED_TO_LOAD_ASSETS}</p>
@@ -57,13 +90,24 @@ export default function AssetGrid({ assets = [], loading = false, error = null, 
     return (
       <div className={styles.stateContainer}>
         <div className={styles.stateIcon}>
-          <svg width="48" height="48" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round">
-            <path d="M13 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V9z"></path>
-            <polyline points="13 2 13 9 20 9"></polyline>
+          <svg
+            width="48"
+            height="48"
+            viewBox="0 0 24 24"
+            fill="none"
+            stroke="currentColor"
+            strokeWidth="1.5"
+            strokeLinecap="round"
+            strokeLinejoin="round"
+          >
+            <path d="M13 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V9z" />
+            <polyline points="13 2 13 9 20 9" />
           </svg>
         </div>
         <p className={styles.stateText}>No assets available</p>
-        <p className={styles.stateSubtext}>Check back later for new listings.</p>
+        <p className={styles.stateSubtext}>
+          Check back later for new listings.
+        </p>
       </div>
     );
   }

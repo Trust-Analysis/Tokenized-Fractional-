@@ -12,7 +12,9 @@ export default {
   },
 };
 
-const Template = (args) => <Spinner {...args} />;
+function Template(args) {
+  return <Spinner {...args} />;
+}
 
 export const Medium = Template.bind({});
 Medium.args = {

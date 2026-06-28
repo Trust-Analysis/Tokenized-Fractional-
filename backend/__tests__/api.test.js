@@ -1,19 +1,19 @@
 // Set env vars before importing the app (module-level constants are read at load time)
-process.env.NODE_ENV = 'test';
-process.env.ADMIN_API_KEY = 'test-key-for-jest';
-process.env.DATA_FILE = 'test-data.json';
-
 import request from 'supertest';
 import { unlinkSync, existsSync } from 'fs';
 import { app } from '../index.js';
 import { setClient } from '../cache.js';
+
+process.env.NODE_ENV = 'test';
+process.env.ADMIN_API_KEY = 'test-key-for-jest';
+process.env.DATA_FILE = 'test-data.json';
 
 // Ensure Redis is disabled (null = graceful fallback) for these tests
 beforeAll(() => setClient(null));
 afterAll(() => setClient(null));
 
 const API_KEY = 'test-key-for-jest';
-const VALID_ID = 'C' + 'A'.repeat(55);
+const VALID_ID = `C${'A'.repeat(55)}`;
 const VALID_BODY = {
   contractId: VALID_ID,
   title: 'Test Property',
@@ -86,14 +86,24 @@ describe('404 handler', () => {
 
 // ── GET /api/rwa ──────────────────────────────────────────────────────────────
 describe('GET /api/rwa', () => {
-  const ID_A = 'C' + 'A'.repeat(55);
-  const ID_B = 'C' + 'B'.repeat(55);
+  const ID_A = `C${'A'.repeat(55)}`;
+  const ID_B = `C${'B'.repeat(55)}`;
 
   beforeAll(async () => {
-    await request(app).post('/api/rwa').set('x-api-key', API_KEY)
-      .send({ contractId: ID_A, title: 'Coffee Farm', location: 'Ethiopia', description: 'Premium coffee plantation', assetType: 'Agriculture' });
-    await request(app).post('/api/rwa').set('x-api-key', API_KEY)
-      .send({ contractId: ID_B, title: 'Downtown Office', location: 'NYC', description: 'Manhattan office building', assetType: 'Real Estate' });
+    await request(app).post('/api/rwa').set('x-api-key', API_KEY).send({
+      contractId: ID_A,
+      title: 'Coffee Farm',
+      location: 'Ethiopia',
+      description: 'Premium coffee plantation',
+      assetType: 'Agriculture',
+    });
+    await request(app).post('/api/rwa').set('x-api-key', API_KEY).send({
+      contractId: ID_B,
+      title: 'Downtown Office',
+      location: 'NYC',
+      description: 'Manhattan office building',
+      assetType: 'Real Estate',
+    });
   });
 
   test('returns paginated response shape', async () => {
@@ -110,19 +120,27 @@ describe('GET /api/rwa', () => {
   test('filters by assetType', async () => {
     const res = await request(app).get('/api/rwa?assetType=agriculture');
     expect(res.status).toBe(200);
-    expect(res.body.data.every(a => a.assetType.toLowerCase() === 'agriculture')).toBe(true);
+    expect(
+      res.body.data.every((a) => a.assetType.toLowerCase() === 'agriculture')
+    ).toBe(true);
   });
 
   test('filters by search on title', async () => {
     const res = await request(app).get('/api/rwa?search=coffee');
     expect(res.status).toBe(200);
-    expect(res.body.data.some(a => a.title.toLowerCase().includes('coffee'))).toBe(true);
+    expect(
+      res.body.data.some((a) => a.title.toLowerCase().includes('coffee'))
+    ).toBe(true);
   });
 
   test('filters by search on description', async () => {
     const res = await request(app).get('/api/rwa?search=manhattan');
     expect(res.status).toBe(200);
-    expect(res.body.data.some(a => a.description.toLowerCase().includes('manhattan'))).toBe(true);
+    expect(
+      res.body.data.some((a) =>
+        a.description.toLowerCase().includes('manhattan')
+      )
+    ).toBe(true);
   });
 
   test('paginates with limit=1', async () => {
@@ -136,7 +154,9 @@ describe('GET /api/rwa', () => {
   test('page 2 with limit=1 returns next item', async () => {
     const page1 = await request(app).get('/api/rwa?limit=1&page=1');
     const page2 = await request(app).get('/api/rwa?limit=1&page=2');
-    expect(page1.body.data[0].contractId).not.toBe(page2.body.data[0].contractId);
+    expect(page1.body.data[0].contractId).not.toBe(
+      page2.body.data[0].contractId
+    );
   });
 });
 
@@ -194,7 +214,7 @@ describe('GET /api/rwa/:contractId', () => {
   });
 
   test('returns 404 for unknown contract ID', async () => {
-    const unknown = 'C' + 'Z'.repeat(55);
+    const unknown = `C${'Z'.repeat(55)}`;
     const res = await request(app).get(`/api/rwa/${unknown}`);
     expect(res.status).toBe(404);
     expect(res.body.error).toMatch(/not found/i);
@@ -302,14 +322,24 @@ describe('PATCH /api/rwa/:contractId', () => {
 
 // ── Versioned routes: GET /api/v1/rwa ─────────────────────────────────────────
 describe('GET /api/v1/rwa', () => {
-  const ID_A = 'C' + 'A'.repeat(55);
-  const ID_B = 'C' + 'B'.repeat(55);
+  const ID_A = `C${'A'.repeat(55)}`;
+  const ID_B = `C${'B'.repeat(55)}`;
 
   beforeAll(async () => {
-    await request(app).post('/api/v1/rwa').set('x-api-key', API_KEY)
-      .send({ contractId: ID_A, title: 'Coffee Farm', location: 'Ethiopia', description: 'Premium coffee plantation', assetType: 'Agriculture' });
-    await request(app).post('/api/v1/rwa').set('x-api-key', API_KEY)
-      .send({ contractId: ID_B, title: 'Downtown Office', location: 'NYC', description: 'Manhattan office building', assetType: 'Real Estate' });
+    await request(app).post('/api/v1/rwa').set('x-api-key', API_KEY).send({
+      contractId: ID_A,
+      title: 'Coffee Farm',
+      location: 'Ethiopia',
+      description: 'Premium coffee plantation',
+      assetType: 'Agriculture',
+    });
+    await request(app).post('/api/v1/rwa').set('x-api-key', API_KEY).send({
+      contractId: ID_B,
+      title: 'Downtown Office',
+      location: 'NYC',
+      description: 'Manhattan office building',
+      assetType: 'Real Estate',
+    });
   });
 
   test('returns paginated response shape', async () => {
@@ -322,13 +352,17 @@ describe('GET /api/v1/rwa', () => {
   test('filters by assetType', async () => {
     const res = await request(app).get('/api/v1/rwa?assetType=agriculture');
     expect(res.status).toBe(200);
-    expect(res.body.data.every(a => a.assetType.toLowerCase() === 'agriculture')).toBe(true);
+    expect(
+      res.body.data.every((a) => a.assetType.toLowerCase() === 'agriculture')
+    ).toBe(true);
   });
 
   test('filters by search on title', async () => {
     const res = await request(app).get('/api/v1/rwa?search=coffee');
     expect(res.status).toBe(200);
-    expect(res.body.data.some(a => a.title.toLowerCase().includes('coffee'))).toBe(true);
+    expect(
+      res.body.data.some((a) => a.title.toLowerCase().includes('coffee'))
+    ).toBe(true);
   });
 
   test('paginates with limit=1', async () => {
@@ -383,7 +417,7 @@ describe('GET /api/v1/rwa/:contractId', () => {
   });
 
   test('returns 404 for unknown contract ID', async () => {
-    const unknown = 'C' + 'Z'.repeat(55);
+    const unknown = `C${'Z'.repeat(55)}`;
     const res = await request(app).get(`/api/v1/rwa/${unknown}`);
     expect(res.status).toBe(404);
     expect(res.body.error).toMatch(/not found/i);
@@ -392,11 +426,16 @@ describe('GET /api/v1/rwa/:contractId', () => {
 
 // ── Versioned routes: DELETE /api/v1/rwa/:contractId ─────────────────────────
 describe('DELETE /api/v1/rwa/:contractId', () => {
-  const V1_DELETE_ID = 'C' + 'D'.repeat(55);
+  const V1_DELETE_ID = `C${'D'.repeat(55)}`;
 
   beforeAll(async () => {
-    await request(app).post('/api/v1/rwa').set('x-api-key', API_KEY)
-      .send({ contractId: V1_DELETE_ID, title: 'To Delete', location: 'Test', description: 'Asset to delete', assetType: 'Test' });
+    await request(app).post('/api/v1/rwa').set('x-api-key', API_KEY).send({
+      contractId: V1_DELETE_ID,
+      title: 'To Delete',
+      location: 'Test',
+      description: 'Asset to delete',
+      assetType: 'Test',
+    });
   });
 
   test('rejects without API key', async () => {
@@ -423,8 +462,9 @@ describe('DELETE /api/v1/rwa/:contractId', () => {
 // ── Rate limiting ─────────────────────────────────────────────────────────────
 describe('Rate limiting', () => {
   test('write limiter blocks after 20 requests', async () => {
-    const ids = Array.from({ length: 21 }, (_, i) =>
-      'C' + String(i).padStart(55, '0')
+    const ids = Array.from(
+      { length: 21 },
+      (_, i) => `C${String(i).padStart(55, '0')}`
     );
     const statuses = [];
     for (const id of ids) {

@@ -13,7 +13,9 @@ export default {
   },
 };
 
-const Template = (args) => <Input {...args} />;
+function Template(args) {
+  return <Input {...args} />;
+}
 
 export const Text = Template.bind({});
 Text.args = {

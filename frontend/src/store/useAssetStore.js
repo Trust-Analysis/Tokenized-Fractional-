@@ -73,7 +73,9 @@ export const useAssetStore = create((set, get) => ({
       }
     } catch (err) {
       console.warn('[AssetStore] Assets server unreachable:', err.message);
-      set({ assetsError: 'Unable to reach the metadata server. Please try again.' });
+      set({
+        assetsError: 'Unable to reach the metadata server. Please try again.',
+      });
     } finally {
       set({ isFetchingAssets: false });
     }

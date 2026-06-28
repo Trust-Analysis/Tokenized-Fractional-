@@ -1,0 +1,8 @@
+{
+  "name": "tokenized-fractional-root",
+  "private": true,
+  "version": "1.0.0",
+  "scripts": {
+    "prepare": "husky"
+  }
+}

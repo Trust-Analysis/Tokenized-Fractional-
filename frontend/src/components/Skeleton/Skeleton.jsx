@@ -40,7 +40,9 @@ export default function Skeleton({
 
   const computedStyle = {
     width: width || (variant === 'circle' ? '48px' : '100%'),
-    height: height || (variant === 'circle' ? '48px' : variant === 'text' ? '1em' : '1rem'),
+    height:
+      height ||
+      (variant === 'circle' ? '48px' : variant === 'text' ? '1em' : '1rem'),
     ...style,
   };
 

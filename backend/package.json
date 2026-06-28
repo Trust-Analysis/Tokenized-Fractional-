@@ -12,7 +12,9 @@
     "migrate": "knex migrate:latest",
     "migrate:rollback": "knex migrate:rollback",
     "migrate:make": "knex migrate:make",
-    "migrate:status": "knex migrate:list"
+    "migrate:status": "knex migrate:list",
+    "lint": "eslint . --ext .js --max-warnings=0",
+    "lint:fix": "eslint . --ext .js --fix"
   },
   "jest": {
     "testEnvironment": "node",
@@ -40,7 +42,13 @@
     "swagger-ui-express": "^5.0.1"
   },
   "devDependencies": {
+    "eslint": "^8.57.1",
+    "eslint-config-airbnb-base": "^15.0.0",
+    "eslint-config-prettier": "^10.1.8",
+    "eslint-plugin-import": "^2.32.0",
+    "eslint-plugin-prettier": "^5.5.6",
     "jest": "^29.7.0",
+    "prettier": "^3.9.1",
     "supertest": "^7.0.0"
   }
 }

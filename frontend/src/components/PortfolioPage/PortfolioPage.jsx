@@ -1,5 +1,11 @@
 import React, { useState, useEffect, useCallback } from 'react';
-import { rpc, TransactionBuilder, Networks, Contract, nativeToScVal } from '@stellar/stellar-sdk';
+import {
+  rpc,
+  TransactionBuilder,
+  Networks,
+  Contract,
+  nativeToScVal,
+} from '@stellar/stellar-sdk';
 import Card from '../Card/Card';
 import Skeleton from '../Skeleton/Skeleton';
 import Button from '../Button/Button';
@@ -7,11 +13,16 @@ import Spinner from '../Spinner/Spinner';
 import CertificateTemplate from '../CertificateTemplate/CertificateTemplate';
 import { useWalletStore } from '../../store/useWalletStore';
 import { useAssetStore } from '../../store/useAssetStore';
-import { FAILED_TO_FETCH_PORTFOLIO_ASSET, FAILED_TO_LOAD_PORTFOLIO } from '../../constants/errors';
+import {
+  FAILED_TO_FETCH_PORTFOLIO_ASSET,
+  FAILED_TO_LOAD_PORTFOLIO,
+} from '../../constants/errors';
 import styles from './PortfolioPage.module.css';
 
-const RPC_URL = import.meta.env.VITE_RPC_URL || 'https://soroban-testnet.stellar.org:443';
-const NETWORK_PASSPHRASE = import.meta.env.VITE_NETWORK_PASSPHRASE || Networks.TESTNET;
+const RPC_URL =
+  import.meta.env.VITE_RPC_URL || 'https://soroban-testnet.stellar.org:443';
+const NETWORK_PASSPHRASE =
+  import.meta.env.VITE_NETWORK_PASSPHRASE || Networks.TESTNET;
 
 const server = new rpc.Server(RPC_URL);
 
@@ -53,7 +64,10 @@ export default function PortfolioPage() {
                 fee: '100',
                 networkPassphrase: NETWORK_PASSPHRASE,
               });
-              tx = tx.addOperation(contract.call(method, ...args)).setTimeout(30).build();
+              tx = tx
+                .addOperation(contract.call(method, ...args))
+                .setTimeout(30)
+                .build();
               const res = await server.simulateTransaction(tx);
               if (!res.result) return null;
               return res.result.retval;
@@ -84,7 +98,7 @@ export default function PortfolioPage() {
               shares: 0,
               price: 0,
               value: 0,
-               error: FAILED_TO_FETCH_PORTFOLIO_ASSET,
+              error: FAILED_TO_FETCH_PORTFOLIO_ASSET,
             };
           }
         })
@@ -101,16 +115,19 @@ export default function PortfolioPage() {
     }
   }, [publicKey, assets]);
 
-  const handleDownloadCertificate = useCallback((item) => {
-    if (!publicKey) return;
-    setCertItem({
-      contractId: item.contractId,
-      title: item.title,
-      shares: item.shares,
-      address: publicKey,
-      date: new Date().toISOString(),
-    });
-  }, [publicKey]);
+  const handleDownloadCertificate = useCallback(
+    (item) => {
+      if (!publicKey) return;
+      setCertItem({
+        contractId: item.contractId,
+        title: item.title,
+        shares: item.shares,
+        address: publicKey,
+        date: new Date().toISOString(),
+      });
+    },
+    [publicKey]
+  );
 
   const handleCertificateComplete = useCallback(() => {
     setCertItem(null);
@@ -124,12 +141,23 @@ export default function PortfolioPage() {
     return (
       <Card className={styles.card}>
         <div className={styles.stateContainer}>
-          <svg width="48" height="48" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round">
-            <rect x="3" y="3" width="18" height="18" rx="2" ry="2"></rect>
-            <circle cx="8.5" cy="8.5" r="1.5"></circle>
-            <polyline points="21 15 16 10 5 21"></polyline>
+          <svg
+            width="48"
+            height="48"
+            viewBox="0 0 24 24"
+            fill="none"
+            stroke="currentColor"
+            strokeWidth="1.5"
+            strokeLinecap="round"
+            strokeLinejoin="round"
+          >
+            <rect x="3" y="3" width="18" height="18" rx="2" ry="2" />
+            <circle cx="8.5" cy="8.5" r="1.5" />
+            <polyline points="21 15 16 10 5 21" />
           </svg>
-          <p className={styles.stateText}>Connect your wallet to view portfolio</p>
+          <p className={styles.stateText}>
+            Connect your wallet to view portfolio
+          </p>
         </div>
       </Card>
     );
@@ -139,12 +167,23 @@ export default function PortfolioPage() {
     return (
       <Card className={styles.card}>
         <div className={styles.stateContainer}>
-          <svg width="48" height="48" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round">
-            <path d="M13 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V9z"></path>
-            <polyline points="13 2 13 9 20 9"></polyline>
+          <svg
+            width="48"
+            height="48"
+            viewBox="0 0 24 24"
+            fill="none"
+            stroke="currentColor"
+            strokeWidth="1.5"
+            strokeLinecap="round"
+            strokeLinejoin="round"
+          >
+            <path d="M13 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V9z" />
+            <polyline points="13 2 13 9 20 9" />
           </svg>
           <p className={styles.stateText}>No assets available</p>
-          <p className={styles.stateSubtext}>There are no assets to display in your portfolio.</p>
+          <p className={styles.stateSubtext}>
+            There are no assets to display in your portfolio.
+          </p>
         </div>
       </Card>
     );
@@ -155,7 +194,9 @@ export default function PortfolioPage() {
       <div className={styles.header}>
         <div>
           <h2 className={styles.title}>Portfolio</h2>
-          <p className={styles.subtitle}>Your fractional asset holdings across all markets</p>
+          <p className={styles.subtitle}>
+            Your fractional asset holdings across all markets
+          </p>
         </div>
         <Button onClick={fetchPortfolio} loading={loading} variant="primary">
           {loading ? 'Refreshing…' : 'Refresh'}
@@ -164,10 +205,19 @@ export default function PortfolioPage() {
 
       {error && (
         <div className={styles.error}>
-          <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
-            <circle cx="12" cy="12" r="10"></circle>
-            <line x1="12" y1="8" x2="12" y2="12"></line>
-            <line x1="12" y1="16" x2="12.01" y2="16"></line>
+          <svg
+            width="16"
+            height="16"
+            viewBox="0 0 24 24"
+            fill="none"
+            stroke="currentColor"
+            strokeWidth="2"
+            strokeLinecap="round"
+            strokeLinejoin="round"
+          >
+            <circle cx="12" cy="12" r="10" />
+            <line x1="12" y1="8" x2="12" y2="12" />
+            <line x1="12" y1="16" x2="12.01" y2="16" />
           </svg>
           {error}
         </div>
@@ -178,15 +228,21 @@ export default function PortfolioPage() {
         <div className={styles.summaryRow}>
           <div className={styles.summaryItem}>
             <span className={styles.summaryLabel}>Assets Held</span>
-            <span className={styles.summaryValue}>{holdings.filter(h => h.shares > 0).length}</span>
+            <span className={styles.summaryValue}>
+              {holdings.filter((h) => h.shares > 0).length}
+            </span>
           </div>
           <div className={styles.summaryItem}>
             <span className={styles.summaryLabel}>Total Shares</span>
-            <span className={styles.summaryValue}>{holdings.reduce((s, h) => s + h.shares, 0)}</span>
+            <span className={styles.summaryValue}>
+              {holdings.reduce((s, h) => s + h.shares, 0)}
+            </span>
           </div>
           <div className={styles.summaryItem}>
             <span className={styles.summaryLabel}>Total Value</span>
-            <span className={styles.summaryValueAccent}>{totalValue.toLocaleString()}</span>
+            <span className={styles.summaryValueAccent}>
+              {totalValue.toLocaleString()}
+            </span>
           </div>
         </div>
       </Card>
@@ -197,9 +253,19 @@ export default function PortfolioPage() {
           Array.from({ length: 4 }).map((_, i) => (
             <Card key={i} className={styles.rowCard}>
               <div className={styles.skeletonRow}>
-                <Skeleton variant="rect" width="40px" height="40px" style={{ borderRadius: 'var(--radius-sm)' }} />
+                <Skeleton
+                  variant="rect"
+                  width="40px"
+                  height="40px"
+                  style={{ borderRadius: 'var(--radius-sm)' }}
+                />
                 <div className={styles.skeletonBody}>
-                  <Skeleton variant="text" width="60%" height="1em" style={{ marginBottom: 'var(--spacing-xs)' }} />
+                  <Skeleton
+                    variant="text"
+                    width="60%"
+                    height="1em"
+                    style={{ marginBottom: 'var(--spacing-xs)' }}
+                  />
                   <Skeleton variant="text" width="30%" height="0.8em" />
                 </div>
                 <Skeleton variant="text" width="80px" height="1em" />
@@ -211,7 +277,9 @@ export default function PortfolioPage() {
           ))
         ) : (
           <>
-            <div className={`${styles.tableHeader} ${styles.tableHeaderWithAction}`}>
+            <div
+              className={`${styles.tableHeader} ${styles.tableHeaderWithAction}`}
+            >
               <span className={styles.colAsset}>Asset</span>
               <span className={styles.colShares}>Shares</span>
               <span className={styles.colPrice}>Price</span>
@@ -224,26 +292,54 @@ export default function PortfolioPage() {
                 <div className={styles.row}>
                   <div className={styles.assetInfo}>
                     {item.imageUrl ? (
-                      <img src={item.imageUrl} alt={item.title} className={styles.assetThumb} loading="lazy" />
+                      <img
+                        src={item.imageUrl}
+                        alt={item.title}
+                        className={styles.assetThumb}
+                        loading="lazy"
+                      />
                     ) : (
                       <div className={styles.thumbPlaceholder}>
-                        <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round">
-                          <rect x="3" y="3" width="18" height="18" rx="2" ry="2"></rect>
-                          <circle cx="8.5" cy="8.5" r="1.5"></circle>
-                          <polyline points="21 15 16 10 5 21"></polyline>
+                        <svg
+                          width="20"
+                          height="20"
+                          viewBox="0 0 24 24"
+                          fill="none"
+                          stroke="currentColor"
+                          strokeWidth="1.5"
+                          strokeLinecap="round"
+                          strokeLinejoin="round"
+                        >
+                          <rect
+                            x="3"
+                            y="3"
+                            width="18"
+                            height="18"
+                            rx="2"
+                            ry="2"
+                          />
+                          <circle cx="8.5" cy="8.5" r="1.5" />
+                          <polyline points="21 15 16 10 5 21" />
                         </svg>
                       </div>
                     )}
                     <div>
                       <span className={styles.assetName}>{item.title}</span>
-                      <span className={styles.contractId} title={item.contractId}>
+                      <span
+                        className={styles.contractId}
+                        title={item.contractId}
+                      >
                         {item.contractId.slice(0, 8)}…
                       </span>
                     </div>
                   </div>
                   <span className={styles.colShares}>{item.shares}</span>
-                  <span className={styles.colPrice}>{item.price.toLocaleString()}</span>
-                  <span className={`${styles.colValue} ${item.shares > 0 ? styles.valuePositive : ''}`}>
+                  <span className={styles.colPrice}>
+                    {item.price.toLocaleString()}
+                  </span>
+                  <span
+                    className={`${styles.colValue} ${item.shares > 0 ? styles.valuePositive : ''}`}
+                  >
                     {item.value.toLocaleString()}
                   </span>
                   <span className={styles.colAction}>
@@ -254,10 +350,20 @@ export default function PortfolioPage() {
                         size="sm"
                         className={styles.certButton}
                       >
-                        <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" style={{ marginRight: '4px' }}>
-                          <path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"></path>
-                          <polyline points="7 10 12 15 17 10"></polyline>
-                          <line x1="12" y1="15" x2="12" y2="3"></line>
+                        <svg
+                          width="14"
+                          height="14"
+                          viewBox="0 0 24 24"
+                          fill="none"
+                          stroke="currentColor"
+                          strokeWidth="2"
+                          strokeLinecap="round"
+                          strokeLinejoin="round"
+                          style={{ marginRight: '4px' }}
+                        >
+                          <path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4" />
+                          <polyline points="7 10 12 15 17 10" />
+                          <line x1="12" y1="15" x2="12" y2="3" />
                         </svg>
                         PDF
                       </Button>
@@ -272,12 +378,23 @@ export default function PortfolioPage() {
         {!loading && holdings.length === 0 && (
           <Card className={styles.card}>
             <div className={styles.stateContainer}>
-              <svg width="48" height="48" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round">
-                <path d="M13 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V9z"></path>
-                <polyline points="13 2 13 9 20 9"></polyline>
+              <svg
+                width="48"
+                height="48"
+                viewBox="0 0 24 24"
+                fill="none"
+                stroke="currentColor"
+                strokeWidth="1.5"
+                strokeLinecap="round"
+                strokeLinejoin="round"
+              >
+                <path d="M13 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V9z" />
+                <polyline points="13 2 13 9 20 9" />
               </svg>
               <p className={styles.stateText}>No holdings found</p>
-              <p className={styles.stateSubtext}>You don't own any shares yet. Browse assets in the marketplace.</p>
+              <p className={styles.stateSubtext}>
+                You don't own any shares yet. Browse assets in the marketplace.
+              </p>
             </div>
           </Card>
         )}

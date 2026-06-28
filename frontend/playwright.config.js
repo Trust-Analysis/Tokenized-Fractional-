@@ -13,9 +13,7 @@ export default defineConfig({
     video: 'retain-on-failure',
   },
 
-  projects: [
-    { name: 'chromium', use: { ...devices['Desktop Chrome'] } },
-  ],
+  projects: [{ name: 'chromium', use: { ...devices['Desktop Chrome'] } }],
 
   webServer: {
     // Build first, then serve the static output — starts in <1s and
@@ -26,7 +24,8 @@ export default defineConfig({
     timeout: 120_000,
     env: {
       VITE_MOCK_WALLET: 'true',
-      VITE_CONTRACT_ID: 'CDUMMYCONTRACTIDXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXX',
+      VITE_CONTRACT_ID:
+        'CDUMMYCONTRACTIDXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXX',
       VITE_API_URL: 'http://localhost:4173',
     },
   },

@@ -3,8 +3,7 @@
 
 import 'dotenv/config';
 import { randomUUID } from 'crypto';
-import express from 'express';
-import { Router } from 'express';
+import express, { Router } from 'express';
 import cors from 'cors';
 import helmet from 'helmet';
 import rateLimit from 'express-rate-limit';
@@ -21,14 +20,21 @@ import { cacheGet, cacheSet, cacheDel } from './cache.js';
 const __dirname = dirname(fileURLToPath(import.meta.url));
 const PORT = process.env.PORT || 3001;
 const CORS_ORIGINS = process.env.CORS_ORIGINS
-  ? process.env.CORS_ORIGINS.split(',').map(s => s.trim())
+  ? process.env.CORS_ORIGINS.split(',').map((s) => s.trim())
   : ['http://localhost:5173', 'http://localhost:4173'];
 
 // ── Logger ────────────────────────────────────────────────────────────────────
 const isDev = process.env.NODE_ENV === 'development';
 export const logger = pino({
-  level: process.env.LOG_LEVEL || (process.env.NODE_ENV === 'test' ? 'silent' : 'info'),
-  ...(isDev && { transport: { target: 'pino-pretty', options: { colorize: true, ignore: 'pid,hostname' } } }),
+  level:
+    process.env.LOG_LEVEL ||
+    (process.env.NODE_ENV === 'test' ? 'silent' : 'info'),
+  ...(isDev && {
+    transport: {
+      target: 'pino-pretty',
+      options: { colorize: true, ignore: 'pid,hostname' },
+    },
+  }),
 });
 
 // ── Sentry ────────────────────────────────────────────────────────────────────
@@ -47,7 +53,10 @@ if (process.env.SENTRY_DSN && process.env.NODE_ENV !== 'test') {
       Sentry.expressIntegration(),
     ],
   });
-  logger.info({ dsnPrefix: process.env.SENTRY_DSN.slice(0, 30) }, 'Sentry initialized');
+  logger.info(
+    { dsnPrefix: process.env.SENTRY_DSN.slice(0, 30) },
+    'Sentry initialized'
+  );
 }
 
 // ── Data helpers ──────────────────────────────────────────────────────────────
@@ -76,8 +85,9 @@ export function validateContractId(id) {
 
 export function validateRwaBody(body) {
   const required = ['title', 'location', 'description', 'assetType'];
-  const missing = required.filter(f => !body[f]);
-  if (missing.length > 0) return `Missing required fields: ${missing.join(', ')}`;
+  const missing = required.filter((f) => !body[f]);
+  if (missing.length > 0)
+    return `Missing required fields: ${missing.join(', ')}`;
   return null;
 }
 
@@ -90,7 +100,10 @@ function adminAuth(req, res, next) {
   const expected = process.env.ADMIN_API_KEY || 'dev-key-change-in-production';
   if (!apiKey || apiKey !== expected) {
     req.log?.warn({ hasKey: !!apiKey }, 'Unauthorized API key attempt');
-    return res.status(401).json({ error: 'Unauthorized: invalid or missing API key', requestId: req.requestId });
+    return res.status(401).json({
+      error: 'Unauthorized: invalid or missing API key',
+      requestId: req.requestId,
+    });
   }
   req.log?.info('Admin API key used');
   next();
@@ -106,7 +119,13 @@ if (process.env.SENTRY_DSN) {
 }
 
 app.use(helmet());
-app.use(cors({ origin: CORS_ORIGINS, methods: ['GET', 'POST', 'PATCH', 'DELETE'], allowedHeaders: ['Content-Type', 'x-api-key', 'X-Request-ID'] }));
+app.use(
+  cors({
+    origin: CORS_ORIGINS,
+    methods: ['GET', 'POST', 'DELETE'],
+    allowedHeaders: ['Content-Type', 'x-api-key', 'X-Request-ID'],
+  })
+);
 app.use(express.json({ limit: '10kb' }));
 
 // ── Request ID middleware ──────────────────────────────────────────────────────
@@ -118,11 +137,13 @@ app.use((req, res, next) => {
 });
 
 // Request logging middleware (silent in test)
-app.use(pinoHttp({
-  logger,
-  autoLogging: { ignore: req => req.url === '/health' },
-  genReqId: req => req.requestId,
-}));
+app.use(
+  pinoHttp({
+    logger,
+    autoLogging: { ignore: (req) => req.url === '/health' },
+    genReqId: (req) => req.requestId,
+  })
+);
 
 const apiLimiter = rateLimit({
   windowMs: 15 * 60 * 1000,
@@ -142,9 +163,13 @@ const writeLimiter = rateLimit({
 });
 
 // ── API Documentation ──────────────────────────────────────────────────────────
-app.use('/api-docs', swaggerUi.serve, swaggerUi.setup(swaggerSpec, {
-  customSiteTitle: 'RWA Marketplace API Docs',
-}));
+app.use(
+  '/api-docs',
+  swaggerUi.serve,
+  swaggerUi.setup(swaggerSpec, {
+    customSiteTitle: 'RWA Marketplace API Docs',
+  })
+);
 
 app.get('/api-docs.json', (_req, res) => {
   res.json(swaggerSpec);
@@ -180,12 +205,23 @@ app.get('/health', async (_req, res) => {
       pingClient.disconnect();
       deps.redis = { status: 'ok' };
     } catch {
-      deps.redis = { status: 'error', message: 'Redis configured but unreachable' };
-      return res.status(503).json({ status: 'degraded', timestamp: new Date().toISOString(), dependencies: deps });
+      deps.redis = {
+        status: 'error',
+        message: 'Redis configured but unreachable',
+      };
+      return res.status(503).json({
+        status: 'degraded',
+        timestamp: new Date().toISOString(),
+        dependencies: deps,
+      });
     }
   }
 
-  res.json({ status: 'ok', timestamp: new Date().toISOString(), dependencies: deps });
+  res.json({
+    status: 'ok',
+    timestamp: new Date().toISOString(),
+    dependencies: deps,
+  });
 });
 
 /**
@@ -230,21 +266,25 @@ app.get('/health', async (_req, res) => {
  */
 v1.get('/rwa', (req, res) => {
   const data = loadData();
-  let assets = Object.entries(data).map(([contractId, meta]) => ({ contractId, ...meta }));
+  let assets = Object.entries(data).map(([contractId, meta]) => ({
+    contractId,
+    ...meta,
+  }));
 
   // Filter: assetType (case-insensitive)
   const { assetType, search, page, limit } = req.query;
   if (assetType) {
     const lower = assetType.toLowerCase();
-    assets = assets.filter(a => a.assetType?.toLowerCase() === lower);
+    assets = assets.filter((a) => a.assetType?.toLowerCase() === lower);
   }
 
   // Filter: text search on title and description
   if (search) {
     const lower = search.toLowerCase();
-    assets = assets.filter(a =>
-      a.title?.toLowerCase().includes(lower) ||
-      a.description?.toLowerCase().includes(lower)
+    assets = assets.filter(
+      (a) =>
+        a.title?.toLowerCase().includes(lower) ||
+        a.description?.toLowerCase().includes(lower)
     );
   }
 
@@ -262,7 +302,10 @@ v1.get('/rwa', (req, res) => {
   });
 
   // Cache the full asset list (fire-and-forget)
-  cacheSet('rwa:all', { data: assets, pagination: { total, page: pageNum, limit: pageSize, totalPages } }).catch(() => {});
+  cacheSet('rwa:all', {
+    data: assets,
+    pagination: { total, page: pageNum, limit: pageSize, totalPages },
+  }).catch(() => {});
 });
 
 /**
@@ -300,7 +343,8 @@ v1.get('/rwa/:contractId', async (req, res) => {
 
   const data = loadData();
   const asset = data[contractId];
-  if (!asset) return res.status(404).json({ error: 'Asset metadata not found' });
+  if (!asset)
+    return res.status(404).json({ error: 'Asset metadata not found' });
 
   const result = { contractId, ...asset };
   // Cache individual asset (fire-and-forget)
@@ -347,7 +391,10 @@ v1.post('/rwa', adminAuth, writeLimiter, async (req, res) => {
   const { contractId, ...metadata } = req.body;
 
   if (!contractId || !validateContractId(contractId)) {
-    return res.status(400).json({ error: 'Invalid contract ID. Must start with C and be at least 50 characters.' });
+    return res.status(400).json({
+      error:
+        'Invalid contract ID. Must start with C and be at least 50 characters.',
+    });
   }
 
   const validationError = validateRwaBody(metadata);
@@ -419,7 +466,8 @@ v1.post('/rwa', adminAuth, writeLimiter, async (req, res) => {
 v1.delete('/rwa/:contractId', adminAuth, writeLimiter, async (req, res) => {
   const { contractId } = req.params;
   const data = loadData();
-  if (!data[contractId]) return res.status(404).json({ error: 'Asset metadata not found' });
+  if (!data[contractId])
+    return res.status(404).json({ error: 'Asset metadata not found' });
 
   delete data[contractId];
   saveData(data);
@@ -541,7 +589,9 @@ if (process.env.SENTRY_DSN) {
 
 app.use((err, req, res, _next) => {
   req.log?.error({ err }, 'Unhandled error');
-  res.status(500).json({ error: 'Internal server error', requestId: req.requestId });
+  res
+    .status(500)
+    .json({ error: 'Internal server error', requestId: req.requestId });
 });
 
 export { app };

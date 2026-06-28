@@ -13,8 +13,11 @@ import {
 } from '../../constants/errors';
 
 const CONTRACT_ID = import.meta.env.VITE_CONTRACT_ID || 'C...';
-const RPC_URL = import.meta.env.VITE_RPC_URL || 'https://soroban-testnet.stellar.org:443';
-const NETWORK_PASSPHRASE = import.meta.env.VITE_NETWORK_PASSPHRASE || 'Test SDF Network ; September 2015';
+const RPC_URL =
+  import.meta.env.VITE_RPC_URL || 'https://soroban-testnet.stellar.org:443';
+const NETWORK_PASSPHRASE =
+  import.meta.env.VITE_NETWORK_PASSPHRASE ||
+  'Test SDF Network ; September 2015';
 
 export default function PauseControl({ publicKey }) {
   const [loading, setLoading] = useState(false);
@@ -35,14 +38,22 @@ export default function PauseControl({ publicKey }) {
         removeToast(pendingToastRef.current);
         pendingToastRef.current = null;
       }
-      addToast({ message: PAUSE_SUCCESS(isPaused), type: 'success', txHash: lastTxHash });
+      addToast({
+        message: PAUSE_SUCCESS(isPaused),
+        type: 'success',
+        txHash: lastTxHash,
+      });
     } else if (txStatus === 'failed') {
       notifiedRef.current[lastTxHash] = true;
       if (pendingToastRef.current) {
         removeToast(pendingToastRef.current);
         pendingToastRef.current = null;
       }
-      addToast({ message: PAUSE_TOGGLE_FAILED, type: 'error', txHash: lastTxHash });
+      addToast({
+        message: PAUSE_TOGGLE_FAILED,
+        type: 'error',
+        txHash: lastTxHash,
+      });
     }
   }, [lastTxHash, txStatus]);
 
@@ -50,13 +61,14 @@ export default function PauseControl({ publicKey }) {
     if (publicKey && CONTRACT_ID.length >= 50) {
       fetchPauseStatus();
     }
-  // eslint-disable-next-line react-hooks/exhaustive-deps
+    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [publicKey]);
 
   const fetchPauseStatus = async () => {
     if (!publicKey) return;
     try {
-      const { rpc, Contract, nativeToScVal } = await import('@stellar/stellar-sdk');
+      const { rpc, Contract, nativeToScVal } =
+        await import('@stellar/stellar-sdk');
       const server = new rpc.Server(RPC_URL);
       const contract = new Contract(CONTRACT_ID);
       const account = await server.getAccount(publicKey);
@@ -88,7 +100,8 @@ export default function PauseControl({ publicKey }) {
 
     try {
       const { signTransaction } = await import('@stellar/freighter-api');
-      const { rpc, TransactionBuilder, Contract, nativeToScVal } = await import('@stellar/stellar-sdk');
+      const { rpc, TransactionBuilder, Contract, nativeToScVal } =
+        await import('@stellar/stellar-sdk');
       const server = new rpc.Server(RPC_URL);
       const contract = new Contract(CONTRACT_ID);
 
@@ -106,16 +119,20 @@ export default function PauseControl({ publicKey }) {
       if (simulation.error) throw new Error(simulation.error);
 
       tx = rpc.assembleTransaction(tx, simulation).build();
-      const { signedTxXdr, error: signError } = await signTransaction(tx.toXDR(), {
-        networkPassphrase: NETWORK_PASSPHRASE,
-      });
-      if (signError || !signedTxXdr) throw new Error(signError?.message || SIGNING_FAILED);
+      const { signedTxXdr, error: signError } = await signTransaction(
+        tx.toXDR(),
+        {
+          networkPassphrase: NETWORK_PASSPHRASE,
+        }
+      );
+      if (signError || !signedTxXdr)
+        throw new Error(signError?.message || SIGNING_FAILED);
 
       const submitRes = await server.sendTransaction(
         TransactionBuilder.fromXDR(signedTxXdr, NETWORK_PASSPHRASE)
       );
 
-      const hash = submitRes.hash;
+      const { hash } = submitRes;
       setLastTxHash(hash);
       setIsPaused(!isPaused);
       pendingToastRef.current = addToast({
@@ -124,7 +141,10 @@ export default function PauseControl({ publicKey }) {
         txHash: hash,
       });
     } catch (err) {
-      addToast({ message: err.message || FAILED_TO_TOGGLE_PAUSE, type: 'error' });
+      addToast({
+        message: err.message || FAILED_TO_TOGGLE_PAUSE,
+        type: 'error',
+      });
     } finally {
       setLoading(false);
     }
@@ -136,7 +156,9 @@ export default function PauseControl({ publicKey }) {
 
       <div className={styles.statusRow}>
         <span className={styles.statusLabel}>Current Status:</span>
-        <span className={`${styles.statusValue} ${isPaused ? styles.paused : styles.active}`}>
+        <span
+          className={`${styles.statusValue} ${isPaused ? styles.paused : styles.active}`}
+        >
           {isPaused === null ? (
             <Spinner size="sm" label="Checking…" />
           ) : isPaused ? (
@@ -153,7 +175,11 @@ export default function PauseControl({ publicKey }) {
         loading={loading}
         disabled={!publicKey || CONTRACT_ID.length < 50}
       >
-        {loading ? 'Processing…' : isPaused ? 'Unpause Marketplace' : 'Pause Marketplace'}
+        {loading
+          ? 'Processing…'
+          : isPaused
+            ? 'Unpause Marketplace'
+            : 'Pause Marketplace'}
       </Button>
     </div>
   );
