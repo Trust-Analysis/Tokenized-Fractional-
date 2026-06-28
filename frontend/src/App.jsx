@@ -2,7 +2,6 @@ import React, { useState, useEffect, useRef, useMemo } from 'react';
 import { Routes, Route, useNavigate, useLocation } from 'react-router-dom';
 import { Networks, nativeToScVal } from '@stellar/stellar-sdk';
 import { useTranslation } from 'react-i18next';
-import { useSorobanRead, useSorobanWrite } from './hooks/useSoroban';
 
 import Header from './components/Header/Header';
 import Navbar from './components/Navbar/Navbar';
