@@ -17,19 +17,13 @@ import styles from './AssetCard.module.css';
 export default function AssetCard({ asset }) {
   if (!asset) return null;
 
-  const { imageUrl, title, location, totalValuation, contractId, assetType } =
-    asset;
+  const { imageUrl, title, location, totalValuation, contractId, assetType } = asset;
 
   return (
     <Card hoverable className={styles.assetCard}>
       {imageUrl ? (
         <div className={styles.imageWrapper}>
-          <img
-            src={imageUrl}
-            alt={title || 'Asset'}
-            className={styles.image}
-            loading="lazy"
-          />
+          <img src={imageUrl} alt={title || 'Asset'} className={styles.image} loading="lazy" />
         </div>
       ) : (
         <div className={styles.imagePlaceholder}>

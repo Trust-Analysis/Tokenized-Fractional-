@@ -15,11 +15,9 @@ import {
 } from '../../constants/errors';
 
 const CONTRACT_ID = import.meta.env.VITE_CONTRACT_ID || 'C...';
-const RPC_URL =
-  import.meta.env.VITE_RPC_URL || 'https://soroban-testnet.stellar.org:443';
+const RPC_URL = import.meta.env.VITE_RPC_URL || 'https://soroban-testnet.stellar.org:443';
 const NETWORK_PASSPHRASE =
-  import.meta.env.VITE_NETWORK_PASSPHRASE ||
-  'Test SDF Network ; September 2015';
+  import.meta.env.VITE_NETWORK_PASSPHRASE || 'Test SDF Network ; September 2015';
 
 export default function EmergencyWithdraw({ publicKey }) {
   const [loading, setLoading] = useState(false);
@@ -71,7 +69,7 @@ export default function EmergencyWithdraw({ publicKey }) {
     }
     if (
       !confirm(
-        `Emergency withdraw ${amount} tokens from the contract to ${publicKey.slice(0, 8)}…? Continue?`
+        `Emergency withdraw ${amount} tokens from the contract to ${publicKey.slice(0, 8)}…? Continue?`,
       )
     )
       return;
@@ -95,8 +93,8 @@ export default function EmergencyWithdraw({ publicKey }) {
           contract.call(
             'emergency_withdraw',
             nativeToScVal(publicKey, { type: 'address' }),
-            nativeToScVal(parsedAmount, { type: 'i128' })
-          )
+            nativeToScVal(parsedAmount, { type: 'i128' }),
+          ),
         )
         .setTimeout(30)
         .build();
@@ -105,17 +103,13 @@ export default function EmergencyWithdraw({ publicKey }) {
       if (simulation.error) throw new Error(simulation.error);
 
       tx = rpc.assembleTransaction(tx, simulation).build();
-      const { signedTxXdr, error: signError } = await signTransaction(
-        tx.toXDR(),
-        {
-          networkPassphrase: NETWORK_PASSPHRASE,
-        }
-      );
-      if (signError || !signedTxXdr)
-        throw new Error(signError?.message || SIGNING_FAILED);
+      const { signedTxXdr, error: signError } = await signTransaction(tx.toXDR(), {
+        networkPassphrase: NETWORK_PASSPHRASE,
+      });
+      if (signError || !signedTxXdr) throw new Error(signError?.message || SIGNING_FAILED);
 
       const submitRes = await server.sendTransaction(
-        TransactionBuilder.fromXDR(signedTxXdr, NETWORK_PASSPHRASE)
+        TransactionBuilder.fromXDR(signedTxXdr, NETWORK_PASSPHRASE),
       );
 
       const { hash } = submitRes;
@@ -140,8 +134,8 @@ export default function EmergencyWithdraw({ publicKey }) {
     <div className={styles.container}>
       <h3 className={styles.heading}>Emergency Withdraw</h3>
       <p className={styles.warning}>
-        This will withdraw tokens from the contract back to the admin address.
-        Only use this in emergency situations.
+        This will withdraw tokens from the contract back to the admin address. Only use this in
+        emergency situations.
       </p>
 
       <div className={styles.inputRow}>

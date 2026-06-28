@@ -28,9 +28,7 @@ const CertificateTemplate = React.memo(
               format: [CERT_WIDTH, CERT_HEIGHT],
             });
             pdf.addImage(imgData, 'PNG', 0, 0, CERT_WIDTH, CERT_HEIGHT);
-            pdf.save(
-              `certificate-${assetName.replace(/\s+/g, '-').toLowerCase()}.pdf`
-            );
+            pdf.save(`certificate-${assetName.replace(/\s+/g, '-').toLowerCase()}.pdf`);
           } catch (err) {
             console.error('Failed to generate certificate PDF:', err);
           } finally {
@@ -160,9 +158,7 @@ const CertificateTemplate = React.memo(
             >
               {shares}
             </div>
-            <div
-              style={{ fontSize: '18px', color: '#64748b', marginTop: '4px' }}
-            >
+            <div style={{ fontSize: '18px', color: '#64748b', marginTop: '4px' }}>
               {shares === 1 ? 'share' : 'shares'} of
             </div>
             <div
@@ -196,14 +192,10 @@ const CertificateTemplate = React.memo(
                   margin: '0 auto 8px',
                 }}
               />
-              <div
-                style={{ fontSize: '14px', fontWeight: 600, color: '#0f172a' }}
-              >
+              <div style={{ fontSize: '14px', fontWeight: 600, color: '#0f172a' }}>
                 RWA Marketplace
               </div>
-              <div style={{ fontSize: '12px', color: '#64748b' }}>
-                Stellar Network
-              </div>
+              <div style={{ fontSize: '12px', color: '#64748b' }}>Stellar Network</div>
             </div>
             <div style={{ textAlign: 'center' }}>
               <div
@@ -214,11 +206,7 @@ const CertificateTemplate = React.memo(
                   margin: '0 auto 8px',
                 }}
               />
-              <div
-                style={{ fontSize: '14px', fontWeight: 600, color: '#0f172a' }}
-              >
-                Date Issued
-              </div>
+              <div style={{ fontSize: '14px', fontWeight: 600, color: '#0f172a' }}>Date Issued</div>
               <div style={{ fontSize: '12px', color: '#64748b' }}>
                 {new Date(issueDate).toLocaleDateString('en-US', {
                   year: 'numeric',
@@ -231,7 +219,7 @@ const CertificateTemplate = React.memo(
         </div>
       </div>
     );
-  }
+  },
 );
 
 export default CertificateTemplate;

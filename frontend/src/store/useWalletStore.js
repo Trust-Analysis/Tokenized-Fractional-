@@ -40,8 +40,7 @@ export const useWalletStore = create(
         set({ isConnecting: true, walletError: null });
         if (import.meta.env.VITE_MOCK_WALLET === 'true') {
           await new Promise((resolve) => setTimeout(resolve, 500));
-          const mockPubKey =
-            'GBAZE64FKVPG4JUUP2BH63746JJ22G3A2S4QPF4UWKVA2RELLFLQZQVR';
+          const mockPubKey = 'GBAZE64FKVPG4JUUP2BH63746JJ22G3A2S4QPF4UWKVA2RELLFLQZQVR';
           localStorage.setItem('mock_wallet_pubkey', mockPubKey);
           set({ publicKey: mockPubKey, isConnecting: false });
           return mockPubKey;
@@ -88,6 +87,6 @@ export const useWalletStore = create(
         publicKey: state.publicKey,
         shares: state.shares,
       }),
-    }
-  )
+    },
+  ),
 );

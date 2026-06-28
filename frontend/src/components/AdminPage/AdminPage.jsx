@@ -42,9 +42,7 @@ export default function AdminPage({ publicKey, onDisconnect }) {
       <div className={styles.header}>
         <div>
           <h2 className={styles.title}>Admin Dashboard</h2>
-          <p className={styles.subtitle}>
-            Manage assets, pause operations, and handle emergencies
-          </p>
+          <p className={styles.subtitle}>Manage assets, pause operations, and handle emergencies</p>
         </div>
         <Button variant="danger" onClick={onDisconnect}>
           Lock Admin

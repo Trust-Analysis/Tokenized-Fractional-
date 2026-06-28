@@ -52,9 +52,7 @@ export default function TransactionHistory() {
       // Filter to contract-related txs if CONTRACT_ID is configured
       const filtered =
         CONTRACT_ID.length > 10
-          ? records.filter(
-              (tx) => tx.memo?.includes(CONTRACT_ID) || tx.operations_count > 0
-            )
+          ? records.filter((tx) => tx.memo?.includes(CONTRACT_ID) || tx.operations_count > 0)
           : records;
 
       setTxs(filtered.slice(0, HORIZON_LIMIT));
@@ -87,9 +85,7 @@ export default function TransactionHistory() {
             <rect x="2" y="7" width="20" height="14" rx="2" ry="2" />
             <path d="M16 21V5a2 2 0 0 0-2-2h-4a2 2 0 0 0-2 2v16" />
           </svg>
-          <p className={styles.stateText}>
-            Connect your wallet to view transaction history
-          </p>
+          <p className={styles.stateText}>Connect your wallet to view transaction history</p>
         </div>
       </Card>
     );
@@ -99,12 +95,7 @@ export default function TransactionHistory() {
     <div className={styles.container}>
       <div className={styles.header}>
         <h2 className={styles.title}>Transaction History</h2>
-        <Button
-          onClick={fetchHistory}
-          loading={loading}
-          variant="primary"
-          size="sm"
-        >
+        <Button onClick={fetchHistory} loading={loading} variant="primary" size="sm">
           {loading ? 'Refreshing…' : 'Refresh'}
         </Button>
       </div>
@@ -156,9 +147,7 @@ export default function TransactionHistory() {
               <polyline points="22 12 18 12 15 21 9 3 6 12 2 12" />
             </svg>
             <p className={styles.stateText}>No transactions found</p>
-            <p className={styles.stateSub}>
-              Your recent Stellar transactions will appear here.
-            </p>
+            <p className={styles.stateSub}>Your recent Stellar transactions will appear here.</p>
           </div>
         </Card>
       ) : (
@@ -196,9 +185,7 @@ export default function TransactionHistory() {
                 </svg>
               </a>
               <span className={styles.date}>{formatDate(tx.created_at)}</span>
-              <span className={styles.ops}>
-                {tx.operation_count ?? tx.operations_count ?? '—'}
-              </span>
+              <span className={styles.ops}>{tx.operation_count ?? tx.operations_count ?? '—'}</span>
               <Badge variant={statusVariant(tx.successful)}>
                 {tx.successful ? 'Success' : 'Failed'}
               </Badge>

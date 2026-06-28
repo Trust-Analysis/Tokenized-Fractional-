@@ -80,10 +80,7 @@ describe('cache module', () => {
 // ── Cache integration tests ───────────────────────────────────────────────────
 describe('GET /api/rwa caching', () => {
   beforeAll(async () => {
-    await request(app)
-      .post('/api/rwa')
-      .set('x-api-key', API_KEY)
-      .send(VALID_BODY);
+    await request(app).post('/api/rwa').set('x-api-key', API_KEY).send(VALID_BODY);
   });
 
   test('response is cached after first GET /api/rwa', async () => {

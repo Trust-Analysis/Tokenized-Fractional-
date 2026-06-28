@@ -1,12 +1,7 @@
 import React from 'react';
 import styles from './Alert.module.css';
 
-export default function Alert({
-  children,
-  variant = 'error',
-  className = '',
-  ...rest
-}) {
+export default function Alert({ children, variant = 'error', className = '', ...rest }) {
   const alertClass = `${styles.alert} ${styles[variant]} ${className}`;
 
   const renderIcon = () => {

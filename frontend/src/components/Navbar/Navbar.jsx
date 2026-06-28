@@ -121,13 +121,7 @@ export default function Navbar({ activeView, onNavigate }) {
       </button>
 
       {/* Overlay */}
-      {open && (
-        <div
-          className={styles.overlay}
-          aria-hidden="true"
-          onClick={() => setOpen(false)}
-        />
-      )}
+      {open && <div className={styles.overlay} aria-hidden="true" onClick={() => setOpen(false)} />}
 
       {/* Slide-out drawer */}
       <div

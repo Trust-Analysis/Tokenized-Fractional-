@@ -13,12 +13,7 @@ import styles from './AssetGrid.module.css';
  * @param {string}   error        - Error message if fetch failed
  * @param {boolean}  isEmpty      - True when fetch succeeded but returned 0 assets
  */
-export default function AssetGrid({
-  assets = [],
-  loading = false,
-  error = null,
-  isEmpty = false,
-}) {
+export default function AssetGrid({ assets = [], loading = false, error = null, isEmpty = false }) {
   // ── Loading state ──────────────────────────────────────────────────────
   if (loading) {
     return (
@@ -26,11 +21,7 @@ export default function AssetGrid({
         {Array.from({ length: 6 }).map((_, i) => (
           <Card key={i}>
             <div className={styles.skeletonImage}>
-              <Skeleton
-                variant="rect"
-                height="100%"
-                style={{ borderRadius: 'var(--radius-sm)' }}
-              />
+              <Skeleton variant="rect" height="100%" style={{ borderRadius: 'var(--radius-sm)' }} />
             </div>
             <div className={styles.skeletonBody}>
               <Skeleton
@@ -105,9 +96,7 @@ export default function AssetGrid({
           </svg>
         </div>
         <p className={styles.stateText}>No assets available</p>
-        <p className={styles.stateSubtext}>
-          Check back later for new listings.
-        </p>
+        <p className={styles.stateSubtext}>Check back later for new listings.</p>
       </div>
     );
   }
