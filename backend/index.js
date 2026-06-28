@@ -26,9 +26,7 @@ const CORS_ORIGINS = process.env.CORS_ORIGINS
 // ── Logger ────────────────────────────────────────────────────────────────────
 const isDev = process.env.NODE_ENV === 'development';
 export const logger = pino({
-  level:
-    process.env.LOG_LEVEL ||
-    (process.env.NODE_ENV === 'test' ? 'silent' : 'info'),
+  level: process.env.LOG_LEVEL || (process.env.NODE_ENV === 'test' ? 'silent' : 'info'),
   ...(isDev && {
     transport: {
       target: 'pino-pretty',
@@ -48,15 +46,9 @@ if (process.env.SENTRY_DSN && process.env.NODE_ENV !== 'test') {
     profilesSampleRate: process.env.SENTRY_PROFILES_SAMPLE_RATE
       ? parseFloat(process.env.SENTRY_PROFILES_SAMPLE_RATE)
       : 0.1,
-    integrations: [
-      Sentry.httpIntegration({ breadcrumbs: true }),
-      Sentry.expressIntegration(),
-    ],
+    integrations: [Sentry.httpIntegration({ breadcrumbs: true }), Sentry.expressIntegration()],
   });
-  logger.info(
-    { dsnPrefix: process.env.SENTRY_DSN.slice(0, 30) },
-    'Sentry initialized'
-  );
+  logger.info({ dsnPrefix: process.env.SENTRY_DSN.slice(0, 30) }, 'Sentry initialized');
 }
 
 // ── Data helpers ──────────────────────────────────────────────────────────────
@@ -86,8 +78,7 @@ export function validateContractId(id) {
 export function validateRwaBody(body) {
   const required = ['title', 'location', 'description', 'assetType'];
   const missing = required.filter((f) => !body[f]);
-  if (missing.length > 0)
-    return `Missing required fields: ${missing.join(', ')}`;
+  if (missing.length > 0) return `Missing required fields: ${missing.join(', ')}`;
   return null;
 }
 
@@ -124,7 +115,7 @@ app.use(
     origin: CORS_ORIGINS,
     methods: ['GET', 'POST', 'DELETE'],
     allowedHeaders: ['Content-Type', 'x-api-key', 'X-Request-ID'],
-  })
+  }),
 );
 app.use(express.json({ limit: '10kb' }));
 
@@ -142,7 +133,7 @@ app.use(
     logger,
     autoLogging: { ignore: (req) => req.url === '/health' },
     genReqId: (req) => req.requestId,
-  })
+  }),
 );
 
 const apiLimiter = rateLimit({
@@ -168,7 +159,7 @@ app.use(
   swaggerUi.serve,
   swaggerUi.setup(swaggerSpec, {
     customSiteTitle: 'RWA Marketplace API Docs',
-  })
+  }),
 );
 
 app.get('/api-docs.json', (_req, res) => {
@@ -282,9 +273,7 @@ v1.get('/rwa', (req, res) => {
   if (search) {
     const lower = search.toLowerCase();
     assets = assets.filter(
-      (a) =>
-        a.title?.toLowerCase().includes(lower) ||
-        a.description?.toLowerCase().includes(lower)
+      (a) => a.title?.toLowerCase().includes(lower) || a.description?.toLowerCase().includes(lower),
     );
   }
 
@@ -343,8 +332,7 @@ v1.get('/rwa/:contractId', async (req, res) => {
 
   const data = loadData();
   const asset = data[contractId];
-  if (!asset)
-    return res.status(404).json({ error: 'Asset metadata not found' });
+  if (!asset) return res.status(404).json({ error: 'Asset metadata not found' });
 
   const result = { contractId, ...asset };
   // Cache individual asset (fire-and-forget)
@@ -392,8 +380,7 @@ v1.post('/rwa', adminAuth, writeLimiter, async (req, res) => {
 
   if (!contractId || !validateContractId(contractId)) {
     return res.status(400).json({
-      error:
-        'Invalid contract ID. Must start with C and be at least 50 characters.',
+      error: 'Invalid contract ID. Must start with C and be at least 50 characters.',
     });
   }
 
@@ -466,8 +453,7 @@ v1.post('/rwa', adminAuth, writeLimiter, async (req, res) => {
 v1.delete('/rwa/:contractId', adminAuth, writeLimiter, async (req, res) => {
   const { contractId } = req.params;
   const data = loadData();
-  if (!data[contractId])
-    return res.status(404).json({ error: 'Asset metadata not found' });
+  if (!data[contractId]) return res.status(404).json({ error: 'Asset metadata not found' });
 
   delete data[contractId];
   saveData(data);
@@ -494,9 +480,7 @@ if (process.env.SENTRY_DSN) {
 
 app.use((err, req, res, _next) => {
   req.log?.error({ err }, 'Unhandled error');
-  res
-    .status(500)
-    .json({ error: 'Internal server error', requestId: req.requestId });
+  res.status(500).json({ error: 'Internal server error', requestId: req.requestId });
 });
 
 export { app };
