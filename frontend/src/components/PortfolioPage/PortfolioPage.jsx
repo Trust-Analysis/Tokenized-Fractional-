@@ -1,11 +1,5 @@
 import React, { useState, useEffect, useCallback } from 'react';
-import {
-  rpc,
-  TransactionBuilder,
-  Networks,
-  Contract,
-  nativeToScVal,
-} from '@stellar/stellar-sdk';
+import { rpc, TransactionBuilder, Networks, Contract, nativeToScVal } from '@stellar/stellar-sdk';
 import Card from '../Card/Card';
 import Skeleton from '../Skeleton/Skeleton';
 import Button from '../Button/Button';
@@ -13,16 +7,11 @@ import Spinner from '../Spinner/Spinner';
 import CertificateTemplate from '../CertificateTemplate/CertificateTemplate';
 import { useWalletStore } from '../../store/useWalletStore';
 import { useAssetStore } from '../../store/useAssetStore';
-import {
-  FAILED_TO_FETCH_PORTFOLIO_ASSET,
-  FAILED_TO_LOAD_PORTFOLIO,
-} from '../../constants/errors';
+import { FAILED_TO_FETCH_PORTFOLIO_ASSET, FAILED_TO_LOAD_PORTFOLIO } from '../../constants/errors';
 import styles from './PortfolioPage.module.css';
 
-const RPC_URL =
-  import.meta.env.VITE_RPC_URL || 'https://soroban-testnet.stellar.org:443';
-const NETWORK_PASSPHRASE =
-  import.meta.env.VITE_NETWORK_PASSPHRASE || Networks.TESTNET;
+const RPC_URL = import.meta.env.VITE_RPC_URL || 'https://soroban-testnet.stellar.org:443';
+const NETWORK_PASSPHRASE = import.meta.env.VITE_NETWORK_PASSPHRASE || Networks.TESTNET;
 
 const server = new rpc.Server(RPC_URL);
 
@@ -101,7 +90,7 @@ export default function PortfolioPage() {
               error: FAILED_TO_FETCH_PORTFOLIO_ASSET,
             };
           }
-        })
+        }),
       );
 
       const valid = rows.filter(Boolean);
@@ -126,7 +115,7 @@ export default function PortfolioPage() {
         date: new Date().toISOString(),
       });
     },
-    [publicKey]
+    [publicKey],
   );
 
   const handleCertificateComplete = useCallback(() => {
@@ -155,9 +144,7 @@ export default function PortfolioPage() {
             <circle cx="8.5" cy="8.5" r="1.5" />
             <polyline points="21 15 16 10 5 21" />
           </svg>
-          <p className={styles.stateText}>
-            Connect your wallet to view portfolio
-          </p>
+          <p className={styles.stateText}>Connect your wallet to view portfolio</p>
         </div>
       </Card>
     );
@@ -181,9 +168,7 @@ export default function PortfolioPage() {
             <polyline points="13 2 13 9 20 9" />
           </svg>
           <p className={styles.stateText}>No assets available</p>
-          <p className={styles.stateSubtext}>
-            There are no assets to display in your portfolio.
-          </p>
+          <p className={styles.stateSubtext}>There are no assets to display in your portfolio.</p>
         </div>
       </Card>
     );
@@ -194,9 +179,7 @@ export default function PortfolioPage() {
       <div className={styles.header}>
         <div>
           <h2 className={styles.title}>Portfolio</h2>
-          <p className={styles.subtitle}>
-            Your fractional asset holdings across all markets
-          </p>
+          <p className={styles.subtitle}>Your fractional asset holdings across all markets</p>
         </div>
         <Button onClick={fetchPortfolio} loading={loading} variant="primary">
           {loading ? 'Refreshing…' : 'Refresh'}
@@ -240,9 +223,7 @@ export default function PortfolioPage() {
           </div>
           <div className={styles.summaryItem}>
             <span className={styles.summaryLabel}>Total Value</span>
-            <span className={styles.summaryValueAccent}>
-              {totalValue.toLocaleString()}
-            </span>
+            <span className={styles.summaryValueAccent}>{totalValue.toLocaleString()}</span>
           </div>
         </div>
       </Card>
@@ -277,9 +258,7 @@ export default function PortfolioPage() {
           ))
         ) : (
           <>
-            <div
-              className={`${styles.tableHeader} ${styles.tableHeaderWithAction}`}
-            >
+            <div className={`${styles.tableHeader} ${styles.tableHeaderWithAction}`}>
               <span className={styles.colAsset}>Asset</span>
               <span className={styles.colShares}>Shares</span>
               <span className={styles.colPrice}>Price</span>
@@ -310,14 +289,7 @@ export default function PortfolioPage() {
                           strokeLinecap="round"
                           strokeLinejoin="round"
                         >
-                          <rect
-                            x="3"
-                            y="3"
-                            width="18"
-                            height="18"
-                            rx="2"
-                            ry="2"
-                          />
+                          <rect x="3" y="3" width="18" height="18" rx="2" ry="2" />
                           <circle cx="8.5" cy="8.5" r="1.5" />
                           <polyline points="21 15 16 10 5 21" />
                         </svg>
@@ -325,18 +297,13 @@ export default function PortfolioPage() {
                     )}
                     <div>
                       <span className={styles.assetName}>{item.title}</span>
-                      <span
-                        className={styles.contractId}
-                        title={item.contractId}
-                      >
+                      <span className={styles.contractId} title={item.contractId}>
                         {item.contractId.slice(0, 8)}…
                       </span>
                     </div>
                   </div>
                   <span className={styles.colShares}>{item.shares}</span>
-                  <span className={styles.colPrice}>
-                    {item.price.toLocaleString()}
-                  </span>
+                  <span className={styles.colPrice}>{item.price.toLocaleString()}</span>
                   <span
                     className={`${styles.colValue} ${item.shares > 0 ? styles.valuePositive : ''}`}
                   >

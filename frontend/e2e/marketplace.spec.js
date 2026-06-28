@@ -18,16 +18,10 @@ const MOCK_ASSETS = [
 
 // Intercept backend API calls so tests work without a running backend
 async function mockApi(page) {
-  await page.route('**/api/v1/rwa', (route) =>
-    route.fulfill({ json: { data: MOCK_ASSETS } })
-  );
-  await page.route('**/api/v1/rwa/**', (route) =>
-    route.fulfill({ json: MOCK_ASSETS[0] })
-  );
+  await page.route('**/api/v1/rwa', (route) => route.fulfill({ json: { data: MOCK_ASSETS } }));
+  await page.route('**/api/v1/rwa/**', (route) => route.fulfill({ json: MOCK_ASSETS[0] }));
   // Intercept Soroban RPC calls — not needed in mock-wallet mode but prevents network errors
-  await page.route('**/soroban-testnet.stellar.org/**', (route) =>
-    route.abort()
-  );
+  await page.route('**/soroban-testnet.stellar.org/**', (route) => route.abort());
 }
 
 test.describe('RWA Marketplace — critical user flows', () => {
@@ -42,17 +36,11 @@ test.describe('RWA Marketplace — critical user flows', () => {
   });
 
   // ── 1. Viewing assets ────────────────────────────────────────────────────
-  test('displays the marketplace heading and asset grid on load', async ({
-    page,
-  }) => {
+  test('displays the marketplace heading and asset grid on load', async ({ page }) => {
     await page.goto('/');
 
-    await expect(
-      page.getByRole('heading', { name: 'RWA Marketplace' })
-    ).toBeVisible();
-    await expect(
-      page.getByRole('heading', { name: /available assets/i })
-    ).toBeVisible();
+    await expect(page.getByRole('heading', { name: 'RWA Marketplace' })).toBeVisible();
+    await expect(page.getByRole('heading', { name: /available assets/i })).toBeVisible();
 
     // Asset card from the mocked API should appear
     await expect(page.getByText('Downtown Office Building')).toBeVisible();
@@ -60,9 +48,7 @@ test.describe('RWA Marketplace — critical user flows', () => {
   });
 
   // ── 2. Connecting wallet ─────────────────────────────────────────────────
-  test('connects the mock wallet and shows the public key', async ({
-    page,
-  }) => {
+  test('connects the mock wallet and shows the public key', async ({ page }) => {
     await page.goto('/');
 
     const connectBtn = page.getByRole('button', { name: /connect freighter/i });
@@ -76,15 +62,11 @@ test.describe('RWA Marketplace — critical user flows', () => {
 
     // Share balance section should now be visible
     await expect(page.getByText(/your share balance/i)).toBeVisible();
-    await expect(
-      page.getByRole('button', { name: /buy shares/i })
-    ).toBeVisible();
+    await expect(page.getByRole('button', { name: /buy shares/i })).toBeVisible();
   });
 
   // ── 3. Buying shares ─────────────────────────────────────────────────────
-  test('buys shares: opens confirm dialog, confirms, shows toast', async ({
-    page,
-  }) => {
+  test('buys shares: opens confirm dialog, confirms, shows toast', async ({ page }) => {
     await page.goto('/');
 
     // Connect wallet first
@@ -92,9 +74,7 @@ test.describe('RWA Marketplace — critical user flows', () => {
     await expect(page.getByTitle(MOCK_PUBKEY)).toBeVisible({ timeout: 5_000 });
 
     // Set quantity to 3
-    const input = page
-      .getByLabel(/buy amount/i)
-      .or(page.locator('#buy-amount-input'));
+    const input = page.getByLabel(/buy amount/i).or(page.locator('#buy-amount-input'));
     await input.fill('3');
 
     // Click Buy Shares → confirm dialog appears
@@ -113,9 +93,7 @@ test.describe('RWA Marketplace — critical user flows', () => {
   });
 
   // ── 4. Disconnecting wallet ──────────────────────────────────────────────
-  test('disconnects the wallet and returns to the initial state', async ({
-    page,
-  }) => {
+  test('disconnects the wallet and returns to the initial state', async ({ page }) => {
     await page.goto('/');
 
     // Connect first
@@ -126,9 +104,7 @@ test.describe('RWA Marketplace — critical user flows', () => {
     await page.getByRole('button', { name: /disconnect/i }).click();
 
     // Should be back to unauthenticated state
-    await expect(
-      page.getByRole('button', { name: /connect freighter/i })
-    ).toBeVisible();
+    await expect(page.getByRole('button', { name: /connect freighter/i })).toBeVisible();
     await expect(page.getByText(/your share balance/i)).not.toBeVisible();
   });
 });

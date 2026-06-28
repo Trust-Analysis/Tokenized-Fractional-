@@ -1,10 +1,6 @@
 import React from 'react';
 import styles from './ErrorFallback.module.css';
-import {
-  UNEXPECTED_ERROR,
-  ERROR_REPORTED,
-  TRY_AGAIN,
-} from '../../constants/errors';
+import { UNEXPECTED_ERROR, ERROR_REPORTED, TRY_AGAIN } from '../../constants/errors';
 
 export default function ErrorFallback({ error, componentStack, resetError }) {
   return (

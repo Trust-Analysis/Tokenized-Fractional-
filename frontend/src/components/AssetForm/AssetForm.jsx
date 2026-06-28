@@ -35,13 +35,7 @@ export default function AssetForm({ apiKey, onAssetChange }) {
 
   const handleSubmit = async (e) => {
     e.preventDefault();
-    const required = [
-      'contractId',
-      'title',
-      'location',
-      'description',
-      'assetType',
-    ];
+    const required = ['contractId', 'title', 'location', 'description', 'assetType'];
     const missing = required.filter((f) => !form[f].trim());
     if (missing.length > 0) {
       setError(MISSING_REQUIRED_FIELDS(missing));
@@ -94,12 +88,7 @@ export default function AssetForm({ apiKey, onAssetChange }) {
       setError(ENTER_CONTRACT_ID_TO_DELETE);
       return;
     }
-    if (
-      !confirm(
-        `Delete asset "${contractId.slice(0, 12)}…"? This cannot be undone.`
-      )
-    )
-      return;
+    if (!confirm(`Delete asset "${contractId.slice(0, 12)}…"? This cannot be undone.`)) return;
 
     setLoading(true);
     setError('');

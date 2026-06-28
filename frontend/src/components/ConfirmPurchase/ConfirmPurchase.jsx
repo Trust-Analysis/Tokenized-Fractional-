@@ -12,13 +12,7 @@ function formatPrice(stroops) {
   })} XLM`;
 }
 
-export default function ConfirmPurchase({
-  shares,
-  pricePerShare,
-  onConfirm,
-  onCancel,
-  loading,
-}) {
+export default function ConfirmPurchase({ shares, pricePerShare, onConfirm, onCancel, loading }) {
   const total = pricePerShare != null ? Number(pricePerShare) * shares : null;
 
   return (

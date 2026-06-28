@@ -37,9 +37,7 @@ export default function Header({
         <button
           onClick={onToggleTheme}
           className={styles.themeToggle}
-          title={
-            theme === 'dark' ? 'Switch to Light Theme' : 'Switch to Dark Theme'
-          }
+          title={theme === 'dark' ? 'Switch to Light Theme' : 'Switch to Dark Theme'}
           aria-label="Toggle theme"
         >
           {theme === 'dark' ? (

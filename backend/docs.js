@@ -50,13 +50,7 @@ const options = {
         },
         AssetInput: {
           type: 'object',
-          required: [
-            'contractId',
-            'title',
-            'location',
-            'description',
-            'assetType',
-          ],
+          required: ['contractId', 'title', 'location', 'description', 'assetType'],
           properties: {
             contractId: { type: 'string' },
             title: { type: 'string' },
@@ -142,8 +136,7 @@ const options = {
         get: {
           tags: ['Assets — v1 (versioned)'],
           summary: 'List all asset metadata',
-          description:
-            'Returns a paginated, filterable list of all RWA assets.',
+          description: 'Returns a paginated, filterable list of all RWA assets.',
           parameters: [
             {
               in: 'query',

@@ -31,7 +31,7 @@ describe('X-Request-ID', () => {
   test('response includes X-Request-ID header (auto-generated)', async () => {
     const res = await request(app).get('/health');
     expect(res.headers['x-request-id']).toMatch(
-      /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/
+      /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/,
     );
   });
 
@@ -120,27 +120,19 @@ describe('GET /api/rwa', () => {
   test('filters by assetType', async () => {
     const res = await request(app).get('/api/rwa?assetType=agriculture');
     expect(res.status).toBe(200);
-    expect(
-      res.body.data.every((a) => a.assetType.toLowerCase() === 'agriculture')
-    ).toBe(true);
+    expect(res.body.data.every((a) => a.assetType.toLowerCase() === 'agriculture')).toBe(true);
   });
 
   test('filters by search on title', async () => {
     const res = await request(app).get('/api/rwa?search=coffee');
     expect(res.status).toBe(200);
-    expect(
-      res.body.data.some((a) => a.title.toLowerCase().includes('coffee'))
-    ).toBe(true);
+    expect(res.body.data.some((a) => a.title.toLowerCase().includes('coffee'))).toBe(true);
   });
 
   test('filters by search on description', async () => {
     const res = await request(app).get('/api/rwa?search=manhattan');
     expect(res.status).toBe(200);
-    expect(
-      res.body.data.some((a) =>
-        a.description.toLowerCase().includes('manhattan')
-      )
-    ).toBe(true);
+    expect(res.body.data.some((a) => a.description.toLowerCase().includes('manhattan'))).toBe(true);
   });
 
   test('paginates with limit=1', async () => {
@@ -154,19 +146,14 @@ describe('GET /api/rwa', () => {
   test('page 2 with limit=1 returns next item', async () => {
     const page1 = await request(app).get('/api/rwa?limit=1&page=1');
     const page2 = await request(app).get('/api/rwa?limit=1&page=2');
-    expect(page1.body.data[0].contractId).not.toBe(
-      page2.body.data[0].contractId
-    );
+    expect(page1.body.data[0].contractId).not.toBe(page2.body.data[0].contractId);
   });
 });
 
 // ── POST /api/rwa ─────────────────────────────────────────────────────────────
 describe('POST /api/rwa', () => {
   test('creates asset with valid key and body', async () => {
-    const res = await request(app)
-      .post('/api/rwa')
-      .set('x-api-key', API_KEY)
-      .send(VALID_BODY);
+    const res = await request(app).post('/api/rwa').set('x-api-key', API_KEY).send(VALID_BODY);
     expect(res.status).toBe(201);
     expect(res.body.contractId).toBe(VALID_ID);
     expect(res.body.title).toBe('Test Property');
@@ -178,10 +165,7 @@ describe('POST /api/rwa', () => {
   });
 
   test('rejects invalid API key', async () => {
-    const res = await request(app)
-      .post('/api/rwa')
-      .set('x-api-key', 'wrong-key')
-      .send(VALID_BODY);
+    const res = await request(app).post('/api/rwa').set('x-api-key', 'wrong-key').send(VALID_BODY);
     expect(res.status).toBe(401);
     expect(res.body.error).toMatch(/Unauthorized/);
   });
@@ -229,17 +213,13 @@ describe('DELETE /api/rwa/:contractId', () => {
   });
 
   test('deletes existing asset', async () => {
-    const res = await request(app)
-      .delete(`/api/rwa/${VALID_ID}`)
-      .set('x-api-key', API_KEY);
+    const res = await request(app).delete(`/api/rwa/${VALID_ID}`).set('x-api-key', API_KEY);
     expect(res.status).toBe(200);
     expect(res.body.contractId).toBe(VALID_ID);
   });
 
   test('returns 404 when already deleted', async () => {
-    const res = await request(app)
-      .delete(`/api/rwa/${VALID_ID}`)
-      .set('x-api-key', API_KEY);
+    const res = await request(app).delete(`/api/rwa/${VALID_ID}`).set('x-api-key', API_KEY);
     expect(res.status).toBe(404);
   });
 });
@@ -276,17 +256,13 @@ describe('GET /api/v1/rwa', () => {
   test('filters by assetType', async () => {
     const res = await request(app).get('/api/v1/rwa?assetType=agriculture');
     expect(res.status).toBe(200);
-    expect(
-      res.body.data.every((a) => a.assetType.toLowerCase() === 'agriculture')
-    ).toBe(true);
+    expect(res.body.data.every((a) => a.assetType.toLowerCase() === 'agriculture')).toBe(true);
   });
 
   test('filters by search on title', async () => {
     const res = await request(app).get('/api/v1/rwa?search=coffee');
     expect(res.status).toBe(200);
-    expect(
-      res.body.data.some((a) => a.title.toLowerCase().includes('coffee'))
-    ).toBe(true);
+    expect(res.body.data.some((a) => a.title.toLowerCase().includes('coffee'))).toBe(true);
   });
 
   test('paginates with limit=1', async () => {
@@ -299,10 +275,7 @@ describe('GET /api/v1/rwa', () => {
 // ── Versioned routes: POST /api/v1/rwa ────────────────────────────────────────
 describe('POST /api/v1/rwa', () => {
   test('creates asset with valid key and body', async () => {
-    const res = await request(app)
-      .post('/api/v1/rwa')
-      .set('x-api-key', API_KEY)
-      .send(VALID_BODY);
+    const res = await request(app).post('/api/v1/rwa').set('x-api-key', API_KEY).send(VALID_BODY);
     expect(res.status).toBe(201);
     expect(res.body.contractId).toBe(VALID_ID);
     expect(res.body.title).toBe('Test Property');
@@ -368,17 +341,13 @@ describe('DELETE /api/v1/rwa/:contractId', () => {
   });
 
   test('deletes existing asset', async () => {
-    const res = await request(app)
-      .delete(`/api/v1/rwa/${V1_DELETE_ID}`)
-      .set('x-api-key', API_KEY);
+    const res = await request(app).delete(`/api/v1/rwa/${V1_DELETE_ID}`).set('x-api-key', API_KEY);
     expect(res.status).toBe(200);
     expect(res.body.contractId).toBe(V1_DELETE_ID);
   });
 
   test('returns 404 when already deleted', async () => {
-    const res = await request(app)
-      .delete(`/api/v1/rwa/${V1_DELETE_ID}`)
-      .set('x-api-key', API_KEY);
+    const res = await request(app).delete(`/api/v1/rwa/${V1_DELETE_ID}`).set('x-api-key', API_KEY);
     expect(res.status).toBe(404);
   });
 });
@@ -386,10 +355,7 @@ describe('DELETE /api/v1/rwa/:contractId', () => {
 // ── Rate limiting ─────────────────────────────────────────────────────────────
 describe('Rate limiting', () => {
   test('write limiter blocks after 20 requests', async () => {
-    const ids = Array.from(
-      { length: 21 },
-      (_, i) => `C${String(i).padStart(55, '0')}`
-    );
+    const ids = Array.from({ length: 21 }, (_, i) => `C${String(i).padStart(55, '0')}`);
     const statuses = [];
     for (const id of ids) {
       const res = await request(app)

@@ -28,6 +28,6 @@ export default function Modal({ title, children, actions, onClose }) {
         {actions && <div className={styles.actions}>{actions}</div>}
       </div>
     </div>,
-    document.body
+    document.body,
   );
 }

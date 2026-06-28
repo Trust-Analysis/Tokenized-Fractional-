@@ -27,11 +27,7 @@ function ToastItem({ toast }) {
     return () => clearTimeout(timerRef.current);
   }, [toast.id]);
 
-  const classNames = [
-    styles.toast,
-    styles[toast.type],
-    exiting ? styles.toastExiting : '',
-  ]
+  const classNames = [styles.toast, styles[toast.type], exiting ? styles.toastExiting : '']
     .filter(Boolean)
     .join(' ');
 
@@ -113,11 +109,7 @@ function ToastItem({ toast }) {
         <p className={styles.message}>{toast.message}</p>
         {toast.txHash && <p className={styles.txHash}>Tx: {toast.txHash}</p>}
       </div>
-      <button
-        className={styles.closeBtn}
-        onClick={dismiss}
-        aria-label="Dismiss"
-      >
+      <button className={styles.closeBtn} onClick={dismiss} aria-label="Dismiss">
         <svg
           width="14"
           height="14"
