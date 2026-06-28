@@ -3042,6 +3042,19 @@ pub struct EventContractUpgraded {
 #[contractimpl]
 impl RwaMarketplace {
 
+    /// Return the admin address. Panics if the contract is not initialized.
+    pub fn get_admin(env: Env) -> Address {
+        env.storage()
+            .instance()
+            .get(&DataKey::Admin)
+            .expect("Contract not initialized: admin")
+    }
+
+    /// Return whether the contract has been initialized.
+    pub fn is_initialized(env: Env) -> bool {
+        env.storage().instance().has(&DataKey::Admin)
+    }
+
     /// Upgrade the smart contract to a new version.
     /// Only the admin can call this function.
     pub fn upgrade(env: Env, new_wasm_hash: BytesN<32>) {
