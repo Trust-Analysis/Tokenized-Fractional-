@@ -8,7 +8,8 @@
     "build": "vite build",
     "preview": "vite preview",
     "storybook": "storybook dev -p 6006",
-    "build-storybook": "storybook build"
+    "build-storybook": "storybook build",
+    "deploy": "npm run build && echo 'Build complete — Render auto-deploys via render.yaml'"
   },
   "dependencies": {
     "@sentry/react": "^10.60.0",
