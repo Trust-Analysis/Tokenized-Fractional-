@@ -48,6 +48,18 @@
   color: var(--error-text);
 }
 
+.warning {
+  background-color: var(--warning-bg);
+  border-color: var(--warning-border);
+  color: var(--warning);
+}
+
+.pending {
+  background: var(--bg-surface);
+  border-color: var(--border-color);
+  color: var(--text-secondary);
+}
+
 .icon {
   flex-shrink: 0;
   margin-top: 2px;

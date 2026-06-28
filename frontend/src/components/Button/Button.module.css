@@ -86,6 +86,12 @@
   transform: none;
 }
 
+/* Sizes */
+.sm {
+  padding: 0.25rem 0.5rem;
+  font-size: var(--font-size-xs);
+}
+
 /* Spinner for loading state */
 .spinner {
   width: 1rem;

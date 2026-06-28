@@ -26,6 +26,34 @@ afterAll(() => {
   if (existsSync('test-data.json')) unlinkSync('test-data.json');
 });
 
+// ── X-Request-ID ──────────────────────────────────────────────────────────────
+describe('X-Request-ID', () => {
+  test('response includes X-Request-ID header (auto-generated)', async () => {
+    const res = await request(app).get('/health');
+    expect(res.headers['x-request-id']).toMatch(
+      /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/
+    );
+  });
+
+  test('echoes back a supplied X-Request-ID', async () => {
+    const id = '12345678-1234-1234-1234-123456789abc';
+    const res = await request(app).get('/health').set('X-Request-ID', id);
+    expect(res.headers['x-request-id']).toBe(id);
+  });
+
+  test('404 response body includes requestId', async () => {
+    const res = await request(app).get('/does-not-exist');
+    expect(res.status).toBe(404);
+    expect(res.body.requestId).toBeDefined();
+  });
+
+  test('401 response body includes requestId', async () => {
+    const res = await request(app).post('/api/rwa').send(VALID_BODY);
+    expect(res.status).toBe(401);
+    expect(res.body.requestId).toBeDefined();
+  });
+});
+
 // ── Health check ──────────────────────────────────────────────────────────────
 describe('GET /health', () => {
   test('returns ok with dependency statuses (no Redis configured)', async () => {
@@ -191,6 +219,126 @@ describe('DELETE /api/rwa/:contractId', () => {
   test('returns 404 when already deleted', async () => {
     const res = await request(app)
       .delete(`/api/rwa/${VALID_ID}`)
+      .set('x-api-key', API_KEY);
+    expect(res.status).toBe(404);
+  });
+});
+
+// ── Versioned routes: GET /api/v1/rwa ─────────────────────────────────────────
+describe('GET /api/v1/rwa', () => {
+  const ID_A = 'C' + 'A'.repeat(55);
+  const ID_B = 'C' + 'B'.repeat(55);
+
+  beforeAll(async () => {
+    await request(app).post('/api/v1/rwa').set('x-api-key', API_KEY)
+      .send({ contractId: ID_A, title: 'Coffee Farm', location: 'Ethiopia', description: 'Premium coffee plantation', assetType: 'Agriculture' });
+    await request(app).post('/api/v1/rwa').set('x-api-key', API_KEY)
+      .send({ contractId: ID_B, title: 'Downtown Office', location: 'NYC', description: 'Manhattan office building', assetType: 'Real Estate' });
+  });
+
+  test('returns paginated response shape', async () => {
+    const res = await request(app).get('/api/v1/rwa');
+    expect(res.status).toBe(200);
+    expect(Array.isArray(res.body.data)).toBe(true);
+    expect(res.body.pagination).toBeDefined();
+  });
+
+  test('filters by assetType', async () => {
+    const res = await request(app).get('/api/v1/rwa?assetType=agriculture');
+    expect(res.status).toBe(200);
+    expect(res.body.data.every(a => a.assetType.toLowerCase() === 'agriculture')).toBe(true);
+  });
+
+  test('filters by search on title', async () => {
+    const res = await request(app).get('/api/v1/rwa?search=coffee');
+    expect(res.status).toBe(200);
+    expect(res.body.data.some(a => a.title.toLowerCase().includes('coffee'))).toBe(true);
+  });
+
+  test('paginates with limit=1', async () => {
+    const res = await request(app).get('/api/v1/rwa?limit=1&page=1');
+    expect(res.status).toBe(200);
+    expect(res.body.data.length).toBe(1);
+  });
+});
+
+// ── Versioned routes: POST /api/v1/rwa ────────────────────────────────────────
+describe('POST /api/v1/rwa', () => {
+  test('creates asset with valid key and body', async () => {
+    const res = await request(app)
+      .post('/api/v1/rwa')
+      .set('x-api-key', API_KEY)
+      .send(VALID_BODY);
+    expect(res.status).toBe(201);
+    expect(res.body.contractId).toBe(VALID_ID);
+    expect(res.body.title).toBe('Test Property');
+  });
+
+  test('rejects missing API key', async () => {
+    const res = await request(app).post('/api/v1/rwa').send(VALID_BODY);
+    expect(res.status).toBe(401);
+  });
+
+  test('rejects invalid contract ID', async () => {
+    const res = await request(app)
+      .post('/api/v1/rwa')
+      .set('x-api-key', API_KEY)
+      .send({ ...VALID_BODY, contractId: 'BADID' });
+    expect(res.status).toBe(400);
+    expect(res.body.error).toMatch(/Invalid contract ID/);
+  });
+
+  test('rejects missing required fields', async () => {
+    const res = await request(app)
+      .post('/api/v1/rwa')
+      .set('x-api-key', API_KEY)
+      .send({ contractId: VALID_ID, title: 'Only title' });
+    expect(res.status).toBe(400);
+    expect(res.body.error).toMatch(/Missing required fields/);
+  });
+});
+
+// ── Versioned routes: GET /api/v1/rwa/:contractId ─────────────────────────────
+describe('GET /api/v1/rwa/:contractId', () => {
+  test('returns existing asset', async () => {
+    const res = await request(app).get(`/api/v1/rwa/${VALID_ID}`);
+    expect(res.status).toBe(200);
+    expect(res.body.contractId).toBe(VALID_ID);
+  });
+
+  test('returns 404 for unknown contract ID', async () => {
+    const unknown = 'C' + 'Z'.repeat(55);
+    const res = await request(app).get(`/api/v1/rwa/${unknown}`);
+    expect(res.status).toBe(404);
+    expect(res.body.error).toMatch(/not found/i);
+  });
+});
+
+// ── Versioned routes: DELETE /api/v1/rwa/:contractId ─────────────────────────
+describe('DELETE /api/v1/rwa/:contractId', () => {
+  const V1_DELETE_ID = 'C' + 'D'.repeat(55);
+
+  beforeAll(async () => {
+    await request(app).post('/api/v1/rwa').set('x-api-key', API_KEY)
+      .send({ contractId: V1_DELETE_ID, title: 'To Delete', location: 'Test', description: 'Asset to delete', assetType: 'Test' });
+  });
+
+  test('rejects without API key', async () => {
+    const res = await request(app).delete(`/api/v1/rwa/${V1_DELETE_ID}`);
+    expect(res.status).toBe(401);
+  });
+
+  test('deletes existing asset', async () => {
+    const res = await request(app)
+      .delete(`/api/v1/rwa/${V1_DELETE_ID}`)
+      .set('x-api-key', API_KEY);
+    expect(res.status).toBe(200);
+    expect(res.body.contractId).toBe(V1_DELETE_ID);
+  });
+
+  test('returns 404 when already deleted', async () => {
+    const res = await request(app)
+      .delete(`/api/v1/rwa/${V1_DELETE_ID}`)
       .set('x-api-key', API_KEY);
     expect(res.status).toBe(404);
   });

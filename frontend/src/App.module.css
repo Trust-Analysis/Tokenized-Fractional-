@@ -199,6 +199,24 @@
   width: 120px;
 }
 
+.repoAvatarLink {
+  display: flex;
+  align-items: center;
+  text-decoration: none;
+}
+
+.repoAvatar {
+  width: 32px;
+  height: 32px;
+  border-radius: var(--radius-circle);
+  border: 2px solid var(--border-color);
+  transition: border-color var(--transition-fast);
+}
+
+.repoAvatarLink:hover .repoAvatar {
+  border-color: var(--border-color-hover);
+}
+
 .themeToggle {
   background: transparent;
   border: 1px solid var(--border-color);

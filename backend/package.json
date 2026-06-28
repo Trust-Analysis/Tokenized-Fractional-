@@ -7,7 +7,8 @@
   "scripts": {
     "start": "node index.js",
     "dev": "node --watch index.js",
-    "test": "node --experimental-vm-modules node_modules/.bin/jest --forceExit"
+    "test": "node --experimental-vm-modules node_modules/.bin/jest --forceExit",
+    "deploy": "echo 'Push to main — Render auto-deploys via render.yaml'"
   },
   "jest": {
     "testEnvironment": "node",

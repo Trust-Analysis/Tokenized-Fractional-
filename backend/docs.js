@@ -6,7 +6,11 @@ const options = {
       version: '2.0.0',
       description:
         'Backend API for managing real-world asset (RWA) metadata in the Tokenized Fractional RWA Marketplace. ' +
-        'Supports listing, creating, updating, and deleting asset metadata that is linked to on-chain Soroban smart contracts.',
+        'Supports listing, creating, updating, and deleting asset metadata that is linked to on-chain Soroban smart contracts.\n\n' +
+        '## API Versioning\n\n' +
+        'All routes are available under two prefixes:\n\n' +
+        '- **`/api/v1/rwa`** — versioned path (preferred, use in new integrations)\n' +
+        '- **`/api/rwa`** — legacy path (backward-compatible alias, defaults to v1)',
     },
     servers: [
       { url: 'http://localhost:3001', description: 'Development' },
@@ -102,9 +106,10 @@ const options = {
           },
         },
       },
-      '/api/rwa': {
+      // ── Versioned paths (/api/v1/rwa) ──────────────────────────────────────
+      '/api/v1/rwa': {
         get: {
-          tags: ['Assets'],
+          tags: ['Assets — v1 (versioned)'],
           summary: 'List all asset metadata',
           description: 'Returns a paginated, filterable list of all RWA assets.',
           parameters: [
@@ -121,7 +126,7 @@ const options = {
           },
         },
         post: {
-          tags: ['Assets'],
+          tags: ['Assets — v1 (versioned)'],
           summary: 'Create or update asset metadata',
           description: 'Requires admin API key via `x-api-key` header.',
           security: [{ ApiKeyAuth: [] }],
@@ -134,37 +139,25 @@ const options = {
               description: 'Asset created or updated',
               content: { 'application/json': { schema: { $ref: '#/components/schemas/Asset' } } },
             },
-            '400': {
-              description: 'Validation error',
-              content: { 'application/json': { schema: { $ref: '#/components/schemas/Error' } } },
-            },
-            '401': {
-              description: 'Unauthorized',
-              content: { 'application/json': { schema: { $ref: '#/components/schemas/Error' } } },
-            },
+            '400': { description: 'Validation error', content: { 'application/json': { schema: { $ref: '#/components/schemas/Error' } } } },
+            '401': { description: 'Unauthorized', content: { 'application/json': { schema: { $ref: '#/components/schemas/Error' } } } },
           },
         },
       },
-      '/api/rwa/{contractId}': {
+      '/api/v1/rwa/{contractId}': {
         get: {
-          tags: ['Assets'],
+          tags: ['Assets — v1 (versioned)'],
           summary: 'Get asset metadata by contract ID',
           parameters: [
             { in: 'path', name: 'contractId', required: true, schema: { type: 'string' }, description: 'Soroban contract ID' },
           ],
           responses: {
-            '200': {
-              description: 'Asset metadata',
-              content: { 'application/json': { schema: { $ref: '#/components/schemas/Asset' } } },
-            },
-            '404': {
-              description: 'Asset not found',
-              content: { 'application/json': { schema: { $ref: '#/components/schemas/Error' } } },
-            },
+            '200': { description: 'Asset metadata', content: { 'application/json': { schema: { $ref: '#/components/schemas/Asset' } } } },
+            '404': { description: 'Asset not found', content: { 'application/json': { schema: { $ref: '#/components/schemas/Error' } } } },
           },
         },
         delete: {
-          tags: ['Assets'],
+          tags: ['Assets — v1 (versioned)'],
           summary: 'Delete asset metadata',
           description: 'Requires admin API key via `x-api-key` header.',
           security: [{ ApiKeyAuth: [] }],
@@ -176,24 +169,82 @@ const options = {
               description: 'Asset deleted',
               content: {
                 'application/json': {
-                  schema: {
-                    type: 'object',
-                    properties: {
-                      message: { type: 'string' },
-                      contractId: { type: 'string' },
-                    },
-                  },
+                  schema: { type: 'object', properties: { message: { type: 'string' }, contractId: { type: 'string' } } },
                 },
               },
             },
-            '401': {
-              description: 'Unauthorized',
-              content: { 'application/json': { schema: { $ref: '#/components/schemas/Error' } } },
+            '401': { description: 'Unauthorized', content: { 'application/json': { schema: { $ref: '#/components/schemas/Error' } } } },
+            '404': { description: 'Asset not found', content: { 'application/json': { schema: { $ref: '#/components/schemas/Error' } } } },
+          },
+        },
+      },
+      // ── Legacy paths (/api/rwa — backward-compatible aliases for v1) ────────
+      '/api/rwa': {
+        get: {
+          tags: ['Assets — legacy (backward-compatible)'],
+          summary: 'List all asset metadata (legacy path)',
+          description: '**Deprecated path.** Alias for `GET /api/v1/rwa`. Use `/api/v1/rwa` for new integrations.',
+          parameters: [
+            { in: 'query', name: 'page', schema: { type: 'integer', default: 1 }, description: 'Page number' },
+            { in: 'query', name: 'limit', schema: { type: 'integer', default: 20 }, description: 'Items per page (max 100)' },
+            { in: 'query', name: 'assetType', schema: { type: 'string' }, description: 'Filter by asset type (case-insensitive)' },
+            { in: 'query', name: 'search', schema: { type: 'string' }, description: 'Full-text search on title and description' },
+          ],
+          responses: {
+            '200': {
+              description: 'Paginated list of assets',
+              content: { 'application/json': { schema: { $ref: '#/components/schemas/PaginatedAssets' } } },
             },
-            '404': {
-              description: 'Asset not found',
-              content: { 'application/json': { schema: { $ref: '#/components/schemas/Error' } } },
+          },
+        },
+        post: {
+          tags: ['Assets — legacy (backward-compatible)'],
+          summary: 'Create or update asset metadata (legacy path)',
+          description: '**Deprecated path.** Alias for `POST /api/v1/rwa`. Use `/api/v1/rwa` for new integrations.',
+          security: [{ ApiKeyAuth: [] }],
+          requestBody: {
+            required: true,
+            content: { 'application/json': { schema: { $ref: '#/components/schemas/AssetInput' } } },
+          },
+          responses: {
+            '201': { description: 'Asset created or updated', content: { 'application/json': { schema: { $ref: '#/components/schemas/Asset' } } } },
+            '400': { description: 'Validation error', content: { 'application/json': { schema: { $ref: '#/components/schemas/Error' } } } },
+            '401': { description: 'Unauthorized', content: { 'application/json': { schema: { $ref: '#/components/schemas/Error' } } } },
+          },
+        },
+      },
+      '/api/rwa/{contractId}': {
+        get: {
+          tags: ['Assets — legacy (backward-compatible)'],
+          summary: 'Get asset metadata by contract ID (legacy path)',
+          description: '**Deprecated path.** Alias for `GET /api/v1/rwa/{contractId}`. Use `/api/v1/rwa/{contractId}` for new integrations.',
+          parameters: [
+            { in: 'path', name: 'contractId', required: true, schema: { type: 'string' }, description: 'Soroban contract ID' },
+          ],
+          responses: {
+            '200': { description: 'Asset metadata', content: { 'application/json': { schema: { $ref: '#/components/schemas/Asset' } } } },
+            '404': { description: 'Asset not found', content: { 'application/json': { schema: { $ref: '#/components/schemas/Error' } } } },
+          },
+        },
+        delete: {
+          tags: ['Assets — legacy (backward-compatible)'],
+          summary: 'Delete asset metadata (legacy path)',
+          description: '**Deprecated path.** Alias for `DELETE /api/v1/rwa/{contractId}`. Use `/api/v1/rwa/{contractId}` for new integrations.',
+          security: [{ ApiKeyAuth: [] }],
+          parameters: [
+            { in: 'path', name: 'contractId', required: true, schema: { type: 'string' }, description: 'Soroban contract ID' },
+          ],
+          responses: {
+            '200': {
+              description: 'Asset deleted',
+              content: {
+                'application/json': {
+                  schema: { type: 'object', properties: { message: { type: 'string' }, contractId: { type: 'string' } } },
+                },
+              },
             },
+            '401': { description: 'Unauthorized', content: { 'application/json': { schema: { $ref: '#/components/schemas/Error' } } } },
+            '404': { description: 'Asset not found', content: { 'application/json': { schema: { $ref: '#/components/schemas/Error' } } } },
           },
         },
       },

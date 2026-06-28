@@ -2,6 +2,7 @@ import React from 'react';
 import AssetCard from '../AssetCard/AssetCard';
 import Skeleton from '../Skeleton/Skeleton';
 import Card from '../Card/Card';
+import { FAILED_TO_LOAD_ASSETS } from '../../constants/errors';
 import styles from './AssetGrid.module.css';
 
 /**
@@ -45,7 +46,7 @@ export default function AssetGrid({ assets = [], loading = false, error = null, 
             <line x1="12" y1="16" x2="12.01" y2="16"></line>
           </svg>
         </div>
-        <p className={styles.stateText}>Failed to load assets</p>
+        <p className={styles.stateText}>{FAILED_TO_LOAD_ASSETS}</p>
         <p className={styles.stateSubtext}>{error}</p>
       </div>
     );
