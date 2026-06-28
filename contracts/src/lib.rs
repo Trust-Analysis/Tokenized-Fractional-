@@ -43,6 +43,8 @@ pub enum DataKey {
     AcceptedTokens,
     /// Optional NFT contract address for minting share certificates on buy
     NftContract,
+    /// Reentrancy guard flag for defense-in-depth protection
+    ReentrancyGuard,
 }
 
 #[contracttype]
@@ -232,6 +234,26 @@ fn checked_sub_u32(a: u32, b: u32) -> u32 {
     a.checked_sub(b).unwrap_or_else(|| panic!("Arithmetic underflow: cannot subtract {} from {}", b, a))
 }
 
+/// Re-entrancy guard helper: check and set the guard flag to prevent re-entrant calls.
+/// This is a defense-in-depth measure to protect functions that make external calls.
+/// The flag is stored in instance storage and cleared after the operation completes.
+fn _check_non_reentrant(env: &Env) {
+    if env
+        .storage()
+        .instance()
+        .get::<DataKey, bool>(&DataKey::ReentrancyGuard)
+        .unwrap_or(false)
+    {
+        panic!("Re-entrancy detected: contract is already executing");
+    }
+    _set_non_reentrant(env, true);
+}
+
+/// Set the re-entrancy guard flag. Pass `true` to lock, `false` to unlock.
+fn _set_non_reentrant(env: &Env, value: bool) {
+    env.storage().instance().set(&DataKey::ReentrancyGuard, &value);
+}
+
 #[contractimpl]
 impl RwaMarketplace {
     pub fn init(env: Env, admin: Address, payment_token: Address, price: i128, total_shares: u32) {
@@ -271,7 +293,12 @@ impl RwaMarketplace {
     pub fn buy_shares(env: Env, buyer: Address, shares: u32, payment_token: Address) {
         buyer.require_auth();
 
+        // Re-entrancy guard: prevent recursive calls during external token operations
+        _check_non_reentrant(&env);
+
         if env.storage().instance().get(&DataKey::Paused).unwrap_or(false) {
+            // Clear reentrancy guard on early return
+            _set_non_reentrant(&env, false);
             panic!("Marketplace is paused");
         }
 
@@ -282,6 +309,7 @@ impl RwaMarketplace {
             .get(&DataKey::Whitelisted(buyer.clone()))
             .unwrap_or(false)
         {
+            _set_non_reentrant(&env, false);
             panic!("Buyer is not whitelisted");
         }
 
@@ -292,14 +320,17 @@ impl RwaMarketplace {
             .expect("Contract not initialized: available shares");
 
         if !Self::is_whitelisted(env.clone(), buyer.clone()) {
+            _set_non_reentrant(&env, false);
             panic!("Buyer is not whitelisted");
         }
 
         if shares > available {
+            _set_non_reentrant(&env, false);
             panic!("Not enough shares available for purchase");
         }
 
         if shares == 0 {
+            _set_non_reentrant(&env, false);
             panic!("Must purchase at least 1 share");
         }
 
@@ -317,6 +348,7 @@ impl RwaMarketplace {
             .get(&DataKey::MaxSharesPerUser)
             .unwrap_or(0);
         if max_per_user > 0 && prospective_balance > max_per_user {
+            _set_non_reentrant(&env, false);
             panic!("Purchase exceeds max shares per user");
         }
 
@@ -356,6 +388,9 @@ impl RwaMarketplace {
                 nft.mint_certificate(&buyer);
             }
         }
+
+        // Clear reentrancy guard before publishing event
+        _set_non_reentrant(&env, false);
 
         EventBuyShares { buyer, shares, total_cost }.publish(&env);
     }
@@ -2731,6 +2766,96 @@ mod test {
         te.env.as_contract(&nft_id, || {
             assert_eq!(Base::owner_of(&te.env, 0), te.buyer);
         });
+    }
+
+    // ── Re-entrancy guard tests ───────────────────────────────────────────────
+
+    #[test]
+    #[should_panic(expected = "Re-entrancy detected")]
+    fn test_reentrancy_is_blocked() {
+        let te = setup();
+        let c = client(&te);
+        c.init(&te.admin, &te.token_id, &100, &1000);
+        mint(&te, &te.buyer, 100_000);
+        c.add_to_whitelist(&te.buyer);
+
+        // Manually set the reentrancy guard to simulate an ongoing call
+        te.env.as_contract(&te.contract_id, || {
+            te.env.storage().instance().set(&DataKey::ReentrancyGuard, &true);
+        });
+
+        // This call should fail with re-entrancy error
+        c.buy_shares(&te.buyer, &10, &te.token_id);
+    }
+
+    #[test]
+    fn test_reentrancy_guard_cleared_after_successful_buy() {
+        let te = setup();
+        let c = client(&te);
+        c.init(&te.admin, &te.token_id, &100, &1000);
+        mint(&te, &te.buyer, 100_000);
+        c.add_to_whitelist(&te.buyer);
+
+        // Guard should be false initially
+        te.env.as_contract(&te.contract_id, || {
+            assert!(!te.env.storage().instance().get::<DataKey, bool>(&DataKey::ReentrancyGuard).unwrap_or(false));
+        });
+
+        c.buy_shares(&te.buyer, &10, &te.token_id);
+
+        // Guard should be cleared after successful buy
+        te.env.as_contract(&te.contract_id, || {
+            assert!(!te.env.storage().instance().get::<DataKey, bool>(&DataKey::ReentrancyGuard).unwrap_or(true));
+        });
+    }
+
+    #[test]
+    #[should_panic(expected = "Re-entrancy detected")]
+    fn test_reentrancy_blocked_on_panic_path() {
+        let te = setup();
+        let c = client(&te);
+        c.init(&te.admin, &te.token_id, &100, &1000);
+        mint(&te, &te.buyer, 100_000);
+        c.add_to_whitelist(&te.buyer);
+
+        // Set guard and unpause to trigger panic after guard is set
+        te.env.as_contract(&te.contract_id, || {
+            te.env.storage().instance().set(&DataKey::ReentrancyGuard, &true);
+            te.env.storage().instance().set(&DataKey::Paused, &true);
+        });
+
+        // Should panic with re-entrancy detected (guard check happens first)
+        c.buy_shares(&te.buyer, &10, &te.token_id);
+    }
+
+    #[test]
+    fn test_reentrancy_guard_default_false() {
+        let te = setup();
+        let c = client(&te);
+        c.init(&te.admin, &te.token_id, &100, &1000);
+
+        // Check that reentrancy guard is not set by default after init
+        te.env.as_contract(&te.contract_id, || {
+            assert!(!te.env.storage().instance().get::<DataKey, bool>(&DataKey::ReentrancyGuard).unwrap_or(false));
+        });
+    }
+
+    #[test]
+    #[should_panic(expected = "Re-entrancy detected")]
+    fn test_double_reentrancy_blocked() {
+        let te = setup();
+        let c = client(&te);
+        c.init(&te.admin, &te.token_id, &100, &1000);
+        mint(&te, &te.buyer, 100_000);
+        c.add_to_whitelist(&te.buyer);
+
+        // Manually lock the guard
+        te.env.as_contract(&te.contract_id, || {
+            te.env.storage().instance().set(&DataKey::ReentrancyGuard, &true);
+        });
+
+        // First call should fail
+        c.buy_shares(&te.buyer, &10, &te.token_id);
     }
 }
 // --- TIMELOCK MODULE ---
