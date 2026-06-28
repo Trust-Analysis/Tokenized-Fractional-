@@ -8,6 +8,10 @@ target/
 .DS_Store
 data.json
 
+# Playwright
+test-results/
+playwright-report/
+
 # Test snapshots
 test_snapshots/
 **/__snapshots__/
