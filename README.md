@@ -245,6 +245,7 @@ When users buy shares, they receive **SEP-41 compliant NFT certificates** repres
 | `GET` | `/api/rwa` | No | List all assets |
 | `GET` | `/api/rwa/:contractId` | No | Get asset metadata |
 | `POST` | `/api/rwa` | `x-api-key` | Create/update asset |
+| `PATCH` | `/api/rwa/:contractId` | `x-api-key` | Partial update (specific fields only) |
 | `DELETE` | `/api/rwa/:contractId` | `x-api-key` | Delete asset |
 
 Interactive API documentation is available at [`/api-docs`](http://localhost:3001/api-docs) (Swagger UI) and [`/api-docs.json`](http://localhost:3001/api-docs.json) (raw OpenAPI spec) when the backend is running.

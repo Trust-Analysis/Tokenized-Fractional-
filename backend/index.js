@@ -106,7 +106,7 @@ if (process.env.SENTRY_DSN) {
 }
 
 app.use(helmet());
-app.use(cors({ origin: CORS_ORIGINS, methods: ['GET', 'POST', 'DELETE'], allowedHeaders: ['Content-Type', 'x-api-key', 'X-Request-ID'] }));
+app.use(cors({ origin: CORS_ORIGINS, methods: ['GET', 'POST', 'PATCH', 'DELETE'], allowedHeaders: ['Content-Type', 'x-api-key', 'X-Request-ID'] }));
 app.use(express.json({ limit: '10kb' }));
 
 // ── Request ID middleware ──────────────────────────────────────────────────────
@@ -429,6 +429,101 @@ v1.delete('/rwa/:contractId', adminAuth, writeLimiter, async (req, res) => {
 
   req.log?.info({ contractId }, 'Asset deleted');
   res.json({ message: 'Asset metadata deleted', contractId });
+});
+
+/**
+ * @openapi
+ * /api/v1/rwa/{contractId}:
+ *   patch:
+ *     tags: [Assets]
+ *     summary: Partially update asset metadata
+ *     description: Update only the provided fields. Requires admin API key via `x-api-key` header.
+ *     security:
+ *       - ApiKeyAuth: []
+ *     parameters:
+ *       - in: path
+ *         name: contractId
+ *         required: true
+ *         schema:
+ *           type: string
+ *         description: Soroban contract ID
+ *     requestBody:
+ *       required: true
+ *       content:
+ *         application/json:
+ *           schema:
+ *             type: object
+ *             properties:
+ *               title:
+ *                 type: string
+ *               location:
+ *                 type: string
+ *               description:
+ *                 type: string
+ *               assetType:
+ *                 type: string
+ *               imageUrl:
+ *                 type: string
+ *               totalValuation:
+ *                 type: string
+ *               documents:
+ *                 type: array
+ *                 items:
+ *                   type: object
+ *             minProperties: 1
+ *     responses:
+ *       200:
+ *         description: Asset updated
+ *         content:
+ *           application/json:
+ *             schema:
+ *               $ref: '#/components/schemas/Asset'
+ *       400:
+ *         description: Validation error
+ *         content:
+ *           application/json:
+ *             schema:
+ *               $ref: '#/components/schemas/Error'
+ *       401:
+ *         description: Unauthorized
+ *         content:
+ *           application/json:
+ *             schema:
+ *               $ref: '#/components/schemas/Error'
+ *       404:
+ *         description: Asset not found
+ *         content:
+ *           application/json:
+ *             schema:
+ *               $ref: '#/components/schemas/Error'
+ */
+v1.patch('/rwa/:contractId', adminAuth, writeLimiter, async (req, res) => {
+  const { contractId } = req.params;
+  const patch = req.body;
+
+  if (!Object.keys(patch).length) {
+    return res.status(400).json({ error: 'Request body must contain at least one field to update' });
+  }
+
+  const data = loadData();
+  if (!data[contractId]) return res.status(404).json({ error: 'Asset metadata not found' });
+
+  // Merge only provided fields
+  const allowedFields = ['title', 'location', 'description', 'assetType', 'imageUrl', 'totalValuation', 'documents'];
+  allowedFields.forEach(field => {
+    if (field in patch && patch[field] !== undefined) {
+      data[contractId][field] = patch[field];
+    }
+  });
+
+  data[contractId].updatedAt = new Date().toISOString();
+  saveData(data);
+
+  // Invalidate caches (fire-and-forget)
+  cacheDel('rwa:all', cacheKey(contractId)).catch(() => {});
+
+  req.log?.info({ contractId, fields: Object.keys(patch) }, 'Asset partially updated');
+  res.json({ contractId, ...data[contractId] });
 });
 
 // Mount versioned router and backward-compatible aliases
