@@ -17,6 +17,7 @@ import PortfolioPage from './components/PortfolioPage/PortfolioPage';
 import ToastContainer from './components/Toast/Toast';
 import ConfirmPurchase from './components/ConfirmPurchase/ConfirmPurchase';
 import LanguageSwitcher from './components/LanguageSwitcher/LanguageSwitcher';
+import TransactionHistory from './components/TransactionHistory/TransactionHistory';
 import styles from './App.module.css';
 
 import { useWalletStore } from './store/useWalletStore';
@@ -34,7 +35,6 @@ import {
 import { useAssetStore } from './store/useAssetStore';
 import { useToastStore } from './store/useToastStore';
 import useTransactionStatus from './hooks/useTransactionStatus';
-import { useSorobanRead, useSorobanWrite } from './hooks/useSoroban';
 
 const CONTRACT_ID = import.meta.env.VITE_CONTRACT_ID || 'C...';
 const NETWORK_PASSPHRASE = import.meta.env.VITE_NETWORK_PASSPHRASE || Networks.TESTNET;
