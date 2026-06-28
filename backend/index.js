@@ -2,6 +2,8 @@
 // SPDX-License-Identifier: MIT
 
 import 'dotenv/config';
+import { validateEnv } from './env.js';
+validateEnv();
 import { randomUUID } from 'crypto';
 import express from 'express';
 import { Router } from 'express';
