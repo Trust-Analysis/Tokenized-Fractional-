@@ -78,13 +78,21 @@ export function useSorobanRead(fnName, args = [], options = {}) {
       if (import.meta.env.VITE_MOCK_WALLET === 'true') {
         await new Promise(resolve => setTimeout(resolve, 300));
         let mockVal = 10;
+        let mockU64 = null;
         if (fnName === 'get_shares') {
           const stored = localStorage.getItem('mock_shares_balance');
           mockVal = stored ? parseInt(stored, 10) : 10;
+        } else if (fnName === 'get_available_shares') {
+          mockVal = 900;
+        } else if (fnName === 'get_total_shares') {
+          mockVal = 1000;
+        } else if (fnName === 'get_price') {
+          mockU64 = 100_000_000; // 10 XLM in stroops
         }
         const result = {
           retval: {
-            u32: () => mockVal
+            u32: () => mockVal,
+            u64: () => mockU64 ?? mockVal,
           }
         };
         setData(result);
