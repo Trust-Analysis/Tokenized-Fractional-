@@ -1,11 +1,18 @@
 import { useState, useEffect, useCallback, useRef } from 'react';
 import { signTransaction } from '@stellar/freighter-api';
-import { rpc, TransactionBuilder, Networks, Contract } from '@stellar/stellar-sdk';
+import {
+  rpc,
+  TransactionBuilder,
+  Networks,
+  Contract,
+} from '@stellar/stellar-sdk';
 import { useWalletStore } from '../store/useWalletStore';
 
 const CONTRACT_ID = import.meta.env.VITE_CONTRACT_ID || 'C...';
-const RPC_URL = import.meta.env.VITE_RPC_URL || 'https://soroban-testnet.stellar.org:443';
-const NETWORK_PASSPHRASE = import.meta.env.VITE_NETWORK_PASSPHRASE || Networks.TESTNET;
+const RPC_URL =
+  import.meta.env.VITE_RPC_URL || 'https://soroban-testnet.stellar.org:443';
+const NETWORK_PASSPHRASE =
+  import.meta.env.VITE_NETWORK_PASSPHRASE || Networks.TESTNET;
 
 const server = new rpc.Server(RPC_URL);
 const contract = new Contract(CONTRACT_ID);
@@ -72,7 +79,7 @@ export function useSorobanRead(fnName, args = [], options = {}) {
     setError(null);
     try {
       if (import.meta.env.VITE_MOCK_WALLET === 'true') {
-        await new Promise(resolve => setTimeout(resolve, 300));
+        await new Promise((resolve) => setTimeout(resolve, 300));
         let mockVal = 10;
         if (fnName === 'get_shares') {
           const stored = localStorage.getItem('mock_shares_balance');
@@ -80,8 +87,8 @@ export function useSorobanRead(fnName, args = [], options = {}) {
         }
         const result = {
           retval: {
-            u32: () => mockVal
-          }
+            u32: () => mockVal,
+          },
         };
         setData(result);
         if (onSuccessRef.current) {
@@ -118,7 +125,7 @@ export function useSorobanRead(fnName, args = [], options = {}) {
     } finally {
       setLoading(false);
     }
-  // eslint-disable-next-line react-hooks/exhaustive-deps
+    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [publicKey, fnName, serializedArgs]);
 
   useEffect(() => {
@@ -143,83 +150,91 @@ export function useSorobanWrite(fnName) {
   const [error, setError] = useState(null);
   const [result, setResult] = useState(null);
 
-  const execute = useCallback(async (args = [], options = {}) => {
-    if (!publicKey) {
-      throw new Error('Wallet not connected');
-    }
-    setLoading(true);
-    setError(null);
-    setResult(null);
+  const execute = useCallback(
+    async (args = [], options = {}) => {
+      if (!publicKey) {
+        throw new Error('Wallet not connected');
+      }
+      setLoading(true);
+      setError(null);
+      setResult(null);
 
-    try {
-      if (import.meta.env.VITE_MOCK_WALLET === 'true') {
-        await new Promise(resolve => setTimeout(resolve, 800)); // Simulate Freighter signing delay
-        
-        if (fnName === 'buy_shares') {
-          let buyAmount = 1;
-          if (args[1] && typeof args[1].u32 === 'function') {
-            buyAmount = args[1].u32();
+      try {
+        if (import.meta.env.VITE_MOCK_WALLET === 'true') {
+          await new Promise((resolve) => setTimeout(resolve, 800)); // Simulate Freighter signing delay
+
+          if (fnName === 'buy_shares') {
+            let buyAmount = 1;
+            if (args[1] && typeof args[1].u32 === 'function') {
+              buyAmount = args[1].u32();
+            }
+            const stored = localStorage.getItem('mock_shares_balance');
+            const currentShares = stored ? parseInt(stored, 10) : 10;
+            const newShares = currentShares + buyAmount;
+            localStorage.setItem('mock_shares_balance', newShares.toString());
+
+            useWalletStore.getState().setShares(newShares);
           }
-          const stored = localStorage.getItem('mock_shares_balance');
-          const currentShares = stored ? parseInt(stored, 10) : 10;
-          const newShares = currentShares + buyAmount;
-          localStorage.setItem('mock_shares_balance', newShares.toString());
-          
-          useWalletStore.getState().setShares(newShares);
+
+          const submitRes = {
+            hash: `mock_tx_hash_${Math.random().toString(36).substring(2, 15)}`,
+          };
+          setResult(submitRes);
+          if (options.onSuccess) {
+            options.onSuccess(submitRes);
+          }
+          return submitRes;
         }
-        
-        const submitRes = {
-          hash: 'mock_tx_hash_' + Math.random().toString(36).substring(2, 15)
-        };
+        const account = await server.getAccount(publicKey);
+        let tx = new TransactionBuilder(account, {
+          fee: options.fee || '10000',
+          networkPassphrase: NETWORK_PASSPHRASE,
+        })
+          .addOperation(contract.call(fnName, ...args))
+          .setTimeout(30)
+          .build();
+
+        const simulation = await server.simulateTransaction(tx);
+        if (simulation.error) {
+          throw new Error(simulation.error);
+        }
+
+        tx = rpc.assembleTransaction(tx, simulation).build();
+        const { signedTxXdr, error: signError } = await signTransaction(
+          tx.toXDR(),
+          {
+            networkPassphrase: NETWORK_PASSPHRASE,
+          }
+        );
+
+        if (signError || !signedTxXdr) {
+          throw new Error(
+            signError?.message || 'Freighter transaction signing failed'
+          );
+        }
+
+        const submitRes = await server.sendTransaction(
+          TransactionBuilder.fromXDR(signedTxXdr, NETWORK_PASSPHRASE)
+        );
+
         setResult(submitRes);
         if (options.onSuccess) {
           options.onSuccess(submitRes);
         }
         return submitRes;
+      } catch (err) {
+        console.error(`[useSorobanWrite] Error executing tx ${fnName}:`, err);
+        setError(err.message || `Transaction ${fnName} failed`);
+        if (options.onError) {
+          options.onError(err);
+        }
+        throw err;
+      } finally {
+        setLoading(false);
       }
-      const account = await server.getAccount(publicKey);
-      let tx = new TransactionBuilder(account, {
-        fee: options.fee || '10000',
-        networkPassphrase: NETWORK_PASSPHRASE,
-      })
-        .addOperation(contract.call(fnName, ...args))
-        .setTimeout(30)
-        .build();
-
-      const simulation = await server.simulateTransaction(tx);
-      if (simulation.error) {
-        throw new Error(simulation.error);
-      }
-
-      tx = rpc.assembleTransaction(tx, simulation).build();
-      const { signedTxXdr, error: signError } = await signTransaction(tx.toXDR(), {
-        networkPassphrase: NETWORK_PASSPHRASE,
-      });
-
-      if (signError || !signedTxXdr) {
-        throw new Error(signError?.message || 'Freighter transaction signing failed');
-      }
-
-      const submitRes = await server.sendTransaction(
-        TransactionBuilder.fromXDR(signedTxXdr, NETWORK_PASSPHRASE)
-      );
-
-      setResult(submitRes);
-      if (options.onSuccess) {
-        options.onSuccess(submitRes);
-      }
-      return submitRes;
-    } catch (err) {
-      console.error(`[useSorobanWrite] Error executing tx ${fnName}:`, err);
-      setError(err.message || `Transaction ${fnName} failed`);
-      if (options.onError) {
-        options.onError(err);
-      }
-      throw err;
-    } finally {
-      setLoading(false);
-    }
-  }, [publicKey, fnName]);
+    },
+    [publicKey, fnName]
+  );
 
   return { execute, loading, error, result, setError, setResult };
 }

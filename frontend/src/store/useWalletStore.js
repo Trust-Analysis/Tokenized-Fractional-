@@ -1,6 +1,6 @@
-import { create } from "zustand";
-import { persist } from "zustand/middleware";
-import { isAllowed, setAllowed, getUserInfo } from "@stellar/freighter-api";
+import { create } from 'zustand';
+import { persist } from 'zustand/middleware';
+import { isAllowed, setAllowed, getUserInfo } from '@stellar/freighter-api';
 
 export const useWalletStore = create(
   persist(
@@ -13,8 +13,8 @@ export const useWalletStore = create(
       isConnected: () => Boolean(get().publicKey),
 
       checkConnection: async () => {
-        if (import.meta.env.VITE_MOCK_WALLET === "true") {
-          const stored = localStorage.getItem("mock_wallet_pubkey");
+        if (import.meta.env.VITE_MOCK_WALLET === 'true') {
+          const stored = localStorage.getItem('mock_wallet_pubkey');
           if (stored) {
             set({ publicKey: stored, walletError: null });
             return stored;
@@ -30,7 +30,7 @@ export const useWalletStore = create(
             }
           }
         } catch (err) {
-          console.error("[WalletStore] Freighter check failed:", err);
+          console.error('[WalletStore] Freighter check failed:', err);
         }
         set({ publicKey: null, shares: 0 });
         return null;
@@ -38,10 +38,11 @@ export const useWalletStore = create(
 
       connect: async () => {
         set({ isConnecting: true, walletError: null });
-        if (import.meta.env.VITE_MOCK_WALLET === "true") {
+        if (import.meta.env.VITE_MOCK_WALLET === 'true') {
           await new Promise((resolve) => setTimeout(resolve, 500));
-          const mockPubKey = "GBAZE64FKVPG4JUUP2BH63746JJ22G3A2S4QPF4UWKVA2RELLFLQZQVR";
-          localStorage.setItem("mock_wallet_pubkey", mockPubKey);
+          const mockPubKey =
+            'GBAZE64FKVPG4JUUP2BH63746JJ22G3A2S4QPF4UWKVA2RELLFLQZQVR';
+          localStorage.setItem('mock_wallet_pubkey', mockPubKey);
           set({ publicKey: mockPubKey, isConnecting: false });
           return mockPubKey;
         }
@@ -52,20 +53,20 @@ export const useWalletStore = create(
             set({ publicKey: user.publicKey, isConnecting: false });
             return user.publicKey;
           }
-          throw new Error("No public key returned by Freighter.");
+          throw new Error('No public key returned by Freighter.');
         } catch (err) {
           const msg =
-            "Failed to connect Freighter wallet. Ensure the extension is installed and unlocked.";
-          console.error("[WalletStore] connect failed:", err);
+            'Failed to connect Freighter wallet. Ensure the extension is installed and unlocked.';
+          console.error('[WalletStore] connect failed:', err);
           set({ walletError: msg, isConnecting: false });
           return null;
         }
       },
 
       disconnect: () => {
-        if (import.meta.env.VITE_MOCK_WALLET === "true") {
-          localStorage.removeItem("mock_wallet_pubkey");
-          localStorage.removeItem("mock_shares_balance");
+        if (import.meta.env.VITE_MOCK_WALLET === 'true') {
+          localStorage.removeItem('mock_wallet_pubkey');
+          localStorage.removeItem('mock_shares_balance');
         }
         set({
           publicKey: null,
@@ -82,11 +83,11 @@ export const useWalletStore = create(
       clearWalletError: () => set({ walletError: null }),
     }),
     {
-      name: "rwa-wallet-store",
+      name: 'rwa-wallet-store',
       partialize: (state) => ({
         publicKey: state.publicKey,
         shares: state.shares,
       }),
-    },
-  ),
+    }
+  )
 );

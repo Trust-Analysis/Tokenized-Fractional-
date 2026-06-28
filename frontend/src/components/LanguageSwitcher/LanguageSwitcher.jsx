@@ -12,7 +12,11 @@ export default function LanguageSwitcher() {
   const current = i18n.resolvedLanguage || i18n.language;
 
   return (
-    <div className={styles.switcher} role="group" aria-label="Language selector">
+    <div
+      className={styles.switcher}
+      role="group"
+      aria-label="Language selector"
+    >
       {LANGUAGES.map(({ code, label }) => (
         <button
           key={code}

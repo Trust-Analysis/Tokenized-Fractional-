@@ -5,7 +5,9 @@ export default {
   component: ErrorFallback,
 };
 
-const Template = (args) => <ErrorFallback {...args} />;
+function Template(args) {
+  return <ErrorFallback {...args} />;
+}
 
 export const Default = Template.bind({});
 Default.args = {

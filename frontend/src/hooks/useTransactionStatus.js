@@ -1,6 +1,7 @@
 import { useState, useEffect, useRef, useCallback } from 'react';
 
-const RPC_URL = import.meta.env.VITE_RPC_URL || 'https://soroban-testnet.stellar.org:443';
+const RPC_URL =
+  import.meta.env.VITE_RPC_URL || 'https://soroban-testnet.stellar.org:443';
 const POLL_INTERVAL = 2000;
 
 export default function useTransactionStatus(txHash) {

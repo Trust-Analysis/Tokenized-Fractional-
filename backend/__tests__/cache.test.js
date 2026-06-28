@@ -1,14 +1,14 @@
-process.env.NODE_ENV = 'test';
-process.env.ADMIN_API_KEY = 'test-key-for-jest';
-process.env.DATA_FILE = 'test-cache-data.json';
-
 import request from 'supertest';
 import { unlinkSync, existsSync } from 'fs';
 import { app } from '../index.js';
 import { setClient, cacheGet, cacheSet, cacheDel } from '../cache.js';
 
+process.env.NODE_ENV = 'test';
+process.env.ADMIN_API_KEY = 'test-key-for-jest';
+process.env.DATA_FILE = 'test-cache-data.json';
+
 const API_KEY = 'test-key-for-jest';
-const VALID_ID = 'C' + 'D'.repeat(55);
+const VALID_ID = `C${'D'.repeat(55)}`;
 const VALID_BODY = {
   contractId: VALID_ID,
   title: 'Cache Test Property',
@@ -24,8 +24,14 @@ function makeMockRedis() {
     store,
     get: async (key) => store.get(key) ?? null,
     // Redis SET key value EX ttl — ignore extra args
-    set: async (key, val, _ex, _ttl) => { store.set(key, val); return 'OK'; },
-    del: async (...keys) => { keys.forEach(k => store.delete(k)); return keys.length; },
+    set: async (key, val, _ex, _ttl) => {
+      store.set(key, val);
+      return 'OK';
+    },
+    del: async (...keys) => {
+      keys.forEach((k) => store.delete(k));
+      return keys.length;
+    },
     on: () => {},
   };
 }
@@ -74,7 +80,10 @@ describe('cache module', () => {
 // ── Cache integration tests ───────────────────────────────────────────────────
 describe('GET /api/rwa caching', () => {
   beforeAll(async () => {
-    await request(app).post('/api/rwa').set('x-api-key', API_KEY).send(VALID_BODY);
+    await request(app)
+      .post('/api/rwa')
+      .set('x-api-key', API_KEY)
+      .send(VALID_BODY);
   });
 
   test('response is cached after first GET /api/rwa', async () => {
@@ -87,8 +96,10 @@ describe('GET /api/rwa caching', () => {
     await request(app).get('/api/rwa'); // prime cache
     expect(mockRedis.store.has('rwa:all')).toBe(true);
 
-    const newId = 'C' + 'E'.repeat(55);
-    await request(app).post('/api/rwa').set('x-api-key', API_KEY)
+    const newId = `C${'E'.repeat(55)}`;
+    await request(app)
+      .post('/api/rwa')
+      .set('x-api-key', API_KEY)
       .send({ ...VALID_BODY, contractId: newId });
 
     expect(mockRedis.store.has('rwa:all')).toBe(false);
@@ -108,10 +119,12 @@ describe('GET /api/rwa caching', () => {
 });
 
 describe('GET /api/rwa/:contractId caching', () => {
-  const ID = 'C' + 'F'.repeat(55);
+  const ID = `C${'F'.repeat(55)}`;
 
   beforeAll(async () => {
-    await request(app).post('/api/rwa').set('x-api-key', API_KEY)
+    await request(app)
+      .post('/api/rwa')
+      .set('x-api-key', API_KEY)
       .send({ ...VALID_BODY, contractId: ID });
   });
 
@@ -122,7 +135,13 @@ describe('GET /api/rwa/:contractId caching', () => {
   });
 
   test('serves from cache on second GET', async () => {
-    const cached = { contractId: ID, title: 'From Cache', location: 'X', description: 'Y', assetType: 'Z' };
+    const cached = {
+      contractId: ID,
+      title: 'From Cache',
+      location: 'X',
+      description: 'Y',
+      assetType: 'Z',
+    };
     mockRedis.store.set(`rwa:${ID}`, JSON.stringify(cached));
     const res = await request(app).get(`/api/rwa/${ID}`);
     expect(res.body.title).toBe('From Cache');

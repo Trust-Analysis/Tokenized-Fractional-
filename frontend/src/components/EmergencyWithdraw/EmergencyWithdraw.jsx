@@ -15,8 +15,11 @@ import {
 } from '../../constants/errors';
 
 const CONTRACT_ID = import.meta.env.VITE_CONTRACT_ID || 'C...';
-const RPC_URL = import.meta.env.VITE_RPC_URL || 'https://soroban-testnet.stellar.org:443';
-const NETWORK_PASSPHRASE = import.meta.env.VITE_NETWORK_PASSPHRASE || 'Test SDF Network ; September 2015';
+const RPC_URL =
+  import.meta.env.VITE_RPC_URL || 'https://soroban-testnet.stellar.org:443';
+const NETWORK_PASSPHRASE =
+  import.meta.env.VITE_NETWORK_PASSPHRASE ||
+  'Test SDF Network ; September 2015';
 
 export default function EmergencyWithdraw({ publicKey }) {
   const [loading, setLoading] = useState(false);
@@ -37,14 +40,22 @@ export default function EmergencyWithdraw({ publicKey }) {
         removeToast(pendingToastRef.current);
         pendingToastRef.current = null;
       }
-      addToast({ message: EMERGENCY_WITHDRAW_CONFIRMED, type: 'success', txHash: lastTxHash });
+      addToast({
+        message: EMERGENCY_WITHDRAW_CONFIRMED,
+        type: 'success',
+        txHash: lastTxHash,
+      });
     } else if (txStatus === 'failed') {
       notifiedRef.current[lastTxHash] = true;
       if (pendingToastRef.current) {
         removeToast(pendingToastRef.current);
         pendingToastRef.current = null;
       }
-      addToast({ message: EMERGENCY_WITHDRAW_TX_FAILED, type: 'error', txHash: lastTxHash });
+      addToast({
+        message: EMERGENCY_WITHDRAW_TX_FAILED,
+        type: 'error',
+        txHash: lastTxHash,
+      });
     }
   }, [lastTxHash, txStatus]);
 
@@ -58,14 +69,20 @@ export default function EmergencyWithdraw({ publicKey }) {
       addToast({ message: ENTER_VALID_AMOUNT, type: 'error' });
       return;
     }
-    if (!confirm(`Emergency withdraw ${amount} tokens from the contract to ${publicKey.slice(0, 8)}…? Continue?`)) return;
+    if (
+      !confirm(
+        `Emergency withdraw ${amount} tokens from the contract to ${publicKey.slice(0, 8)}…? Continue?`
+      )
+    )
+      return;
 
     setLoading(true);
     setLastTxHash(null);
 
     try {
       const { signTransaction } = await import('@stellar/freighter-api');
-      const { rpc, TransactionBuilder, Contract, nativeToScVal } = await import('@stellar/stellar-sdk');
+      const { rpc, TransactionBuilder, Contract, nativeToScVal } =
+        await import('@stellar/stellar-sdk');
       const server = new rpc.Server(RPC_URL);
       const contract = new Contract(CONTRACT_ID);
 
@@ -78,7 +95,7 @@ export default function EmergencyWithdraw({ publicKey }) {
           contract.call(
             'emergency_withdraw',
             nativeToScVal(publicKey, { type: 'address' }),
-            nativeToScVal(parsedAmount, { type: 'i128' }),
+            nativeToScVal(parsedAmount, { type: 'i128' })
           )
         )
         .setTimeout(30)
@@ -88,16 +105,20 @@ export default function EmergencyWithdraw({ publicKey }) {
       if (simulation.error) throw new Error(simulation.error);
 
       tx = rpc.assembleTransaction(tx, simulation).build();
-      const { signedTxXdr, error: signError } = await signTransaction(tx.toXDR(), {
-        networkPassphrase: NETWORK_PASSPHRASE,
-      });
-      if (signError || !signedTxXdr) throw new Error(signError?.message || SIGNING_FAILED);
+      const { signedTxXdr, error: signError } = await signTransaction(
+        tx.toXDR(),
+        {
+          networkPassphrase: NETWORK_PASSPHRASE,
+        }
+      );
+      if (signError || !signedTxXdr)
+        throw new Error(signError?.message || SIGNING_FAILED);
 
       const submitRes = await server.sendTransaction(
         TransactionBuilder.fromXDR(signedTxXdr, NETWORK_PASSPHRASE)
       );
 
-      const hash = submitRes.hash;
+      const { hash } = submitRes;
       setLastTxHash(hash);
       pendingToastRef.current = addToast({
         message: EMERGENCY_WITHDRAW_SUBMITTED,
@@ -106,7 +127,10 @@ export default function EmergencyWithdraw({ publicKey }) {
       });
       setAmount('');
     } catch (err) {
-      addToast({ message: err.message || EMERGENCY_WITHDRAW_FAILED, type: 'error' });
+      addToast({
+        message: err.message || EMERGENCY_WITHDRAW_FAILED,
+        type: 'error',
+      });
     } finally {
       setLoading(false);
     }
