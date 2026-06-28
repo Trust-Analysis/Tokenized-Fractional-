@@ -1,0 +1,60 @@
+{
+  "nav": {
+    "marketplace": "Marketplace",
+    "portfolio": "Portfolio",
+    "admin": "Admin",
+    "history": "History"
+  },
+  "wallet": {
+    "connect": "Connect Freighter",
+    "connecting": "Connecting…",
+    "disconnect": "Disconnect",
+    "connected": "Connected"
+  },
+  "marketplace": {
+    "title": "RWA Marketplace",
+    "availableAssets": "Available Assets",
+    "shareBalance": "Your Share Balance",
+    "buyShares": "Buy Fractional Shares",
+    "processing": "Processing…",
+    "buyButton": "Buy Shares",
+    "contractNotConfigured": "Contract not configured."
+  },
+  "portfolio": {
+    "title": "Portfolio",
+    "subtitle": "Your fractional asset holdings across all markets",
+    "refresh": "Refresh",
+    "refreshing": "Refreshing…",
+    "assetsHeld": "Assets Held",
+    "totalShares": "Total Shares",
+    "totalValue": "Total Value",
+    "noHoldings": "No holdings found",
+    "noHoldingsSub": "You don't own any shares yet. Browse assets in the marketplace.",
+    "connectWallet": "Connect your wallet to view portfolio",
+    "noAssets": "No assets available"
+  },
+  "history": {
+    "title": "Transaction History",
+    "refresh": "Refresh",
+    "refreshing": "Refreshing…",
+    "hash": "Hash",
+    "date": "Date",
+    "operations": "Operations",
+    "status": "Status",
+    "success": "Success",
+    "failed": "Failed",
+    "empty": "No transactions found",
+    "emptySub": "Your recent Stellar transactions will appear here.",
+    "connectWallet": "Connect your wallet to view transaction history",
+    "fetchError": "Failed to load transaction history. Please try again."
+  },
+  "theme": {
+    "toDark": "Switch to Dark Theme",
+    "toLight": "Switch to Light Theme"
+  },
+  "common": {
+    "loading": "Loading…",
+    "error": "An error occurred.",
+    "retry": "Retry"
+  }
+}

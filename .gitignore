@@ -8,4 +8,26 @@ target/
 .DS_Store
 data.json
 
+# Test snapshots
 test_snapshots/
+**/__snapshots__/
+*.snap
+
+# Coverage reports
+coverage/
+.nyc_output/
+
+# Editor / IDE
+.vscode/
+.idea/
+*.swp
+*.swo
+
+# OS
+Thumbs.db
+
+# Storybook build output
+storybook-static/
+
+# Temporary PR description files
+PR_DESCRIPTION_ISSUE_*.md

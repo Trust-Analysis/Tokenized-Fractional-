@@ -1,0 +1,60 @@
+{
+  "nav": {
+    "marketplace": "Mercado",
+    "portfolio": "Portafolio",
+    "admin": "Administrador",
+    "history": "Historial"
+  },
+  "wallet": {
+    "connect": "Conectar Freighter",
+    "connecting": "Conectando…",
+    "disconnect": "Desconectar",
+    "connected": "Conectado"
+  },
+  "marketplace": {
+    "title": "Mercado de Activos RWA",
+    "availableAssets": "Activos Disponibles",
+    "shareBalance": "Tus Acciones",
+    "buyShares": "Comprar Acciones Fraccionadas",
+    "processing": "Procesando…",
+    "buyButton": "Comprar Acciones",
+    "contractNotConfigured": "Contrato no configurado."
+  },
+  "portfolio": {
+    "title": "Portafolio",
+    "subtitle": "Tus activos fraccionados en todos los mercados",
+    "refresh": "Actualizar",
+    "refreshing": "Actualizando…",
+    "assetsHeld": "Activos",
+    "totalShares": "Acciones Totales",
+    "totalValue": "Valor Total",
+    "noHoldings": "Sin posiciones",
+    "noHoldingsSub": "Aún no tienes acciones. Explora el mercado.",
+    "connectWallet": "Conecta tu billetera para ver el portafolio",
+    "noAssets": "No hay activos disponibles"
+  },
+  "history": {
+    "title": "Historial de Transacciones",
+    "refresh": "Actualizar",
+    "refreshing": "Actualizando…",
+    "hash": "Hash",
+    "date": "Fecha",
+    "operations": "Operaciones",
+    "status": "Estado",
+    "success": "Exitosa",
+    "failed": "Fallida",
+    "empty": "Sin transacciones",
+    "emptySub": "Tus transacciones recientes de Stellar aparecerán aquí.",
+    "connectWallet": "Conecta tu billetera para ver el historial",
+    "fetchError": "Error al cargar el historial. Intenta de nuevo."
+  },
+  "theme": {
+    "toDark": "Cambiar a Tema Oscuro",
+    "toLight": "Cambiar a Tema Claro"
+  },
+  "common": {
+    "loading": "Cargando…",
+    "error": "Ocurrió un error.",
+    "retry": "Reintentar"
+  }
+}
