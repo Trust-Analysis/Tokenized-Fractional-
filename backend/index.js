@@ -2,7 +2,9 @@
 // SPDX-License-Identifier: MIT
 
 import 'dotenv/config';
+import { randomUUID } from 'crypto';
 import express from 'express';
+import { Router } from 'express';
 import cors from 'cors';
 import helmet from 'helmet';
 import rateLimit from 'express-rate-limit';
@@ -12,6 +14,8 @@ import * as Sentry from '@sentry/node';
 import { readFileSync, writeFileSync, existsSync } from 'fs';
 import { join, dirname } from 'path';
 import { fileURLToPath } from 'url';
+import swaggerUi from 'swagger-ui-express';
+import { swaggerSpec } from './docs.js';
 import { cacheGet, cacheSet, cacheDel } from './cache.js';
 
 const __dirname = dirname(fileURLToPath(import.meta.url));
@@ -86,7 +90,7 @@ function adminAuth(req, res, next) {
   const expected = process.env.ADMIN_API_KEY || 'dev-key-change-in-production';
   if (!apiKey || apiKey !== expected) {
     req.log?.warn({ hasKey: !!apiKey }, 'Unauthorized API key attempt');
-    return res.status(401).json({ error: 'Unauthorized: invalid or missing API key' });
+    return res.status(401).json({ error: 'Unauthorized: invalid or missing API key', requestId: req.requestId });
   }
   req.log?.info('Admin API key used');
   next();
@@ -102,13 +106,22 @@ if (process.env.SENTRY_DSN) {
 }
 
 app.use(helmet());
-app.use(cors({ origin: CORS_ORIGINS, methods: ['GET', 'POST', 'DELETE'], allowedHeaders: ['Content-Type', 'x-api-key'] }));
+app.use(cors({ origin: CORS_ORIGINS, methods: ['GET', 'POST', 'DELETE'], allowedHeaders: ['Content-Type', 'x-api-key', 'X-Request-ID'] }));
 app.use(express.json({ limit: '10kb' }));
+
+// ── Request ID middleware ──────────────────────────────────────────────────────
+app.use((req, res, next) => {
+  const id = req.headers['x-request-id'] || randomUUID();
+  req.requestId = id;
+  res.setHeader('X-Request-ID', id);
+  next();
+});
 
 // Request logging middleware (silent in test)
 app.use(pinoHttp({
   logger,
   autoLogging: { ignore: req => req.url === '/health' },
+  genReqId: req => req.requestId,
 }));
 
 const apiLimiter = rateLimit({
@@ -128,12 +141,24 @@ const writeLimiter = rateLimit({
   message: { error: 'Too many write requests, please try again later' },
 });
 
+// ── API Documentation ──────────────────────────────────────────────────────────
+app.use('/api-docs', swaggerUi.serve, swaggerUi.setup(swaggerSpec, {
+  customSiteTitle: 'RWA Marketplace API Docs',
+}));
+
+app.get('/api-docs.json', (_req, res) => {
+  res.json(swaggerSpec);
+});
+
 // ── Routes ────────────────────────────────────────────────────────────────────
 
 // Admin API key verification endpoint
 app.get('/api/admin/verify', adminAuth, (_req, res) => {
   res.json({ ok: true });
 });
+
+// ── v1 Router ─────────────────────────────────────────────────────────────────
+const v1 = Router();
 
 app.get('/health', async (_req, res) => {
   const deps = {
@@ -163,8 +188,47 @@ app.get('/health', async (_req, res) => {
   res.json({ status: 'ok', timestamp: new Date().toISOString(), dependencies: deps });
 });
 
-// GET /api/rwa?page=1&limit=20&assetType=real_estate&search=coffee
-app.get('/api/rwa', (req, res) => {
+/**
+ * @openapi
+ * /api/v1/rwa:
+ *   get:
+ *     tags: [Assets]
+ *     summary: List all asset metadata
+ *     description: Returns a paginated, filterable list of all RWA assets.
+ *     parameters:
+ *       - in: query
+ *         name: page
+ *         schema:
+ *           type: integer
+ *           default: 1
+ *         description: Page number
+ *       - in: query
+ *         name: limit
+ *         schema:
+ *           type: integer
+ *           default: 20
+ *         description: Items per page (max 100)
+ *       - in: query
+ *         name: assetType
+ *         schema:
+ *           type: string
+ *         description: Filter by asset type (case-insensitive)
+ *         example: real_estate
+ *       - in: query
+ *         name: search
+ *         schema:
+ *           type: string
+ *         description: Full-text search on title and description
+ *         example: luxury
+ *     responses:
+ *       200:
+ *         description: Paginated list of assets
+ *         content:
+ *           application/json:
+ *             schema:
+ *               $ref: '#/components/schemas/PaginatedAssets'
+ */
+v1.get('/rwa', (req, res) => {
   const data = loadData();
   let assets = Object.entries(data).map(([contractId, meta]) => ({ contractId, ...meta }));
 
@@ -201,7 +265,34 @@ app.get('/api/rwa', (req, res) => {
   cacheSet('rwa:all', { data: assets, pagination: { total, page: pageNum, limit: pageSize, totalPages } }).catch(() => {});
 });
 
-app.get('/api/rwa/:contractId', async (req, res) => {
+/**
+ * @openapi
+ * /api/v1/rwa/{contractId}:
+ *   get:
+ *     tags: [Assets]
+ *     summary: Get asset metadata by contract ID
+ *     parameters:
+ *       - in: path
+ *         name: contractId
+ *         required: true
+ *         schema:
+ *           type: string
+ *         description: Soroban contract ID
+ *     responses:
+ *       200:
+ *         description: Asset metadata
+ *         content:
+ *           application/json:
+ *             schema:
+ *               $ref: '#/components/schemas/Asset'
+ *       404:
+ *         description: Asset not found
+ *         content:
+ *           application/json:
+ *             schema:
+ *               $ref: '#/components/schemas/Error'
+ */
+v1.get('/rwa/:contractId', async (req, res) => {
   const { contractId } = req.params;
 
   const cached = await cacheGet(cacheKey(contractId));
@@ -217,7 +308,42 @@ app.get('/api/rwa/:contractId', async (req, res) => {
   res.json(result);
 });
 
-app.post('/api/rwa', adminAuth, writeLimiter, async (req, res) => {
+/**
+ * @openapi
+ * /api/v1/rwa:
+ *   post:
+ *     tags: [Assets]
+ *     summary: Create or update asset metadata
+ *     description: Requires admin API key via `x-api-key` header.
+ *     security:
+ *       - ApiKeyAuth: []
+ *     requestBody:
+ *       required: true
+ *       content:
+ *         application/json:
+ *           schema:
+ *             $ref: '#/components/schemas/AssetInput'
+ *     responses:
+ *       201:
+ *         description: Asset created or updated
+ *         content:
+ *           application/json:
+ *             schema:
+ *               $ref: '#/components/schemas/Asset'
+ *       400:
+ *         description: Validation error
+ *         content:
+ *           application/json:
+ *             schema:
+ *               $ref: '#/components/schemas/Error'
+ *       401:
+ *         description: Unauthorized
+ *         content:
+ *           application/json:
+ *             schema:
+ *               $ref: '#/components/schemas/Error'
+ */
+v1.post('/rwa', adminAuth, writeLimiter, async (req, res) => {
   const { contractId, ...metadata } = req.body;
 
   if (!contractId || !validateContractId(contractId)) {
@@ -249,7 +375,48 @@ app.post('/api/rwa', adminAuth, writeLimiter, async (req, res) => {
   res.status(201).json({ contractId, ...data[contractId] });
 });
 
-app.delete('/api/rwa/:contractId', adminAuth, writeLimiter, async (req, res) => {
+/**
+ * @openapi
+ * /api/v1/rwa/{contractId}:
+ *   delete:
+ *     tags: [Assets]
+ *     summary: Delete asset metadata
+ *     description: Requires admin API key via `x-api-key` header.
+ *     security:
+ *       - ApiKeyAuth: []
+ *     parameters:
+ *       - in: path
+ *         name: contractId
+ *         required: true
+ *         schema:
+ *           type: string
+ *         description: Soroban contract ID
+ *     responses:
+ *       200:
+ *         description: Asset deleted
+ *         content:
+ *           application/json:
+ *             schema:
+ *               type: object
+ *               properties:
+ *                 message:
+ *                   type: string
+ *                 contractId:
+ *                   type: string
+ *       401:
+ *         description: Unauthorized
+ *         content:
+ *           application/json:
+ *             schema:
+ *               $ref: '#/components/schemas/Error'
+ *       404:
+ *         description: Asset not found
+ *         content:
+ *           application/json:
+ *             schema:
+ *               $ref: '#/components/schemas/Error'
+ */
+v1.delete('/rwa/:contractId', adminAuth, writeLimiter, async (req, res) => {
   const { contractId } = req.params;
   const data = loadData();
   if (!data[contractId]) return res.status(404).json({ error: 'Asset metadata not found' });
@@ -264,8 +431,12 @@ app.delete('/api/rwa/:contractId', adminAuth, writeLimiter, async (req, res) => 
   res.json({ message: 'Asset metadata deleted', contractId });
 });
 
+// Mount versioned router and backward-compatible aliases
+app.use('/api/v1', v1);
+app.use('/api', v1); // legacy /api/rwa aliased to /api/v1/rwa
+
 app.use((_req, res) => {
-  res.status(404).json({ error: 'Not found' });
+  res.status(404).json({ error: 'Not found', requestId: _req.requestId });
 });
 
 // Sentry error handler must be registered before other error handlers
@@ -275,7 +446,7 @@ if (process.env.SENTRY_DSN) {
 
 app.use((err, req, res, _next) => {
   req.log?.error({ err }, 'Unhandled error');
-  res.status(500).json({ error: 'Internal server error' });
+  res.status(500).json({ error: 'Internal server error', requestId: req.requestId });
 });
 
 export { app };

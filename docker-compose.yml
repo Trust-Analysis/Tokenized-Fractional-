@@ -1,0 +1,81 @@
+# RWA Marketplace — full stack
+#
+# Dev mode  (hot-reload):  docker compose up
+# Prod mode (built nginx): docker compose --profile prod up --build
+# With Redis cache:        docker compose --profile redis up
+#
+# Copy backend/.env.example → backend/.env and fill in values before starting.
+
+services:
+
+  backend:
+    build: ./backend
+    restart: unless-stopped
+    env_file:
+      - path: ./backend/.env
+        required: false
+    environment:
+      PORT: "3001"
+      NODE_ENV: production
+    ports:
+      - "3001:3001"
+    volumes:
+      # Persist data.json across restarts
+      - backend-data:/app/data
+    healthcheck:
+      test: ["CMD", "wget", "-qO-", "http://localhost:3001/health"]
+      interval: 30s
+      timeout: 5s
+      retries: 3
+
+  # ── Dev frontend (Vite HMR) — default ──────────────────────────────────────
+  frontend-dev:
+    build:
+      context: ./frontend
+      target: dev
+    restart: unless-stopped
+    environment:
+      VITE_CONTRACT_ID: ${VITE_CONTRACT_ID:-C...}
+      VITE_RPC_URL: ${VITE_RPC_URL:-https://soroban-testnet.stellar.org:443}
+      VITE_NETWORK_PASSPHRASE: ${VITE_NETWORK_PASSPHRASE:-Test SDF Network ; September 2015}
+      VITE_API_URL: ${VITE_API_URL:-http://localhost:3001}
+    ports:
+      - "5173:5173"
+    volumes:
+      # Mount source for live reloading; skip node_modules
+      - ./frontend:/app
+      - /app/node_modules
+    depends_on:
+      backend:
+        condition: service_healthy
+    profiles: ["dev"]
+
+  # ── Prod frontend (built → nginx) ──────────────────────────────────────────
+  frontend-prod:
+    build:
+      context: ./frontend
+      target: prod
+      args:
+        VITE_CONTRACT_ID: ${VITE_CONTRACT_ID:-C...}
+        VITE_RPC_URL: ${VITE_RPC_URL:-https://soroban-testnet.stellar.org:443}
+        VITE_NETWORK_PASSPHRASE: ${VITE_NETWORK_PASSPHRASE:-Test SDF Network ; September 2015}
+        VITE_API_URL: ${VITE_API_URL:-http://backend:3001}
+    restart: unless-stopped
+    ports:
+      - "80:80"
+    depends_on:
+      backend:
+        condition: service_healthy
+    profiles: ["prod"]
+
+  # ── Redis (optional cache) ─────────────────────────────────────────────────
+  redis:
+    image: redis:7-alpine
+    restart: unless-stopped
+    command: redis-server --save "" --appendonly no
+    ports:
+      - "6379:6379"
+    profiles: ["redis", "prod"]
+
+volumes:
+  backend-data:

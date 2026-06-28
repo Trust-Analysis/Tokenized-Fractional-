@@ -1,0 +1,22 @@
+name: Deploy to Render
+
+on:
+  push:
+    branches: [main]
+
+jobs:
+  deploy-backend:
+    name: Deploy Backend
+    runs-on: ubuntu-latest
+    steps:
+      - name: Trigger Render backend deploy
+        run: |
+          curl -f -X POST "${{ secrets.RENDER_BACKEND_DEPLOY_HOOK }}"
+
+  deploy-frontend:
+    name: Deploy Frontend
+    runs-on: ubuntu-latest
+    steps:
+      - name: Trigger Render frontend deploy
+        run: |
+          curl -f -X POST "${{ secrets.RENDER_FRONTEND_DEPLOY_HOOK }}"

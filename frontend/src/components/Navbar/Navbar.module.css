@@ -1,0 +1,153 @@
+.navbar {
+  position: relative;
+  border-bottom: 1px solid var(--border-color);
+  margin-bottom: var(--spacing-md);
+}
+
+/* ── Desktop nav ─────────────────────────────────────── */
+.desktopNav {
+  display: flex;
+  gap: 0;
+  list-style: none;
+  margin: 0;
+  padding: 0;
+}
+
+.navItem {
+  display: flex;
+  align-items: center;
+  gap: var(--spacing-xs);
+  padding: var(--spacing-sm) var(--spacing-lg);
+  font-size: var(--font-size-sm);
+  font-weight: var(--font-weight-medium);
+  color: var(--text-secondary);
+  background: none;
+  border: none;
+  border-bottom: 2px solid transparent;
+  margin-bottom: -1px;
+  cursor: pointer;
+  transition: color var(--transition-fast), border-color var(--transition-fast);
+}
+
+.navItem:hover {
+  color: var(--text-primary);
+}
+
+.navItem.active {
+  color: var(--primary);
+  border-bottom-color: var(--primary);
+}
+
+.navIcon {
+  display: flex;
+  align-items: center;
+}
+
+.navIcon svg {
+  width: 16px;
+  height: 16px;
+}
+
+/* ── Hamburger button (mobile only) ─────────────────── */
+.hamburger {
+  display: none;
+  flex-direction: column;
+  justify-content: center;
+  gap: 5px;
+  padding: var(--spacing-sm);
+  background: none;
+  border: 1px solid var(--border-color);
+  border-radius: var(--radius-sm);
+  cursor: pointer;
+  margin: var(--spacing-sm) 0;
+}
+
+.bar {
+  display: block;
+  width: 22px;
+  height: 2px;
+  background-color: var(--text-primary);
+  border-radius: 2px;
+  transition: transform var(--transition-fast), opacity var(--transition-fast);
+  transform-origin: center;
+}
+
+.barOpen1 { transform: translateY(7px) rotate(45deg); }
+.barOpen2 { opacity: 0; }
+.barOpen3 { transform: translateY(-7px) rotate(-45deg); }
+
+/* ── Overlay ─────────────────────────────────────────── */
+.overlay {
+  position: fixed;
+  inset: 0;
+  background: rgba(0, 0, 0, 0.45);
+  z-index: 99;
+}
+
+/* ── Slide-out drawer ────────────────────────────────── */
+.drawer {
+  position: fixed;
+  top: 0;
+  right: 0;
+  height: 100%;
+  width: 240px;
+  background: var(--bg-surface);
+  border-left: 1px solid var(--border-color);
+  z-index: 100;
+  transform: translateX(100%);
+  transition: transform var(--transition-normal);
+  display: flex;
+  flex-direction: column;
+  padding-top: var(--spacing-2xl);
+}
+
+.drawerOpen {
+  transform: translateX(0);
+}
+
+.drawerNav {
+  list-style: none;
+  margin: 0;
+  padding: var(--spacing-md);
+  display: flex;
+  flex-direction: column;
+  gap: var(--spacing-xs);
+}
+
+.drawerItem {
+  display: flex;
+  align-items: center;
+  gap: var(--spacing-sm);
+  width: 100%;
+  padding: var(--spacing-sm) var(--spacing-md);
+  font-size: var(--font-size-md);
+  font-weight: var(--font-weight-medium);
+  color: var(--text-secondary);
+  background: none;
+  border: none;
+  border-radius: var(--radius-sm);
+  cursor: pointer;
+  text-align: left;
+  transition: background var(--transition-fast), color var(--transition-fast);
+}
+
+.drawerItem:hover {
+  background: var(--bg-surface-hover);
+  color: var(--text-primary);
+}
+
+.drawerItem.active {
+  color: var(--primary);
+  background: var(--primary-glow);
+}
+
+.drawerItem .navIcon svg {
+  width: 18px;
+  height: 18px;
+}
+
+/* ── Responsive breakpoint ───────────────────────────── */
+@media (max-width: 600px) {
+  .desktopNav { display: none; }
+  .hamburger  { display: flex; }
+}

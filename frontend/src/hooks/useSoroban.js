@@ -1,4 +1,4 @@
-import { useState, useEffect, useCallback } from 'react';
+import { useState, useEffect, useCallback, useRef } from 'react';
 import { signTransaction } from '@stellar/freighter-api';
 import { rpc, TransactionBuilder, Networks, Contract } from '@stellar/stellar-sdk';
 import { useWalletStore } from '../store/useWalletStore';
@@ -58,11 +58,37 @@ export function useSorobanRead(fnName, args = [], options = {}) {
 
   const serializedArgs = serializeArgs(args);
 
+  const onSuccessRef = useRef(options.onSuccess);
+  const onErrorRef = useRef(options.onError);
+
+  useEffect(() => {
+    onSuccessRef.current = options.onSuccess;
+    onErrorRef.current = options.onError;
+  });
+
   const execute = useCallback(async () => {
     if (!publicKey || CONTRACT_ID.length < 50) return null;
     setLoading(true);
     setError(null);
     try {
+      if (import.meta.env.VITE_MOCK_WALLET === 'true') {
+        await new Promise(resolve => setTimeout(resolve, 300));
+        let mockVal = 10;
+        if (fnName === 'get_shares') {
+          const stored = localStorage.getItem('mock_shares_balance');
+          mockVal = stored ? parseInt(stored, 10) : 10;
+        }
+        const result = {
+          retval: {
+            u32: () => mockVal
+          }
+        };
+        setData(result);
+        if (onSuccessRef.current) {
+          onSuccessRef.current(result);
+        }
+        return result;
+      }
       const account = await server.getAccount(publicKey);
       const tx = new TransactionBuilder(account, {
         fee: '100',
@@ -78,22 +104,22 @@ export function useSorobanRead(fnName, args = [], options = {}) {
       }
 
       setData(simulation.result);
-      if (options.onSuccess) {
-        options.onSuccess(simulation.result);
+      if (onSuccessRef.current) {
+        onSuccessRef.current(simulation.result);
       }
       return simulation.result;
     } catch (err) {
       console.error(`[useSorobanRead] Error executing ${fnName}:`, err);
       setError(err.message || `Failed to execute ${fnName}`);
-      if (options.onError) {
-        options.onError(err);
+      if (onErrorRef.current) {
+        onErrorRef.current(err);
       }
       throw err;
     } finally {
       setLoading(false);
     }
   // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [publicKey, fnName, serializedArgs, options.onSuccess, options.onError]);
+  }, [publicKey, fnName, serializedArgs]);
 
   useEffect(() => {
     if (options.skip !== true && publicKey && CONTRACT_ID.length >= 50) {
@@ -126,6 +152,31 @@ export function useSorobanWrite(fnName) {
     setResult(null);
 
     try {
+      if (import.meta.env.VITE_MOCK_WALLET === 'true') {
+        await new Promise(resolve => setTimeout(resolve, 800)); // Simulate Freighter signing delay
+        
+        if (fnName === 'buy_shares') {
+          let buyAmount = 1;
+          if (args[1] && typeof args[1].u32 === 'function') {
+            buyAmount = args[1].u32();
+          }
+          const stored = localStorage.getItem('mock_shares_balance');
+          const currentShares = stored ? parseInt(stored, 10) : 10;
+          const newShares = currentShares + buyAmount;
+          localStorage.setItem('mock_shares_balance', newShares.toString());
+          
+          useWalletStore.getState().setShares(newShares);
+        }
+        
+        const submitRes = {
+          hash: 'mock_tx_hash_' + Math.random().toString(36).substring(2, 15)
+        };
+        setResult(submitRes);
+        if (options.onSuccess) {
+          options.onSuccess(submitRes);
+        }
+        return submitRes;
+      }
       const account = await server.getAccount(publicKey);
       let tx = new TransactionBuilder(account, {
         fee: options.fee || '10000',

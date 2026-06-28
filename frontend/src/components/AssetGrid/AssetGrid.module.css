@@ -4,6 +4,12 @@
   gap: var(--spacing-lg);
 }
 
+@media (max-width: 360px) {
+  .grid {
+    grid-template-columns: 1fr;
+  }
+}
+
 /* ── Skeleton placeholder styles ─────────────────────────────────────── */
 .skeletonImage {
   height: 180px;

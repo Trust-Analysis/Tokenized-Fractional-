@@ -1,8 +1,16 @@
-import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect, useRef } from 'react';
 import Button from '../Button/Button';
-import Alert from '../Alert/Alert';
 import Spinner from '../Spinner/Spinner';
 import styles from './PauseControl.module.css';
+import { useToastStore } from '../../store/useToastStore';
+import useTransactionStatus from '../../hooks/useTransactionStatus';
+import {
+  PAUSE_SUCCESS,
+  PAUSE_TOGGLE_FAILED,
+  WALLET_AND_CONTRACT_REQUIRED,
+  SIGNING_FAILED,
+  FAILED_TO_TOGGLE_PAUSE,
+} from '../../constants/errors';
 
 const CONTRACT_ID = import.meta.env.VITE_CONTRACT_ID || 'C...';
 const RPC_URL = import.meta.env.VITE_RPC_URL || 'https://soroban-testnet.stellar.org:443';
@@ -10,11 +18,34 @@ const NETWORK_PASSPHRASE = import.meta.env.VITE_NETWORK_PASSPHRASE || 'Test SDF 
 
 export default function PauseControl({ publicKey }) {
   const [loading, setLoading] = useState(false);
-  const [error, setError] = useState('');
-  const [success, setSuccess] = useState('');
   const [isPaused, setIsPaused] = useState(null);
+  const [lastTxHash, setLastTxHash] = useState(null);
+  const addToast = useToastStore((s) => s.addToast);
+  const removeToast = useToastStore((s) => s.removeToast);
+  const pendingToastRef = useRef(null);
+  const notifiedRef = useRef({});
+  const txStatus = useTransactionStatus(lastTxHash);
 
-  // Fetch pause status on mount and when publicKey changes
+  useEffect(() => {
+    if (!lastTxHash || notifiedRef.current[lastTxHash]) return;
+
+    if (txStatus === 'confirmed') {
+      notifiedRef.current[lastTxHash] = true;
+      if (pendingToastRef.current) {
+        removeToast(pendingToastRef.current);
+        pendingToastRef.current = null;
+      }
+      addToast({ message: PAUSE_SUCCESS(isPaused), type: 'success', txHash: lastTxHash });
+    } else if (txStatus === 'failed') {
+      notifiedRef.current[lastTxHash] = true;
+      if (pendingToastRef.current) {
+        removeToast(pendingToastRef.current);
+        pendingToastRef.current = null;
+      }
+      addToast({ message: PAUSE_TOGGLE_FAILED, type: 'error', txHash: lastTxHash });
+    }
+  }, [lastTxHash, txStatus]);
+
   useEffect(() => {
     if (publicKey && CONTRACT_ID.length >= 50) {
       fetchPauseStatus();
@@ -48,13 +79,12 @@ export default function PauseControl({ publicKey }) {
 
   const handleToggle = async () => {
     if (!publicKey || CONTRACT_ID.length < 50) {
-      setError('Wallet must be connected and contract must be configured');
+      addToast({ message: WALLET_AND_CONTRACT_REQUIRED, type: 'error' });
       return;
     }
 
     setLoading(true);
-    setError('');
-    setSuccess('');
+    setLastTxHash(null);
 
     try {
       const { signTransaction } = await import('@stellar/freighter-api');
@@ -79,16 +109,22 @@ export default function PauseControl({ publicKey }) {
       const { signedTxXdr, error: signError } = await signTransaction(tx.toXDR(), {
         networkPassphrase: NETWORK_PASSPHRASE,
       });
-      if (signError || !signedTxXdr) throw new Error(signError?.message || 'Signing failed');
+      if (signError || !signedTxXdr) throw new Error(signError?.message || SIGNING_FAILED);
 
       const submitRes = await server.sendTransaction(
         TransactionBuilder.fromXDR(signedTxXdr, NETWORK_PASSPHRASE)
       );
 
-      setSuccess(`Marketplace ${isPaused ? 'unpaused' : 'paused'}! Tx: ${submitRes.hash}`);
+      const hash = submitRes.hash;
+      setLastTxHash(hash);
       setIsPaused(!isPaused);
+      pendingToastRef.current = addToast({
+        message: `${isPaused ? 'Unpausing' : 'Pausing'} marketplace…`,
+        type: 'pending',
+        txHash: hash,
+      });
     } catch (err) {
-      setError(err.message || 'Failed to toggle pause state');
+      addToast({ message: err.message || FAILED_TO_TOGGLE_PAUSE, type: 'error' });
     } finally {
       setLoading(false);
     }
@@ -97,9 +133,6 @@ export default function PauseControl({ publicKey }) {
   return (
     <div className={styles.container}>
       <h3 className={styles.heading}>Pause / Unpause Marketplace</h3>
-
-      {error && <Alert variant="error">{error}</Alert>}
-      {success && <Alert variant="success">{success}</Alert>}
 
       <div className={styles.statusRow}>
         <span className={styles.statusLabel}>Current Status:</span>

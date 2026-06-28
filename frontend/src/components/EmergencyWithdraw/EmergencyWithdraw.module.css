@@ -21,3 +21,9 @@
   margin: 0;
   line-height: 1.5;
 }
+
+.inputRow {
+  display: flex;
+  flex-direction: column;
+  gap: var(--spacing-xs);
+}

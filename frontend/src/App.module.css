@@ -11,6 +11,8 @@
   display: flex;
   justify-content: space-between;
   align-items: center;
+  flex-wrap: wrap;
+  gap: var(--spacing-sm);
   border-bottom: 1px solid var(--border-color);
   padding-bottom: var(--spacing-md);
   margin-bottom: var(--spacing-md);
@@ -38,12 +40,14 @@
 .walletArea {
   display: flex;
   align-items: center;
-  gap: var(--spacing-md);
+  flex-wrap: wrap;
+  gap: var(--spacing-sm);
 }
 
 .walletInfo {
   display: flex;
   align-items: center;
+  flex-wrap: wrap;
   gap: var(--spacing-sm);
 }
 
@@ -51,7 +55,7 @@
   font-family: monospace;
   font-size: var(--font-size-xs);
   color: var(--text-secondary);
-  max-width: 160px;
+  max-width: 140px;
   overflow: hidden;
   text-overflow: ellipsis;
   white-space: nowrap;
@@ -68,6 +72,13 @@
   gap: 0;
   border-bottom: 2px solid var(--border-color);
   margin-bottom: var(--spacing-md);
+  overflow-x: auto;
+  -webkit-overflow-scrolling: touch;
+  scrollbar-width: none;
+}
+
+.tabs::-webkit-scrollbar {
+  display: none;
 }
 
 .tab {
@@ -197,6 +208,59 @@
 
 .buyInput {
   width: 120px;
+  min-width: 80px;
+}
+
+@media (max-width: 480px) {
+  .container {
+    padding: var(--spacing-md) var(--spacing-sm);
+  }
+
+  .header {
+    flex-direction: column;
+    align-items: flex-start;
+  }
+
+  .walletArea {
+    width: 100%;
+    justify-content: space-between;
+  }
+
+  .publicKey {
+    max-width: 120px;
+  }
+
+  .purchaseRow {
+    flex-direction: column;
+    align-items: stretch;
+  }
+
+  .buyInput {
+    width: 100%;
+  }
+
+  .tab {
+    padding: var(--spacing-sm) var(--spacing-md);
+    white-space: nowrap;
+  }
+}
+
+.repoAvatarLink {
+  display: flex;
+  align-items: center;
+  text-decoration: none;
+}
+
+.repoAvatar {
+  width: 32px;
+  height: 32px;
+  border-radius: var(--radius-circle);
+  border: 2px solid var(--border-color);
+  transition: border-color var(--transition-fast);
+}
+
+.repoAvatarLink:hover .repoAvatar {
+  border-color: var(--border-color-hover);
 }
 
 .themeToggle {

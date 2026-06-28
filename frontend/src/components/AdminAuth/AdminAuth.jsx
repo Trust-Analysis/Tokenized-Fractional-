@@ -2,6 +2,7 @@ import React, { useState } from 'react';
 import Button from '../Button/Button';
 import Input from '../Input/Input';
 import styles from './AdminAuth.module.css';
+import { API_KEY_REQUIRED, AUTH_FAILED_CHECK_KEY } from '../../constants/errors';
 
 export default function AdminAuth({ onAuthenticate }) {
   const [apiKey, setApiKey] = useState('');
@@ -11,7 +12,7 @@ export default function AdminAuth({ onAuthenticate }) {
   const handleSubmit = async (e) => {
     e.preventDefault();
     if (!apiKey.trim()) {
-      setError('API key is required');
+      setError(API_KEY_REQUIRED);
       return;
     }
     setLoading(true);
@@ -19,7 +20,7 @@ export default function AdminAuth({ onAuthenticate }) {
     try {
       await onAuthenticate(apiKey.trim());
     } catch {
-      setError('Authentication failed. Check your API key.');
+      setError(AUTH_FAILED_CHECK_KEY);
     } finally {
       setLoading(false);
     }
