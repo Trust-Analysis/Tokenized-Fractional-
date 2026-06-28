@@ -190,6 +190,77 @@ app.get('/health', async (_req, res) => {
 
 /**
  * @openapi
+ * /api/v1/rwa/export:
+ *   get:
+ *     tags: [Assets]
+ *     summary: Bulk export asset metadata (CSV or JSON)
+ *     description: Requires admin API key. Optional date range filter via `from` and `to` (ISO 8601).
+ *     security:
+ *       - ApiKeyAuth: []
+ *     parameters:
+ *       - in: query
+ *         name: format
+ *         schema:
+ *           type: string
+ *           enum: [json, csv]
+ *           default: json
+ *         description: Export format
+ *       - in: query
+ *         name: from
+ *         schema:
+ *           type: string
+ *           format: date-time
+ *         description: Filter assets created/updated on or after this ISO 8601 date
+ *       - in: query
+ *         name: to
+ *         schema:
+ *           type: string
+ *           format: date-time
+ *         description: Filter assets created/updated on or before this ISO 8601 date
+ *     responses:
+ *       200:
+ *         description: Exported data file
+ *       400:
+ *         description: Invalid query parameters
+ *       401:
+ *         description: Unauthorized
+ */
+v1.get('/rwa/export', adminAuth, (req, res) => {
+  const { format = 'json', from, to } = req.query;
+
+  if (!['json', 'csv'].includes(format)) {
+    return res.status(400).json({ error: 'format must be "json" or "csv"' });
+  }
+
+  const fromDate = from ? new Date(from) : null;
+  const toDate = to ? new Date(to) : null;
+
+  if (from && isNaN(fromDate)) return res.status(400).json({ error: 'Invalid "from" date' });
+  if (to && isNaN(toDate)) return res.status(400).json({ error: 'Invalid "to" date' });
+
+  const data = loadData();
+  let assets = Object.entries(data).map(([contractId, meta]) => ({ contractId, ...meta }));
+
+  if (fromDate) assets = assets.filter(a => new Date(a.updatedAt || a.createdAt) >= fromDate);
+  if (toDate)   assets = assets.filter(a => new Date(a.updatedAt || a.createdAt) <= toDate);
+
+  const filename = `rwa-export-${Date.now()}.${format}`;
+  res.setHeader('Content-Disposition', `attachment; filename="${filename}"`);
+
+  if (format === 'csv') {
+    const cols = ['contractId', 'id', 'title', 'location', 'description', 'assetType', 'imageUrl', 'totalValuation', 'createdAt', 'updatedAt'];
+    const escape = v => `"${String(v ?? '').replace(/"/g, '""')}"`;
+    const rows = [cols.join(','), ...assets.map(a => cols.map(c => escape(a[c])).join(','))];
+    res.setHeader('Content-Type', 'text/csv; charset=utf-8');
+    return res.send(rows.join('\r\n'));
+  }
+
+  res.setHeader('Content-Type', 'application/json; charset=utf-8');
+  res.json(assets);
+});
+
+/**
+ * @openapi
  * /api/v1/rwa:
  *   get:
  *     tags: [Assets]

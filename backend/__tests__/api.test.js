@@ -420,6 +420,97 @@ describe('DELETE /api/v1/rwa/:contractId', () => {
   });
 });
 
+// ── GET /api/rwa/export ───────────────────────────────────────────────────────
+describe('GET /api/rwa/export', () => {
+  test('requires admin API key', async () => {
+    const res = await request(app).get('/api/rwa/export');
+    expect(res.status).toBe(401);
+  });
+
+  test('returns JSON by default', async () => {
+    const res = await request(app).get('/api/rwa/export').set('x-api-key', API_KEY);
+    expect(res.status).toBe(200);
+    expect(res.headers['content-type']).toMatch(/application\/json/);
+    expect(res.headers['content-disposition']).toMatch(/attachment; filename="rwa-export-\d+\.json"/);
+    expect(Array.isArray(res.body)).toBe(true);
+  });
+
+  test('returns JSON when format=json', async () => {
+    const res = await request(app).get('/api/rwa/export?format=json').set('x-api-key', API_KEY);
+    expect(res.status).toBe(200);
+    expect(res.headers['content-type']).toMatch(/application\/json/);
+    expect(Array.isArray(res.body)).toBe(true);
+  });
+
+  test('returns CSV when format=csv', async () => {
+    const res = await request(app).get('/api/rwa/export?format=csv').set('x-api-key', API_KEY);
+    expect(res.status).toBe(200);
+    expect(res.headers['content-type']).toMatch(/text\/csv/);
+    expect(res.headers['content-disposition']).toMatch(/attachment; filename="rwa-export-\d+\.csv"/);
+    const lines = res.text.split('\r\n');
+    expect(lines[0]).toBe('contractId,id,title,location,description,assetType,imageUrl,totalValuation,createdAt,updatedAt');
+    expect(lines.length).toBeGreaterThan(1);
+  });
+
+  test('CSV escapes double-quotes in values', async () => {
+    // Write test data directly to the data file to avoid rate limiter
+    const { readFileSync, writeFileSync } = await import('fs');
+    const dataPath = 'test-data.json';
+    const existing = JSON.parse(existsSync(dataPath) ? readFileSync(dataPath, 'utf-8') : '{}');
+    const ID_QUOTES = 'C' + 'Q'.repeat(55);
+    existing[ID_QUOTES] = { id: ID_QUOTES, title: 'Say "hello"', location: 'L', description: 'D', assetType: 'T', imageUrl: '', totalValuation: '', createdAt: new Date().toISOString(), updatedAt: new Date().toISOString() };
+    writeFileSync(dataPath, JSON.stringify(existing), 'utf-8');
+
+    const res = await request(app).get('/api/rwa/export?format=csv').set('x-api-key', API_KEY);
+    expect(res.status).toBe(200);
+    expect(res.text).toContain('"Say ""hello"""');
+  });
+
+  test('rejects invalid format', async () => {
+    const res = await request(app).get('/api/rwa/export?format=xml').set('x-api-key', API_KEY);
+    expect(res.status).toBe(400);
+    expect(res.body.error).toMatch(/format/);
+  });
+
+  test('rejects invalid from date', async () => {
+    const res = await request(app).get('/api/rwa/export?from=not-a-date').set('x-api-key', API_KEY);
+    expect(res.status).toBe(400);
+    expect(res.body.error).toMatch(/"from"/);
+  });
+
+  test('rejects invalid to date', async () => {
+    const res = await request(app).get('/api/rwa/export?to=not-a-date').set('x-api-key', API_KEY);
+    expect(res.status).toBe(400);
+    expect(res.body.error).toMatch(/"to"/);
+  });
+
+  test('date range filter: from in the future returns empty', async () => {
+    const future = new Date(Date.now() + 86400_000).toISOString();
+    const res = await request(app)
+      .get(`/api/rwa/export?from=${encodeURIComponent(future)}`)
+      .set('x-api-key', API_KEY);
+    expect(res.status).toBe(200);
+    expect(Array.isArray(res.body)).toBe(true);
+    expect(res.body.length).toBe(0);
+  });
+
+  test('date range filter: from in the past returns existing assets', async () => {
+    const past = new Date(Date.now() - 86400_000).toISOString();
+    const res = await request(app)
+      .get(`/api/rwa/export?from=${encodeURIComponent(past)}`)
+      .set('x-api-key', API_KEY);
+    expect(res.status).toBe(200);
+    expect(Array.isArray(res.body)).toBe(true);
+    expect(res.body.length).toBeGreaterThan(0);
+  });
+
+  test('also works on /api/v1/rwa/export', async () => {
+    const res = await request(app).get('/api/v1/rwa/export').set('x-api-key', API_KEY);
+    expect(res.status).toBe(200);
+    expect(Array.isArray(res.body)).toBe(true);
+  });
+});
+
 // ── Rate limiting ─────────────────────────────────────────────────────────────
 describe('Rate limiting', () => {
   test('write limiter blocks after 20 requests', async () => {
