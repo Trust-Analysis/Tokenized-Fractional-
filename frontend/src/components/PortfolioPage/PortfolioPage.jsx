@@ -280,7 +280,7 @@ export default function PortfolioPage() {
               <p className={styles.stateSubtext}>You don't own any shares yet. Browse assets in the marketplace.</p>
             </div>
           </Card>
-        ))}
+        )}
       </div>
 
       {certItem && (

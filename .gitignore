@@ -8,4 +8,20 @@ target/
 .DS_Store
 data.json
 
+# Test artifacts
 test_snapshots/
+coverage/
+*.snap
+__snapshots__/
+
+# Storybook build output
+storybook-static/
+
+# Editor directories
+.idea/
+.vscode/
+*.swp
+*.swo
+
+# OS files
+Thumbs.db

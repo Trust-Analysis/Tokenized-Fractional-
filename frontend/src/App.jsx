@@ -1,6 +1,6 @@
 import React, { useState, useEffect, useRef, useMemo } from 'react';
+import { Routes, Route, useNavigate, useLocation } from 'react-router-dom';
 import { Networks, nativeToScVal } from '@stellar/stellar-sdk';
-import { useSorobanRead, useSorobanWrite } from './hooks/useSoroban';
 
 import Button from './components/Button/Button';
 import Card from './components/Card/Card';
@@ -14,6 +14,7 @@ import AdminPage from './components/AdminPage/AdminPage';
 import PortfolioPage from './components/PortfolioPage/PortfolioPage';
 import ToastContainer from './components/Toast/Toast';
 import ConfirmPurchase from './components/ConfirmPurchase/ConfirmPurchase';
+import Navbar from './components/Navbar/Navbar';
 import styles from './App.module.css';
 
 import { useWalletStore } from './store/useWalletStore';
@@ -31,315 +32,23 @@ import {
 import { useAssetStore } from './store/useAssetStore';
 import { useToastStore } from './store/useToastStore';
 import useTransactionStatus from './hooks/useTransactionStatus';
+import { useSorobanRead, useSorobanWrite } from './hooks/useSoroban';
 
 const CONTRACT_ID = import.meta.env.VITE_CONTRACT_ID || 'C...';
 const NETWORK_PASSPHRASE = import.meta.env.VITE_NETWORK_PASSPHRASE || Networks.TESTNET;
 const API_URL = import.meta.env.VITE_API_URL || 'http://localhost:3001';
 
-function App() {
-  // ── Global store state ─────────────────────────────────────────────────────
-  const {
-    publicKey,
-    isConnecting,
-    walletError,
-    shares,
-    connect,
-    disconnect,
-    checkConnection,
-    setShares,
-    setWalletError,
-    clearWalletError,
-  } = useWalletStore();
+// Route path → Navbar view id mapping
+const PATH_TO_VIEW = { '/': 'marketplace', '/portfolio': 'portfolio', '/admin': 'admin', '/history': 'history' };
+const VIEW_TO_PATH = { marketplace: '/', portfolio: '/portfolio', admin: '/admin', history: '/history' };
 
-  const {
-    assets,
-    assetMeta,
-    isFetchingAssets,
-    assetsError,
-    fetchAllAssets,
-    fetchMetadata,
-    clearMeta,
-    clearAssets,
-  } = useAssetStore();
-
-  // ── Local UI state (not global — scoped to this component) ────────────────
-  const [buyAmount, setBuyAmount] = useState(1);
-  const [confirmPending, setConfirmPending] = useState(false);
-
-  // Granular loading states
-  const [loadingMeta, setLoadingMeta] = useState(false);
-
-  const [error, setError] = useState(null);
-  const [txError, setTxError] = useState(null);
-  const [txResult, setTxResult] = useState(null);
-  const [lastTxHash, setLastTxHash] = useState(null);
-  const addToast = useToastStore((s) => s.addToast);
-  const removeToast = useToastStore((s) => s.removeToast);
-  const txStatus = useTransactionStatus(lastTxHash);
-  const pendingToastRef = useRef(null);
-  const notifiedRef = useRef({});
-
-  const [theme, setTheme] = useState(() => {
-    return localStorage.getItem('theme') || 'dark';
-  });
-
-  // View state: 'marketplace' | 'portfolio' | 'admin'
-  const [view, setView] = useState('marketplace');
-
-  // ── Theme ──────────────────────────────────────────────────────────────────
-  useEffect(() => {
-    document.documentElement.setAttribute('data-theme', theme);
-    localStorage.setItem('theme', theme);
-  }, [theme]);
-
-  const toggleTheme = () => {
-    setTheme((prev) => (prev === 'dark' ? 'light' : 'dark'));
-  };
-
-  // ── Poll transaction status and update toasts ──────────────────────────────
-  useEffect(() => {
-    if (!lastTxHash || notifiedRef.current[lastTxHash]) return;
-
-    if (txStatus === 'confirmed') {
-      notifiedRef.current[lastTxHash] = true;
-      if (pendingToastRef.current) {
-        removeToast(pendingToastRef.current);
-        pendingToastRef.current = null;
-      }
-      addToast({ message: TX_CONFIRMED, type: 'success', txHash: lastTxHash });
-      setTxResult(null);
-      fetchShares();
-    } else if (txStatus === 'failed') {
-      notifiedRef.current[lastTxHash] = true;
-      if (pendingToastRef.current) {
-        removeToast(pendingToastRef.current);
-        pendingToastRef.current = null;
-      }
-      addToast({ message: TX_FAILED, type: 'error', txHash: lastTxHash });
-      setTxError(null);
-    }
-  }, [lastTxHash, txStatus]);
-
-  // ── On mount: re-validate Freighter session ────────────────────────────────
-  // The persisted publicKey lets the UI render instantly; checkConnection()
-  // then confirms the Freighter session is still live in the background.
-  useEffect(() => {
-    checkConnection();
-  }, [checkConnection]);
-
-  // Construct arguments dynamically
-  const fetchSharesArgs = useMemo(() => {
-    if (!publicKey) return [];
-    try {
-      return [nativeToScVal(publicKey, { type: 'address' })];
-    } catch (e) {
-      console.error('Failed to construct address ScVal:', e);
-      return [];
-    }
-  }, [publicKey]);
-
-  // Hook for get_shares
-  const {
-    loading: loadingShares,
-    refetch: fetchShares,
-  } = useSorobanRead('get_shares', fetchSharesArgs, {
-    skip: !publicKey || CONTRACT_ID.length < 50,
-    onSuccess: (result) => {
-      if (result && result.retval) {
-        setShares(Number(result.retval.u32()));
-      }
-    },
-    onError: (err) => {
-      console.error('Error fetching shares:', err);
-      setError(FAILED_FETCH_SHARE_BALANCE);
-    },
-  });
-
-  const buySharesTx = useSorobanWrite('buy_shares');
-  const loadingBuy = buySharesTx.loading;
-
-  // Hook for get_price (read-only, no args)
-  const { data: priceData } = useSorobanRead('get_price', [], {
-    skip: CONTRACT_ID.length < 50,
-  });
-  const pricePerShare = priceData?.retval ? Number(priceData.retval.u64()) : null;
-
-  // ── Fetch chain data whenever wallet connects ──────────────────────────────
-  useEffect(() => {
-    if (publicKey) {
-      fetchMetadata(CONTRACT_ID, API_URL);
-    }
-  // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [publicKey]);
-
-  // ── Fetch all assets on mount ──────────────────────────────────────────────
-  useEffect(() => {
-    fetchAllAssets(API_URL);
-  // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, []);
-
-  // ── Wallet actions ─────────────────────────────────────────────────────────
-  const connectWallet = async () => {
-    clearWalletError();
-    setTxError(null);
-    await connect();
-  };
-
-  const disconnectWallet = () => {
-    disconnect();
-    clearMeta();
-    clearAssets();
-    setTxResult(null);
-    setTxError(null);
-  };
-
-  // ── Transactions ───────────────────────────────────────────────────────────
-  const handleBuyShares = () => {
-    if (!publicKey) return;
-    if (buyAmount < 1) {
-      addToast({ message: MUST_BUY_AT_LEAST_ONE_SHARE, type: 'error' });
-      return;
-    }
-    setConfirmPending(true);
-  };
-
-  const handleConfirmBuy = async () => {
-    setError(null);
-    setTxResult(null);
-    setLastTxHash(null);
-
-    try {
-      const scValBuyer = nativeToScVal(publicKey, { type: 'address' });
-      const scValShares = nativeToScVal(buyAmount, { type: 'u32' });
-
-      const submitRes = await buySharesTx.execute([scValBuyer, scValShares]);
-
-      setConfirmPending(false);
-      const hash = submitRes.hash;
-      setLastTxHash(hash);
-      pendingToastRef.current = addToast({
-        message: TX_SUBMITTED,
-        type: 'pending',
-        txHash: hash,
-      });
-    } catch (err) {
-      console.error('Error buying shares:', err);
-      setConfirmPending(false);
-      let msg = TX_FAILED_CHECK_BALANCE;
-      if (err.message?.includes('paused')) {
-        msg = TX_FAILED_PAUSED;
-      } else if (err.message?.includes('Not enough shares')) {
-        msg = TX_FAILED_NO_SHARES;
-      }
-      addToast({ message: msg, type: 'error' });
-    }
-  };
-
+function MarketplacePage({ publicKey, walletError, assetMeta, assets, isFetchingAssets, assetsError, loadingMeta, shares, loadingShares, buyAmount, setBuyAmount, loadingBuy, handleBuyShares, pricePerShare }) {
   const isTestnet = NETWORK_PASSPHRASE === Networks.TESTNET;
-
   return (
-    <div className={styles.container}>
-      <header className={styles.header}>
-        <div className={styles.titleArea}>
-          <div className={styles.titleRow}>
-            <a
-              href="https://github.com/Trust-Analysis/Tokenized-Fractional-"
-              target="_blank"
-              rel="noreferrer noopener"
-              className={styles.repoAvatarLink}
-              title="View repository on GitHub"
-            >
-              <img
-                src="https://github.com/Trust-Analysis.png"
-                alt="Repo avatar"
-                className={styles.repoAvatar}
-              />
-            </a>
-            <h1 className={styles.title}>RWA Marketplace</h1>
-            <Badge variant={isTestnet ? 'success' : 'danger'}>
-              {isTestnet ? 'TESTNET' : 'MAINNET'}
-            </Badge>
-          </div>
-        </div>
-        <div className={styles.walletArea}>
-          <button
-            onClick={toggleTheme}
-            className={styles.themeToggle}
-            title={theme === 'dark' ? 'Switch to Light Theme' : 'Switch to Dark Theme'}
-            aria-label="Toggle theme"
-          >
-            {theme === 'dark' ? (
-              <svg viewBox="0 0 24 24"><circle cx="12" cy="12" r="5"></circle><line x1="12" y1="1" x2="12" y2="3"></line><line x1="12" y1="21" x2="12" y2="23"></line><line x1="4.22" y1="4.22" x2="5.64" y2="5.64"></line><line x1="18.36" y1="18.36" x2="19.78" y2="19.78"></line><line x1="1" y1="12" x2="3" y2="12"></line><line x1="21" y1="12" x2="23" y2="12"></line><line x1="4.22" y1="19.78" x2="5.64" y2="18.36"></line><line x1="18.36" y1="5.64" x2="19.78" y2="4.22"></line></svg>
-            ) : (
-              <svg viewBox="0 0 24 24"><path d="M21 12.79A9 9 0 1 1 11.21 3 7 7 0 0 0 21 12.79z"></path></svg>
-            )}
-          </button>
+    <>
+      {walletError && <Alert variant="error">{walletError}</Alert>}
+      {CONTRACT_ID === 'C...' && <Alert variant="warning">{CONTRACT_NOT_CONFIGURED}</Alert>}
 
-          {!publicKey ? (
-            <Button onClick={connectWallet} variant="success" loading={isConnecting}>
-              {isConnecting ? 'Connecting…' : 'Connect Freighter'}
-            </Button>
-          ) : (
-            <div className={styles.walletInfo}>
-              <span className={styles.publicKey} title={publicKey}>
-                {publicKey}
-              </span>
-              <Button onClick={disconnectWallet} variant="danger">
-                Disconnect
-              </Button>
-            </div>
-          )}
-        </div>
-      </header>
-
-      {/* Tab Navigation */}
-      <nav className={styles.tabs}>
-        <button
-          className={`${styles.tab} ${view === 'marketplace' ? styles.tabActive : ''}`}
-          onClick={() => setView('marketplace')}
-        >
-          Marketplace
-        </button>
-        <button
-          className={`${styles.tab} ${view === 'portfolio' ? styles.tabActive : ''}`}
-          onClick={() => setView('portfolio')}
-        >
-          Portfolio
-        </button>
-        <button
-          className={`${styles.tab} ${view === 'admin' ? styles.tabActive : ''}`}
-          onClick={() => setView('admin')}
-        >
-          Admin
-        </button>
-      </nav>
-
-      <ToastContainer />
-
-      {view === 'portfolio' ? (
-        <PortfolioPage />
-      ) : view === 'admin' ? (
-        <AdminPage
-          publicKey={publicKey}
-          onDisconnect={() => setView('marketplace')}
-        />
-      ) : (
-        <>
-      {/* Wallet errors (connection issues) */}
-      {walletError && (
-        <Alert variant="error">
-          {walletError}
-        </Alert>
-      )}
-
-      {/* Contract not configured */}
-      {CONTRACT_ID === 'C...' && (
-        <Alert variant="warning">
-          {CONTRACT_NOT_CONFIGURED}
-        </Alert>
-      )}
-
-      {/* ── Asset Metadata Card ─────────────────────────────────────────── */}
       {loadingMeta ? (
         <Card>
           <div className={styles.assetImageWrapper}>
@@ -372,18 +81,11 @@ function App() {
         </Card>
       ) : null}
 
-      {/* ── Asset Listing Grid ─────────────────────────────────────────── */}
       <section className={styles.section}>
         <h2 className={styles.sectionTitle}>Available Assets</h2>
-        <AssetGrid
-          assets={assets}
-          loading={isFetchingAssets}
-          error={assetsError}
-          isEmpty={!isFetchingAssets && !assetsError && assets.length === 0}
-        />
+        <AssetGrid assets={assets} loading={isFetchingAssets} error={assetsError} isEmpty={!isFetchingAssets && !assetsError && assets.length === 0} />
       </section>
 
-      {/* ── Holdings + Buy Card ─────────────────────────────────────────── */}
       {publicKey && (
         <Card>
           <div className={styles.holdingsRow}>
@@ -400,15 +102,7 @@ function App() {
           <hr className={styles.divider} />
           <h3 className={styles.purchaseHeader}>Buy Fractional Shares</h3>
           <div className={styles.purchaseRow}>
-            <Input
-              id="buy-amount-input"
-              type="number"
-              value={buyAmount}
-              onChange={(e) => setBuyAmount(Math.max(1, Number(e.target.value)))}
-              min="1"
-              disabled={loadingBuy}
-              className={styles.buyInput}
-            />
+            <Input id="buy-amount-input" type="number" value={buyAmount} onChange={(e) => setBuyAmount(Math.max(1, Number(e.target.value)))} min="1" disabled={loadingBuy} className={styles.buyInput} />
             <Button onClick={handleBuyShares} loading={loadingBuy} variant="primary">
               {loadingBuy ? 'Processing…' : 'Buy Shares'}
             </Button>
@@ -421,17 +115,181 @@ function App() {
           )}
         </Card>
       )}
-        </>
-      )}
+    </>
+  );
+}
+
+function App() {
+  const navigate = useNavigate();
+  const location = useLocation();
+
+  const activeView = PATH_TO_VIEW[location.pathname] || 'marketplace';
+
+  const handleNavigate = (viewId) => {
+    navigate(VIEW_TO_PATH[viewId] || '/');
+  };
+
+  const {
+    publicKey, isConnecting, walletError, shares,
+    connect, disconnect, checkConnection, setShares, clearWalletError,
+  } = useWalletStore();
+
+  const {
+    assets, assetMeta, isFetchingAssets, assetsError,
+    fetchAllAssets, fetchMetadata, clearMeta, clearAssets,
+  } = useAssetStore();
+
+  const [buyAmount, setBuyAmount] = useState(1);
+  const [confirmPending, setConfirmPending] = useState(false);
+  const [loadingMeta] = useState(false);
+  const [txError, setTxError] = useState(null);
+  const [txResult, setTxResult] = useState(null);
+  const [lastTxHash, setLastTxHash] = useState(null);
+  const addToast = useToastStore((s) => s.addToast);
+  const removeToast = useToastStore((s) => s.removeToast);
+  const txStatus = useTransactionStatus(lastTxHash);
+  const pendingToastRef = useRef(null);
+  const notifiedRef = useRef({});
+
+  const [theme, setTheme] = useState(() => localStorage.getItem('theme') || 'dark');
+
+  useEffect(() => {
+    document.documentElement.setAttribute('data-theme', theme);
+    localStorage.setItem('theme', theme);
+  }, [theme]);
+
+  const toggleTheme = () => setTheme((prev) => (prev === 'dark' ? 'light' : 'dark'));
+
+  useEffect(() => {
+    if (!lastTxHash || notifiedRef.current[lastTxHash]) return;
+    if (txStatus === 'confirmed') {
+      notifiedRef.current[lastTxHash] = true;
+      if (pendingToastRef.current) { removeToast(pendingToastRef.current); pendingToastRef.current = null; }
+      addToast({ message: TX_CONFIRMED, type: 'success', txHash: lastTxHash });
+      setTxResult(null);
+      fetchShares();
+    } else if (txStatus === 'failed') {
+      notifiedRef.current[lastTxHash] = true;
+      if (pendingToastRef.current) { removeToast(pendingToastRef.current); pendingToastRef.current = null; }
+      addToast({ message: TX_FAILED, type: 'error', txHash: lastTxHash });
+      setTxError(null);
+    }
+  }, [lastTxHash, txStatus]);
+
+  useEffect(() => { checkConnection(); }, [checkConnection]);
+
+  const fetchSharesArgs = useMemo(() => {
+    if (!publicKey) return [];
+    try { return [nativeToScVal(publicKey, { type: 'address' })]; }
+    catch { return []; }
+  }, [publicKey]);
+
+  const { loading: loadingShares, refetch: fetchShares } = useSorobanRead('get_shares', fetchSharesArgs, {
+    skip: !publicKey || CONTRACT_ID.length < 50,
+    onSuccess: (result) => { if (result?.retval) setShares(Number(result.retval.u32())); },
+    onError: () => console.error(FAILED_FETCH_SHARE_BALANCE),
+  });
+
+  const buySharesTx = useSorobanWrite('buy_shares');
+  const loadingBuy = buySharesTx.loading;
+
+  const { data: priceData } = useSorobanRead('get_price', [], { skip: CONTRACT_ID.length < 50 });
+  const pricePerShare = priceData?.retval ? Number(priceData.retval.u64()) : null;
+
+  useEffect(() => {
+    if (publicKey) fetchMetadata(CONTRACT_ID, API_URL);
+  }, [publicKey]);
+
+  useEffect(() => { fetchAllAssets(API_URL); }, []);
+
+  const connectWallet = async () => { clearWalletError(); await connect(); };
+  const disconnectWallet = () => { disconnect(); clearMeta(); clearAssets(); setTxResult(null); setTxError(null); };
+
+  const handleBuyShares = () => {
+    if (!publicKey) return;
+    if (buyAmount < 1) { addToast({ message: MUST_BUY_AT_LEAST_ONE_SHARE, type: 'error' }); return; }
+    setConfirmPending(true);
+  };
+
+  const handleConfirmBuy = async () => {
+    setTxResult(null);
+    setLastTxHash(null);
+    try {
+      const scValBuyer = nativeToScVal(publicKey, { type: 'address' });
+      const scValShares = nativeToScVal(buyAmount, { type: 'u32' });
+      const submitRes = await buySharesTx.execute([scValBuyer, scValShares]);
+      setConfirmPending(false);
+      const hash = submitRes.hash;
+      setLastTxHash(hash);
+      pendingToastRef.current = addToast({ message: TX_SUBMITTED, type: 'pending', txHash: hash });
+    } catch (err) {
+      setConfirmPending(false);
+      let msg = TX_FAILED_CHECK_BALANCE;
+      if (err.message?.includes('paused')) msg = TX_FAILED_PAUSED;
+      else if (err.message?.includes('Not enough shares')) msg = TX_FAILED_NO_SHARES;
+      addToast({ message: msg, type: 'error' });
+    }
+  };
+
+  const isTestnet = NETWORK_PASSPHRASE === Networks.TESTNET;
+
+  return (
+    <div className={styles.container}>
+      <header className={styles.header}>
+        <div className={styles.titleArea}>
+          <div className={styles.titleRow}>
+            <a href="https://github.com/Trust-Analysis/Tokenized-Fractional-" target="_blank" rel="noreferrer noopener" className={styles.repoAvatarLink} title="View repository on GitHub">
+              <img src="https://github.com/Trust-Analysis.png" alt="Repo avatar" className={styles.repoAvatar} />
+            </a>
+            <h1 className={styles.title}>RWA Marketplace</h1>
+            <Badge variant={isTestnet ? 'success' : 'danger'}>{isTestnet ? 'TESTNET' : 'MAINNET'}</Badge>
+          </div>
+        </div>
+        <div className={styles.walletArea}>
+          <button onClick={toggleTheme} className={styles.themeToggle} title={theme === 'dark' ? 'Switch to Light Theme' : 'Switch to Dark Theme'} aria-label="Toggle theme">
+            {theme === 'dark' ? (
+              <svg viewBox="0 0 24 24"><circle cx="12" cy="12" r="5"></circle><line x1="12" y1="1" x2="12" y2="3"></line><line x1="12" y1="21" x2="12" y2="23"></line><line x1="4.22" y1="4.22" x2="5.64" y2="5.64"></line><line x1="18.36" y1="18.36" x2="19.78" y2="19.78"></line><line x1="1" y1="12" x2="3" y2="12"></line><line x1="21" y1="12" x2="23" y2="12"></line><line x1="4.22" y1="19.78" x2="5.64" y2="18.36"></line><line x1="18.36" y1="5.64" x2="19.78" y2="4.22"></line></svg>
+            ) : (
+              <svg viewBox="0 0 24 24"><path d="M21 12.79A9 9 0 1 1 11.21 3 7 7 0 0 0 21 12.79z"></path></svg>
+            )}
+          </button>
+          {!publicKey ? (
+            <Button onClick={connectWallet} variant="success" loading={isConnecting}>{isConnecting ? 'Connecting…' : 'Connect Freighter'}</Button>
+          ) : (
+            <div className={styles.walletInfo}>
+              <span className={styles.publicKey} title={publicKey}>{publicKey}</span>
+              <Button onClick={disconnectWallet} variant="danger">Disconnect</Button>
+            </div>
+          )}
+        </div>
+      </header>
+
+      <Navbar activeView={activeView} onNavigate={handleNavigate} />
+
+      <ToastContainer />
+
+      <Routes>
+        <Route path="/" element={
+          <MarketplacePage
+            publicKey={publicKey} walletError={walletError} assetMeta={assetMeta}
+            assets={assets} isFetchingAssets={isFetchingAssets} assetsError={assetsError}
+            loadingMeta={loadingMeta} shares={shares} loadingShares={loadingShares}
+            buyAmount={buyAmount} setBuyAmount={setBuyAmount} loadingBuy={loadingBuy}
+            handleBuyShares={handleBuyShares} pricePerShare={pricePerShare}
+          />
+        } />
+        <Route path="/portfolio" element={<PortfolioPage />} />
+        <Route path="/admin" element={<AdminPage publicKey={publicKey} onDisconnect={() => navigate('/')} />} />
+        <Route path="/history" element={
+          <Card><p style={{ padding: 'var(--spacing-md)' }}>Transaction history coming soon.</p></Card>
+        } />
+        <Route path="*" element={
+          <Card><p style={{ padding: 'var(--spacing-md)' }}>Page not found. <a href="/">Go home</a></p></Card>
+        } />
+      </Routes>
 
       {confirmPending && (
-        <ConfirmPurchase
-          shares={buyAmount}
-          pricePerShare={pricePerShare}
-          onConfirm={handleConfirmBuy}
-          onCancel={() => setConfirmPending(false)}
-          loading={loadingBuy}
-        />
+        <ConfirmPurchase shares={buyAmount} pricePerShare={pricePerShare} onConfirm={handleConfirmBuy} onCancel={() => setConfirmPending(false)} loading={loadingBuy} />
       )}
     </div>
   );

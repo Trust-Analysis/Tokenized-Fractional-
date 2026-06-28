@@ -101,6 +101,20 @@ graph TB
 - Soroban CLI (`cargo install --locked soroban-cli`)
 - Freighter Wallet browser extension
 
+## Docker (Backend)
+
+The backend can be containerized with the provided `backend/Dockerfile`.
+
+```bash
+# Build the image
+docker build -t rwa-backend ./backend
+
+# Run the container (copy backend/.env.example to backend/.env first)
+docker run -p 3001:3001 --env-file ./backend/.env rwa-backend
+```
+
+The container runs as a non-root user and exposes port `3001`.
+
 ## Getting Started
 
 ### 1. Build the Smart Contract
