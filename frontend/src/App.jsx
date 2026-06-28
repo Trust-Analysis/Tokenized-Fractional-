@@ -190,6 +190,12 @@ function App() {
   const { data: priceData } = useSorobanRead('get_price', [], { skip: CONTRACT_ID.length < 50 });
   const pricePerShare = priceData?.retval ? Number(priceData.retval.u64()) : null;
 
+  const { data: availableSharesData } = useSorobanRead('get_available_shares', [], { skip: CONTRACT_ID.length < 50 });
+  const availableShares = availableSharesData?.retval != null ? Number(availableSharesData.retval.u32()) : null;
+
+  const { data: totalSharesData } = useSorobanRead('get_total_shares', [], { skip: CONTRACT_ID.length < 50 });
+  const totalShares = totalSharesData?.retval != null ? Number(totalSharesData.retval.u32()) : null;
+
   const [acceptedTokens, setAcceptedTokens] = useState([]);
   const [paymentToken, setPaymentToken] = useState('');
 
@@ -411,6 +417,11 @@ function App() {
           acceptedTokens={acceptedTokens}
           paymentToken={paymentToken}
           onTokenChange={setPaymentToken}
+          availableShares={availableShares}
+          totalShares={totalShares}
+          pricePerShare={pricePerShare}
+          buyAmount={buyAmount}
+          onBuyAmountChange={setBuyAmount}
         />
       )}
         </>
