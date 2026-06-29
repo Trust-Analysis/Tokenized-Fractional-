@@ -77,5 +77,95 @@ services:
       - "6379:6379"
     profiles: ["redis", "prod"]
 
+  # ═══════════════════════════════════════════════════════════════════════════
+  # ELK Stack — Centralized Log Aggregation & Analysis
+  # Activate with: docker compose --profile monitoring up --build
+  # Access Kibana at http://localhost:5601
+  # ═══════════════════════════════════════════════════════════════════════════
+
+  # ── Elasticsearch ─────────────────────────────────────────────────────────
+  elasticsearch:
+    image: docker.elastic.co/elasticsearch/elasticsearch:8.17.3
+    restart: unless-stopped
+    environment:
+      - node.name=elasticsearch
+      - cluster.name=rwa-elk
+      - cluster.initial_master_nodes=elasticsearch
+      - discovery.type=single-node
+      - bootstrap.memory_lock=true
+      - "ES_JAVA_OPTS=-Xms512m -Xmx512m"
+      - xpack.security.enabled=false
+      - xpack.security.enrollment.enabled=false
+      - xpack.security.http.ssl.enabled=false
+      - xpack.security.transport.ssl.enabled=false
+    ulimits:
+      memlock:
+        soft: -1
+        hard: -1
+    volumes:
+      - elk-elasticsearch:/usr/share/elasticsearch/data
+      - ./elk/elasticsearch/init.sh:/usr/share/elasticsearch/init.sh:ro
+    ports:
+      - "9200:9200"
+    healthcheck:
+      test: ["CMD", "curl", "-f", "http://localhost:9200"]
+      interval: 30s
+      timeout: 10s
+      retries: 5
+    profiles: ["monitoring", "elk"]
+
+  # ── Logstash ─────────────────────────────────────────────────────────────
+  logstash:
+    build: ./elk/logstash
+    restart: unless-stopped
+    environment:
+      - LS_JAVA_OPTS=-Xms256m -Xmx256m
+      - xpack.monitoring.enabled=true
+      - xpack.monitoring.elasticsearch.hosts=http://elasticsearch:9200
+    volumes:
+      - ./elk/logstash/pipeline/logstash.conf:/usr/share/logstash/pipeline/logstash.conf:ro
+    ports:
+      - "5044:5044"
+    depends_on:
+      elasticsearch:
+        condition: service_healthy
+    profiles: ["monitoring", "elk"]
+
+  # ── Kibana ───────────────────────────────────────────────────────────────
+  kibana:
+    image: docker.elastic.co/kibana/kibana:8.17.3
+    restart: unless-stopped
+    environment:
+      - SERVER_NAME=kibana
+      - ELASTICSEARCH_HOSTS=http://elasticsearch:9200
+    volumes:
+      - ./elk/kibana/kibana.yml:/usr/share/kibana/config/kibana.yml:ro
+    ports:
+      - "5601:5601"
+    depends_on:
+      elasticsearch:
+        condition: service_healthy
+    healthcheck:
+      test: ["CMD", "curl", "-f", "http://localhost:5601/api/status"]
+      interval: 30s
+      timeout: 10s
+      retries: 5
+    profiles: ["monitoring", "elk"]
+
+  # ── Filebeat ─────────────────────────────────────────────────────────────
+  filebeat:
+    image: docker.elastic.co/beats/filebeat:8.17.3
+    restart: unless-stopped
+    user: root
+    volumes:
+      - ./elk/filebeat/filebeat.yml:/usr/share/filebeat/filebeat.yml:ro
+      - /var/lib/docker/containers:/var/lib/docker/containers:ro
+      - /var/run/docker.sock:/var/run/docker.sock:ro
+    depends_on:
+      logstash:
+        condition: service_started
+    profiles: ["monitoring", "elk"]
+
 volumes:
   backend-data:
+  elk-elasticsearch:
