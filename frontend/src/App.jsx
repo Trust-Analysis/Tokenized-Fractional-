@@ -7,6 +7,8 @@ import Header from './components/Header/Header';
 import Navbar from './components/Navbar/Navbar';
 import Card from './components/Card/Card';
 import Alert from './components/Alert/Alert';
+import Badge from './components/Badge/Badge';
+import Button from './components/Button/Button';
 import Skeleton from './components/Skeleton/Skeleton';
 import AssetGrid from './components/AssetGrid/AssetGrid';
 import AdminPage from './components/AdminPage/AdminPage';
@@ -269,7 +271,8 @@ function App() {
     try {
       const scValBuyer = nativeToScVal(publicKey, { type: 'address' });
       const scValShares = nativeToScVal(buyAmount, { type: 'u32' });
-      const scValToken = nativeToScVal(paymentToken, { type: 'address' });
+      const tokenAddress = paymentToken || (import.meta.env.VITE_MOCK_WALLET === 'true' ? publicKey : '');
+      const scValToken = nativeToScVal(tokenAddress, { type: 'address' });
       const submitRes = await buySharesTx.execute([scValBuyer, scValShares, scValToken]);
       setConfirmPending(false);
       const hash = submitRes.hash;
@@ -385,7 +388,7 @@ function App() {
       )}
 
       {/* ── Asset Metadata Card ─────────────────────────────────────────── */}
-      {isFetchingMeta ? (
+      {loadingMeta ? (
         <Card>
           <div className={styles.assetImageWrapper}>
             <Skeleton variant="rect" height="100%" style={{ borderRadius: 'var(--radius-sm)' }} />

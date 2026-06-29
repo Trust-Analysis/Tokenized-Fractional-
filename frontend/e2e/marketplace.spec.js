@@ -83,8 +83,9 @@ test.describe('RWA Marketplace — critical user flows', () => {
 
     // Click Buy Shares → confirm dialog appears
     await page.getByRole('button', { name: /buy shares/i }).click();
-    await expect(page.getByRole('dialog')).toBeVisible({ timeout: 3_000 });
-    await expect(page.getByText(/3/)).toBeVisible();
+    const dialog = page.getByRole('dialog');
+    await expect(dialog).toBeVisible({ timeout: 3_000 });
+    await expect(dialog.getByRole('cell', { name: '3', exact: true })).toBeVisible();
 
     // Confirm the purchase
     const confirmBtn = page.getByRole('button', { name: /confirm/i });
