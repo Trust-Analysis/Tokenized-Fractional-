@@ -1107,6 +1107,57 @@ v1.post('/rwa/:contractId/reject', adminAuth, writeLimiter, async (req, res) => 
   res.json({ contractId, ...data[contractId] });
 });
 
+// ── News / Updates ────────────────────────────────────────────────────────────
+const NEWS_STORAGE = [
+  {
+    id: '1',
+    title: 'Platform Launch',
+    summary: 'The RWA Marketplace is now live on Stellar Testnet. Start exploring tokenized real-world assets.',
+    date: new Date().toISOString(),
+    link: 'https://github.com/Trust-Analysis/Tokenized-Fractional-',
+  },
+  {
+    id: '2',
+    title: 'New Asset Listings',
+    summary: 'Multiple new real estate and asset-backed tokens are now available for purchase in the marketplace.',
+    date: new Date(Date.now() - 86400000 * 2).toISOString(),
+    link: '#',
+  },
+];
+
+/**
+ * @openapi
+ * /api/v1/news:
+ *   get:
+ *     tags: [News]
+ *     summary: List marketplace news and updates
+ *     description: Returns a list of announcements, new listings, and platform updates.
+ *     responses:
+ *       200:
+ *         description: Array of news items
+ *         content:
+ *           application/json:
+ *             schema:
+ *               type: array
+ *               items:
+ *                 type: object
+ *                 properties:
+ *                   id:
+ *                     type: string
+ *                   title:
+ *                     type: string
+ *                   summary:
+ *                     type: string
+ *                   date:
+ *                     type: string
+ *                     format: date-time
+ *                   link:
+ *                     type: string
+ */
+v1.get('/news', (_req, res) => {
+  res.json(NEWS_STORAGE);
+});
+
 // ── Webhook CRUD routes (admin only) ──────────────────────────────────────────
 /**
  * @openapi
