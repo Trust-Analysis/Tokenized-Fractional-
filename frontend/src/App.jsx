@@ -16,6 +16,7 @@ import ToastContainer from './components/Toast/Toast';
 import ConfirmPurchase from './components/ConfirmPurchase/ConfirmPurchase';
 import LanguageSwitcher from './components/LanguageSwitcher/LanguageSwitcher';
 import TransactionHistory from './components/TransactionHistory/TransactionHistory';
+import ShortcutHelpModal from './components/ShortcutHelp/ShortcutHelp';
 import styles from './App.module.css';
 
 import { useWalletStore } from './store/useWalletStore';
@@ -34,6 +35,7 @@ import { useAssetStore } from './store/useAssetStore';
 import { useToastStore } from './store/useToastStore';
 import { useSorobanRead, useSorobanWrite } from './hooks/useSoroban';
 import useTransactionStatus from './hooks/useTransactionStatus';
+import { useKeyboardShortcuts } from './hooks/useKeyboardShortcuts';
 
 const CONTRACT_ID = import.meta.env.VITE_CONTRACT_ID || 'C...';
 const NETWORK_PASSPHRASE = import.meta.env.VITE_NETWORK_PASSPHRASE || Networks.TESTNET;
@@ -146,6 +148,25 @@ function App() {
   const notifiedRef = useRef({});
 
   const [theme, setTheme] = useState(() => localStorage.getItem('theme') || 'dark');
+
+  // ── Keyboard shortcuts (Issue #194) ─────────────────────────────────────────
+  const [view, setView] = useState('marketplace');
+  const [shortcutHelpOpen, setShortcutHelpOpen] = useState(false);
+
+  useKeyboardShortcuts({
+    search:    () => { /* focus search input if present */
+      const el = document.getElementById('search-input') || document.getElementById('asset-search');
+      if (el) { el.focus(); el.select(); }
+      else { setView('marketplace'); }
+    },
+    portfolio: () => setView('portfolio'),
+    home:      () => setView('marketplace'),
+    help:      () => setShortcutHelpOpen(prev => !prev),
+    escape:    () => {
+      setShortcutHelpOpen(false);
+      setConfirmPending(false);
+    },
+  });
 
   useEffect(() => {
     document.documentElement.setAttribute('data-theme', theme);
@@ -430,6 +451,22 @@ function App() {
       {confirmPending && (
         <ConfirmPurchase shares={buyAmount} pricePerShare={pricePerShare} onConfirm={handleConfirmBuy} onCancel={() => setConfirmPending(false)} loading={loadingBuy} />
       )}
+
+      {/* Keyboard shortcut help modal (Issue #194: Ctrl+/) */}
+      <ShortcutHelpModal open={shortcutHelpOpen} onClose={() => setShortcutHelpOpen(false)} />
+
+      {/* Keyboard shortcuts hint shown in footer */}
+      <div
+        role="button"
+        tabIndex={0}
+        id="shortcut-help-trigger"
+        aria-label="Show keyboard shortcuts"
+        onClick={() => setShortcutHelpOpen(true)}
+        onKeyDown={(e) => { if (e.key === 'Enter' || e.key === ' ') setShortcutHelpOpen(true); }}
+        style={{ textAlign: 'center', padding: '0.5rem', fontSize: '0.75rem', cursor: 'pointer', opacity: 0.5 }}
+      >
+        ⌨️ Keyboard shortcuts available &mdash; press <kbd style={{ background: 'none', border: '1px solid currentColor', borderRadius: '3px', padding: '0 4px', fontFamily: 'monospace' }}>Ctrl+/</kbd> for help
+      </div>
     </div>
   );
 }
