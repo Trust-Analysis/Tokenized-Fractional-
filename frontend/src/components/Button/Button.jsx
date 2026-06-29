@@ -9,9 +9,10 @@ export default function Button({
   onClick,
   className = '',
   type = 'button',
+  size,
   ...rest
 }) {
-  const buttonClass = `${styles.button} ${styles[variant]} ${className}`;
+  const buttonClass = `${styles.button} ${styles[variant]} ${size ? styles[size] : ''} ${className}`;
 
   return (
     <button

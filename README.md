@@ -1,6 +1,13 @@
 # Tokenized Fractional Real-World Assets (RWA) Marketplace
 
+[![License: MIT](https://img.shields.io/badge/License-MIT-yellow.svg)](https://opensource.org/licenses/MIT)
+
 A full-stack decentralized application (dApp) built on the **Stellar Network** using **Soroban Smart Contracts**. This marketplace allows administrators to tokenize real-world assets into fractional shares for users to purchase.
+
+## Walkthrough Demo
+
+[![Watch the Demo](assets/play_banner.png)](assets/marketplace_demo.webp)
+
 
 ## Architecture
 
@@ -85,12 +92,37 @@ graph TB
 └── README.md
 ```
 
+## Documentation
+
+- [Architecture Overview & Diagrams](docs/architecture.md)
+- [Architecture Decision Records (ADRs)](docs/adr/README.md) — Technical decisions and rationale
+- [Performance Benchmarks](docs/performance.md) — Gas costs, API latency, frontend metrics
+- [Troubleshooting Guide](docs/troubleshooting.md) — Common issues and solutions
+- [Multi-Region Deployment](docs/multi-region-deployment.md) — Deployment strategy and failover
+- [NFT Certificates](docs/NFT_CERTIFICATES.md)
+- [NFT Quickstart](docs/NFT_QUICKSTART.md)
+- [FAQ](docs/FAQ.md)
+
 ## Prerequisites
 
 - Node.js (v18 or higher)
 - Rust
 - Soroban CLI (`cargo install --locked soroban-cli`)
 - Freighter Wallet browser extension
+
+## Docker (Backend)
+
+The backend can be containerized with the provided `backend/Dockerfile`.
+
+```bash
+# Build the image
+docker build -t rwa-backend ./backend
+
+# Run the container (copy backend/.env.example to backend/.env first)
+docker run -p 3001:3001 --env-file ./backend/.env rwa-backend
+```
+
+The container runs as a non-root user and exposes port `3001`.
 
 ## Getting Started
 
@@ -177,12 +209,26 @@ npm run dev
 
 Open `http://localhost:5173`, connect your Freighter wallet, and buy shares.
 
+### 7. Run with Nginx Proxy (Optional)
+
+To run the application with rate limiting and basic WAF/DDoS protection, you can use the provided Nginx configuration. Ensure Nginx is installed on your system.
+
+```bash
+# Start Nginx using the provided configuration
+nginx -c $(pwd)/nginx/nginx.conf
+```
+
+This will start an Nginx server on `http://localhost:80` that proxies requests:
+- `/api/*` -> Backend (`http://localhost:3001`) with rate limiting (10 req/s)
+- `/*` -> Frontend (`http://localhost:5173`)
+
 ## Smart Contract API
 
 | Function | Description | Auth |
 |---|---|---|
 | `init` | Initialize marketplace | Admin |
-| `buy_shares` | Purchase fractional shares | Buyer |
+| `buy_shares` | Purchase fractional shares (mints NFT certificate per share if configured) | Buyer |
+| `set_nft_contract` | Configure NFT contract for certificate minting | Admin |
 | `get_shares` | Query user balance | None |
 | `get_available_shares` | Query remaining shares | None |
 | `get_total_shares` | Query total shares | None |
@@ -192,6 +238,12 @@ Open `http://localhost:5173`, connect your Freighter wallet, and buy shares.
 | `unpause` | Unpause marketplace | Admin |
 | `emergency_withdraw` | Withdraw tokens from contract | Admin |
 
+### NFT Share Certificates
+
+When users buy shares, they receive **SEP-41 compliant NFT certificates** representing their ownership. These NFTs can be viewed in wallets, transferred peer-to-peer, and traded on secondary marketplaces.
+
+👉 **[See NFT Certificates Documentation](docs/NFT_CERTIFICATES.md)** for setup, deployment, and integration details.
+
 ## Backend API
 
 | Method | Endpoint | Auth | Description |
@@ -200,6 +252,53 @@ Open `http://localhost:5173`, connect your Freighter wallet, and buy shares.
 | `GET` | `/api/rwa` | No | List all assets |
 | `GET` | `/api/rwa/:contractId` | No | Get asset metadata |
 | `POST` | `/api/rwa` | `x-api-key` | Create/update asset |
+| `PATCH` | `/api/rwa/:contractId` | `x-api-key` | Partial update (specific fields only) |
 | `DELETE` | `/api/rwa/:contractId` | `x-api-key` | Delete asset |
 
 Interactive API documentation is available at [`/api-docs`](http://localhost:3001/api-docs) (Swagger UI) and [`/api-docs.json`](http://localhost:3001/api-docs.json) (raw OpenAPI spec) when the backend is running.
+
+## Cloud Deployment (Render)
+
+This project includes a [`render.yaml`](./render.yaml) Blueprint for one-click deployment to [Render](https://render.com).
+
+For zero-downtime releases, the repository now includes a blue-green deployment workflow described in [docs/blue-green-deployment.md](docs/blue-green-deployment.md). It uses paired blue and green services, health checks before traffic switches, and rollback support.
+
+### Services deployed
+
+| Service | Type | Description |
+|---------|------|-------------|
+| `rwa-marketplace-backend` | Web Service (Node) | Express.js metadata API |
+| `rwa-marketplace-frontend` | Static Site | React + Vite dApp |
+
+### Steps
+
+1. **Fork or push** this repository to your GitHub account.
+2. Go to [dashboard.render.com](https://dashboard.render.com) → **New** → **Blueprint**.
+3. Connect your repository — Render will detect `render.yaml` automatically.
+4. Set the required environment variables in the Render dashboard:
+
+   **Backend:**
+   | Variable | Description |
+   |----------|-------------|
+   | `CORS_ORIGINS` | Your frontend URL, e.g. `https://rwa-marketplace-frontend.onrender.com` |
+   | `ADMIN_API_KEY` | Auto-generated by Render — copy it for API calls |
+
+   **Frontend:**
+   | Variable | Description |
+   |----------|-------------|
+   | `VITE_CONTRACT_ID` | Your deployed Soroban contract ID |
+   | `VITE_API_URL` | Your backend Render URL, e.g. `https://rwa-marketplace-backend.onrender.com` |
+
+5. Click **Apply** — Render builds and deploys both services.
+
+### Manual deploy trigger
+
+```bash
+# Backend
+cd backend && npm run deploy
+
+# Frontend
+cd frontend && npm run deploy
+```
+
+> **Note:** Free-tier Render services spin down after inactivity. Upgrade to a paid plan for always-on availability.

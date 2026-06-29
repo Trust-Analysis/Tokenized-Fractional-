@@ -7,5 +7,37 @@ target/
 *.log
 .DS_Store
 data.json
+webhooks.json
+test-data.json
+.blue-green-state.json
 
+# Playwright
+test-results/
+playwright-report/
+
+# Test snapshots
 test_snapshots/
+**/__snapshots__/
+*.snap
+
+# Coverage reports
+coverage/
+.nyc_output/
+
+# Editor / IDE
+.vscode/
+.idea/
+*.swp
+*.swo
+
+# OS
+Thumbs.db
+
+# Storybook build output
+storybook-static/
+
+# Temporary PR description files
+PR_DESCRIPTION_ISSUE_*.md
+
+# ELK stack data directories
+/elk/data/

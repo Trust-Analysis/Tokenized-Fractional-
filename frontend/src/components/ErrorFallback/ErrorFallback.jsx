@@ -1,10 +1,7 @@
 import React from 'react';
 import styles from './ErrorFallback.module.css';
+import { UNEXPECTED_ERROR, ERROR_REPORTED, TRY_AGAIN } from '../../constants/errors';
 
-/**
- * Fallback UI rendered by Sentry.ErrorBoundary when an uncaught error occurs.
- * Displays a user-friendly error message and a "Try Again" button.
- */
 export default function ErrorFallback({ error, componentStack, resetError }) {
   return (
     <div className={styles.container}>
@@ -16,12 +13,12 @@ export default function ErrorFallback({ error, componentStack, resetError }) {
             <line x1="12" y1="16" x2="12.01" y2="16"></line>
           </svg>
         </div>
-        <h2 className={styles.title}>Something went wrong</h2>
+        <h2 className={styles.title}>{UNEXPECTED_ERROR}</h2>
         <p className={styles.subtitle}>
-          An unexpected error occurred. The error has been reported to our team.
+          {ERROR_REPORTED}
         </p>
         <button onClick={resetError} className={styles.button}>
-          Try Again
+          {TRY_AGAIN}
         </button>
       </div>
     </div>

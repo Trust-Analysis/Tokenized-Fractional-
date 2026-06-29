@@ -43,6 +43,7 @@
 .summaryRow {
   display: flex;
   justify-content: space-around;
+  flex-wrap: wrap;
   gap: var(--spacing-md);
 }
 
@@ -90,10 +91,15 @@
   letter-spacing: 0.05em;
 }
 
+.tableHeaderWithAction {
+  grid-template-columns: 1fr 100px 100px 120px 80px;
+}
+
 .colAsset { text-align: left; }
 .colShares { text-align: right; }
 .colPrice { text-align: right; }
 .colValue { text-align: right; }
+.colAction { text-align: center; }
 
 /* Row card */
 .rowCard {
@@ -102,9 +108,39 @@
 
 .row {
   display: grid;
-  grid-template-columns: 1fr 100px 100px 120px;
+  grid-template-columns: 1fr 100px 100px 120px 80px;
   gap: var(--spacing-md);
   align-items: center;
+}
+
+@media (max-width: 600px) {
+  .tableHeader {
+    display: none;
+  }
+
+  .row {
+    grid-template-columns: 1fr 1fr;
+    grid-template-rows: auto auto auto;
+    gap: var(--spacing-sm);
+  }
+
+  /* Asset info spans full width */
+  .assetInfo {
+    grid-column: 1 / -1;
+  }
+
+  /* Numeric cells each take half width */
+  .colShares,
+  .colPrice,
+  .colValue {
+    text-align: left;
+  }
+
+  /* Action button full width */
+  .colAction {
+    grid-column: 1 / -1;
+    text-align: left;
+  }
 }
 
 .assetInfo {
@@ -198,7 +234,7 @@
 /* Skeleton loading */
 .skeletonRow {
   display: grid;
-  grid-template-columns: 40px 1fr 80px 80px 100px;
+  grid-template-columns: 40px 1fr 80px 80px 100px 60px;
   gap: var(--spacing-md);
   align-items: center;
 }
@@ -207,4 +243,13 @@
   display: flex;
   flex-direction: column;
   gap: var(--spacing-xs);
+}
+
+/* Certificate button */
+.certButton {
+  padding: 0.25rem 0.5rem;
+  font-size: var(--font-size-xs);
+  width: 100%;
+  justify-content: center;
+  gap: 2px;
 }

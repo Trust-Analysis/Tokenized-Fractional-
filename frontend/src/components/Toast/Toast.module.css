@@ -7,8 +7,18 @@
   flex-direction: column;
   gap: 0.5rem;
   max-width: 400px;
-  width: 100%;
+  width: calc(100% - 2rem);
   pointer-events: none;
+}
+
+@media (max-width: 480px) {
+  .container {
+    top: 0.75rem;
+    right: 0.75rem;
+    left: 0.75rem;
+    width: auto;
+    max-width: none;
+  }
 }
 
 .toast {
@@ -48,6 +58,18 @@
   color: var(--error-text);
 }
 
+.warning {
+  background-color: var(--warning-bg);
+  border-color: var(--warning-border);
+  color: var(--warning);
+}
+
+.pending {
+  background: var(--bg-surface);
+  border-color: var(--border-color);
+  color: var(--text-secondary);
+}
+
 .icon {
   flex-shrink: 0;
   margin-top: 2px;
@@ -70,6 +92,17 @@
   opacity: 0.75;
   margin-top: 0.25rem;
   word-break: break-all;
+}
+
+.txHashLink {
+  color: inherit;
+  text-decoration: underline;
+  text-underline-offset: 2px;
+  opacity: 0.8;
+}
+
+.txHashLink:hover {
+  opacity: 1;
 }
 
 .closeBtn {

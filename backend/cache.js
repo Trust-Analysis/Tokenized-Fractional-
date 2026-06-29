@@ -1,3 +1,6 @@
+// Copyright (c) 2026 Tokenized Fractional RWA Marketplace Contributors
+// SPDX-License-Identifier: MIT
+
 import Redis from 'ioredis';
 
 const REDIS_URL = process.env.REDIS_URL || 'redis://localhost:6379';

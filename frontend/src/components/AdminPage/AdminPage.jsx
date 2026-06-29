@@ -3,7 +3,9 @@ import AdminAuth from '../AdminAuth/AdminAuth';
 import AssetForm from '../AssetForm/AssetForm';
 import PauseControl from '../PauseControl/PauseControl';
 import EmergencyWithdraw from '../EmergencyWithdraw/EmergencyWithdraw';
+import PaymentTokenManager from '../PaymentTokenManager/PaymentTokenManager';
 import Button from '../Button/Button';
+import { AUTH_FAILED } from '../../constants/errors';
 import styles from './AdminPage.module.css';
 
 const API_URL = import.meta.env.VITE_API_URL || 'http://localhost:3001';
@@ -18,10 +20,10 @@ export default function AdminPage({ publicKey, onDisconnect }) {
       const res = await fetch(`${API_URL}/api/admin/verify`, {
         headers: { 'x-api-key': key },
       });
-      if (!res.ok) throw new Error('Authentication failed');
+      if (!res.ok) throw new Error(AUTH_FAILED);
       setApiKey(key);
     } catch {
-      throw new Error('Authentication failed');
+      throw new Error(AUTH_FAILED);
     } finally {
       setVerifying(false);
     }
@@ -51,6 +53,7 @@ export default function AdminPage({ publicKey, onDisconnect }) {
         <AssetForm apiKey={apiKey} onAssetChange={handleAssetChange} />
         <PauseControl publicKey={publicKey} />
         <EmergencyWithdraw publicKey={publicKey} />
+        <PaymentTokenManager publicKey={publicKey} />
       </div>
     </div>
   );

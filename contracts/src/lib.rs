@@ -1,7 +1,27 @@
+// Copyright (c) 2026 Tokenized Fractional RWA Marketplace Contributors
+// SPDX-License-Identifier: MIT
+
 #![no_std]
 use soroban_sdk::{
-    contract, contractevent, contractimpl, contracttype, token, Address, Bytes, BytesN, Env, Vec,
+    contract, contractclient, contractevent, contractimpl, contracttype, token, Address, Bytes,
+    BytesN, Env, Vec,
 };
+
+/// Minimal interface for calling the deployed ShareCertificate NFT contract.
+#[contractclient(name = "NftContractClient")]
+pub trait NftContractInterface {
+    fn mint_certificate(env: Env, to: Address) -> u32;
+}
+
+/// Issue #169 – Minimal oracle interface.
+/// The oracle contract must expose a `get_price() -> i128` function
+/// that returns the current asset price per share in the payment token's
+/// smallest unit. This is intentionally minimal to support any Stellar-based
+/// oracle that follows this convention.
+#[contractclient(name = "OracleContractClient")]
+pub trait OracleContractInterface {
+    fn get_price(env: Env) -> i128;
+}
 
 #[contract]
 pub struct RwaMarketplace;
@@ -24,6 +44,21 @@ pub enum DataKey {
     Whitelisted(Address),
     SellOrder(u64),
     NextOrderId,
+    MaxSharesPerUser,
+    /// Allowance(owner, spender) → approved amount
+    Allowance(Address, Address),
+    BuybackConfig,
+    BuybackBudget,
+    LastBuyback,
+    AcceptedTokens,
+    /// Optional NFT contract address for minting share certificates on buy
+    NftContract,
+    /// Reentrancy guard flag for defense-in-depth protection
+    ReentrancyGuard,
+    /// Issue #169: Price oracle contract address (optional)
+    OracleAddress,
+    /// Issue #170: Locked-for-bridge amount per user
+    BridgeLocked(Address),
 }
 
 #[contracttype]
@@ -49,6 +84,41 @@ pub struct SellOrder {
 pub struct DividendSchedule {
     pub amount_per_share: i128,
     pub interval: u64,
+}
+
+#[contracttype]
+#[derive(Clone)]
+pub struct AutoBuybackConfig {
+    /// Minimum seconds that must elapse between auto-buyback executions.
+    pub interval: u64,
+    /// Maximum shares that can be bought back in a single auto-buyback call.
+    pub max_amount: u32,
+    /// Total token budget remaining for auto-buybacks.
+    pub budget: i128,
+}
+
+#[contractevent(data_format = "vec")]
+pub struct EventBuybackShares {
+    seller: Address,
+    amount: u32,
+    total_cost: i128,
+}
+
+#[contractevent(data_format = "vec")]
+pub struct EventAutoBuybackConfig {
+    interval: u64,
+    max_amount: u32,
+    budget: i128,
+}
+
+#[contractevent(data_format = "vec")]
+pub struct EventAddPaymentToken {
+    token: Address,
+}
+
+#[contractevent(data_format = "vec")]
+pub struct EventRemovePaymentToken {
+    token: Address,
 }
 
 #[contractevent(data_format = "vec")]
@@ -132,6 +202,60 @@ pub struct EventSetTotalShares {
     new_total: u32,
 }
 
+#[contractevent(data_format = "vec")]
+pub struct EventSetMaxSharesPerUser {
+    old_max: u32,
+    new_max: u32,
+}
+
+#[contractevent(data_format = "vec")]
+pub struct EventTransfer {
+    from: Address,
+    to: Address,
+    amount: u32,
+}
+
+#[contractevent(data_format = "vec")]
+pub struct EventApproval {
+    owner: Address,
+    spender: Address,
+    amount: u32,
+}
+
+// ── Issue #169: Oracle events ────────────────────────────────────────────────
+
+#[contractevent(data_format = "vec")]
+pub struct EventSetOracle {
+    oracle: Address,
+}
+
+#[contractevent(data_format = "vec")]
+pub struct EventOraclePriceFetched {
+    oracle: Address,
+    price: i128,
+}
+
+#[contractevent(data_format = "vec")]
+pub struct EventOraclePriceFallback {
+    admin_price: i128,
+}
+
+// ── Issue #170: Bridge events ────────────────────────────────────────────────
+
+#[contractevent(data_format = "vec")]
+pub struct EventLockForBridge {
+    user: Address,
+    amount: u32,
+    total_locked: u32,
+}
+
+#[contractevent(data_format = "vec")]
+pub struct EventUnlockFromBridge {
+    user: Address,
+    amount: u32,
+    proof: BytesN<32>,
+}
+
 // ── OVERFLOW-SAFE MATH HELPERS ──────────────────────────────────────
 /// Safely add two i128 values, panicking on overflow
 fn checked_add_i128(a: i128, b: i128) -> i128 {
@@ -156,6 +280,26 @@ fn checked_add_u32(a: u32, b: u32) -> u32 {
 /// Safely subtract two u32 values, panicking on underflow
 fn checked_sub_u32(a: u32, b: u32) -> u32 {
     a.checked_sub(b).unwrap_or_else(|| panic!("Arithmetic underflow: cannot subtract {} from {}", b, a))
+}
+
+/// Re-entrancy guard helper: check and set the guard flag to prevent re-entrant calls.
+/// This is a defense-in-depth measure to protect functions that make external calls.
+/// The flag is stored in instance storage and cleared after the operation completes.
+fn _check_non_reentrant(env: &Env) {
+    if env
+        .storage()
+        .instance()
+        .get::<DataKey, bool>(&DataKey::ReentrancyGuard)
+        .unwrap_or(false)
+    {
+        panic!("Re-entrancy detected: contract is already executing");
+    }
+    _set_non_reentrant(env, true);
+}
+
+/// Set the re-entrancy guard flag. Pass `true` to lock, `false` to unlock.
+fn _set_non_reentrant(env: &Env, value: bool) {
+    env.storage().instance().set(&DataKey::ReentrancyGuard, &value);
 }
 
 #[contractimpl]
@@ -186,13 +330,23 @@ impl RwaMarketplace {
         let holders: Vec<Address> = Vec::new(&env);
         env.storage().instance().set(&DataKey::Holders, &holders);
 
+        // Seed the accepted payment tokens list with the initial token
+        let mut accepted: Vec<Address> = Vec::new(&env);
+        accepted.push_back(payment_token.clone());
+        env.storage().instance().set(&DataKey::AcceptedTokens, &accepted);
+
         EventInit { admin, payment_token, price, total_shares }.publish(&env);
     }
 
-    pub fn buy_shares(env: Env, buyer: Address, shares: u32) {
+    pub fn buy_shares(env: Env, buyer: Address, shares: u32, payment_token: Address) {
         buyer.require_auth();
 
+        // Re-entrancy guard: prevent recursive calls during external token operations
+        _check_non_reentrant(&env);
+
         if env.storage().instance().get(&DataKey::Paused).unwrap_or(false) {
+            // Clear reentrancy guard on early return
+            _set_non_reentrant(&env, false);
             panic!("Marketplace is paused");
         }
 
@@ -203,6 +357,7 @@ impl RwaMarketplace {
             .get(&DataKey::Whitelisted(buyer.clone()))
             .unwrap_or(false)
         {
+            _set_non_reentrant(&env, false);
             panic!("Buyer is not whitelisted");
         }
 
@@ -213,30 +368,72 @@ impl RwaMarketplace {
             .expect("Contract not initialized: available shares");
 
         if !Self::is_whitelisted(env.clone(), buyer.clone()) {
+            _set_non_reentrant(&env, false);
             panic!("Buyer is not whitelisted");
         }
 
         if shares > available {
+            _set_non_reentrant(&env, false);
             panic!("Not enough shares available for purchase");
         }
 
         if shares == 0 {
+            _set_non_reentrant(&env, false);
             panic!("Must purchase at least 1 share");
         }
 
-        let price: i128 = env.storage().instance().get(&DataKey::PricePerShare)
+        // Enforce per-address cap (current holdings + this purchase) before
+        // transferring any tokens. A cap of 0 means "no limit".
+        let prev_balance: u32 = env
+            .storage()
+            .persistent()
+            .get(&DataKey::Balance(buyer.clone()))
+            .unwrap_or(0);
+        let prospective_balance = checked_add_u32(prev_balance, shares);
+        let max_per_user: u32 = env
+            .storage()
+            .instance()
+            .get(&DataKey::MaxSharesPerUser)
+            .unwrap_or(0);
+        if max_per_user > 0 && prospective_balance > max_per_user {
+            _set_non_reentrant(&env, false);
+            panic!("Purchase exceeds max shares per user");
+        }
+
+        Self::require_accepted_token(&env, &payment_token);
+
+        // Issue #169: Fetch price from oracle if configured; fallback to admin price on error.
+        let admin_price: i128 = env.storage().instance().get(&DataKey::PricePerShare)
             .expect("Contract not initialized: price");
+
+        let price: i128 = if let Some(oracle_addr) = env
+            .storage()
+            .instance()
+            .get::<DataKey, Address>(&DataKey::OracleAddress)
+        {
+            // Attempt to call oracle.get_price(); on any failure fall back to admin_price.
+            let oracle_client = OracleContractClient::new(&env, &oracle_addr);
+            let oracle_result = oracle_client.try_get_price();
+            match oracle_result {
+                Ok(Ok(p)) if p > 0 => {
+                    EventOraclePriceFetched { oracle: oracle_addr, price: p }.publish(&env);
+                    p
+                }
+                _ => {
+                    EventOraclePriceFallback { admin_price }.publish(&env);
+                    admin_price
+                }
+            }
+        } else {
+            admin_price
+        };
+
         let total_cost = checked_mul_i128(price, shares as i128);
 
         let admin: Address = env.storage().instance().get(&DataKey::Admin)
             .expect("Contract not initialized: admin");
-        let token_id: Address = env
-            .storage()
-            .instance()
-            .get(&DataKey::PaymentToken)
-            .expect("Contract not initialized: payment token");
 
-        let client = token::TokenClient::new(&env, &token_id);
+        let client = token::TokenClient::new(&env, &payment_token);
         client.transfer(&buyer, &admin, &total_cost);
 
         let new_available = checked_sub_u32(available, shares);
@@ -244,13 +441,7 @@ impl RwaMarketplace {
             .instance()
             .set(&DataKey::AvailableShares, &new_available);
 
-        let prev_balance: u32 = env
-            .storage()
-            .persistent()
-            .get(&DataKey::Balance(buyer.clone()))
-            .unwrap_or(0);
-
-        let new_balance = checked_add_u32(prev_balance, shares);
+        let new_balance = prospective_balance;
         env.storage()
             .persistent()
             .set(&DataKey::Balance(buyer.clone()), &new_balance);
@@ -258,17 +449,48 @@ impl RwaMarketplace {
         // Register as new holder only on first purchase or if not registered yet
         Self::register_holder(&env, buyer.clone());
 
+        // Mint one share-certificate NFT per share purchased (if NFT contract is configured).
+        if let Some(nft_addr) = env
+            .storage()
+            .instance()
+            .get::<DataKey, Address>(&DataKey::NftContract)
+        {
+            let nft = NftContractClient::new(&env, &nft_addr);
+            for _ in 0..shares {
+                nft.mint_certificate(&buyer);
+            }
+        }
+
+        // Clear reentrancy guard before publishing event
+        _set_non_reentrant(&env, false);
+
         EventBuyShares { buyer, shares, total_cost }.publish(&env);
     }
 
+    /// Set (or update) the share-certificate NFT contract address. Admin only.
+    /// Once set, every `buy_shares` call mints one NFT per share to the buyer.
+    pub fn set_nft_contract(env: Env, nft_contract: Address) {
+        let admin: Address = env.storage().instance().get(&DataKey::Admin)
+            .expect("Contract not initialized: admin");
+        admin.require_auth();
+        env.storage().instance().set(&DataKey::NftContract, &nft_contract);
+    }
+
+    /// Return the configured NFT contract address, or None if not set.
+    pub fn get_nft_contract(env: Env) -> Option<Address> {
+        env.storage().instance().get(&DataKey::NftContract)
+    }
+
     pub fn add_to_whitelist(env: Env, addr: Address) {
-        let admin: Address = env.storage().instance().get(&DataKey::Admin).unwrap();
+        let admin: Address = env.storage().instance().get(&DataKey::Admin)
+            .expect("Contract not initialized: admin");
         admin.require_auth();
         env.storage().persistent().set(&DataKey::Whitelisted(addr.clone()), &true);
     }
 
     pub fn remove_from_whitelist(env: Env, addr: Address) {
-        let admin: Address = env.storage().instance().get(&DataKey::Admin).unwrap();
+        let admin: Address = env.storage().instance().get(&DataKey::Admin)
+            .expect("Contract not initialized: admin");
         admin.require_auth();
         env.storage().persistent().remove(&DataKey::Whitelisted(addr.clone()));
     }
@@ -278,6 +500,82 @@ impl RwaMarketplace {
             .persistent()
             .get(&DataKey::Whitelisted(addr))
             .unwrap_or(false)
+    }
+
+    /// Add a token to the accepted payment tokens list. Admin only.
+    pub fn add_payment_token(env: Env, token: Address) {
+        let admin: Address = env.storage().instance().get(&DataKey::Admin)
+            .expect("Contract not initialized: admin");
+        admin.require_auth();
+
+        let mut accepted: Vec<Address> = env.storage().instance()
+            .get(&DataKey::AcceptedTokens)
+            .unwrap_or_else(|| Vec::new(&env));
+
+        for t in accepted.iter() {
+            if t == token {
+                panic!("Token already accepted");
+            }
+        }
+        accepted.push_back(token.clone());
+        env.storage().instance().set(&DataKey::AcceptedTokens, &accepted);
+
+        EventAddPaymentToken { token }.publish(&env);
+    }
+
+    /// Remove a token from the accepted payment tokens list. Admin only.
+    /// The default `PaymentToken` (set at init) cannot be removed.
+    pub fn remove_payment_token(env: Env, token: Address) {
+        let admin: Address = env.storage().instance().get(&DataKey::Admin)
+            .expect("Contract not initialized: admin");
+        admin.require_auth();
+
+        let default_token: Address = env.storage().instance()
+            .get(&DataKey::PaymentToken)
+            .expect("Contract not initialized: payment token");
+        if token == default_token {
+            panic!("Cannot remove the default payment token");
+        }
+
+        let accepted: Vec<Address> = env.storage().instance()
+            .get(&DataKey::AcceptedTokens)
+            .unwrap_or_else(|| Vec::new(&env));
+
+        let mut updated: Vec<Address> = Vec::new(&env);
+        let mut found = false;
+        for t in accepted.iter() {
+            if t == token {
+                found = true;
+            } else {
+                updated.push_back(t);
+            }
+        }
+        if !found {
+            panic!("Token not in accepted list");
+        }
+        env.storage().instance().set(&DataKey::AcceptedTokens, &updated);
+
+        EventRemovePaymentToken { token }.publish(&env);
+    }
+
+    /// Return the list of accepted payment tokens.
+    pub fn get_accepted_tokens(env: Env) -> Vec<Address> {
+        env.storage().instance()
+            .get(&DataKey::AcceptedTokens)
+            .unwrap_or_else(|| Vec::new(&env))
+    }
+
+    /// Panic if `token` is not in the accepted payment tokens list.
+    fn require_accepted_token(env: &Env, token: &Address) {
+        let accepted: Vec<Address> = env.storage().instance()
+            .get(&DataKey::AcceptedTokens)
+            .unwrap_or_else(|| Vec::new(env));
+        for t in accepted.iter() {
+            if &t == token {
+                return;
+            }
+        }
+        panic!("Payment token not accepted");
     }
 
     /// Distribute `total_amount` of `token` pro-rata among all current holders
@@ -432,7 +730,7 @@ impl RwaMarketplace {
         claimable
     }
 
-    pub fn buy_vested_shares(env: Env, buyer: Address, shares: u32, duration: u64) {
+    pub fn buy_vested_shares(env: Env, buyer: Address, shares: u32, duration: u64, payment_token: Address) {
         buyer.require_auth();
 
         if env.storage().instance().get(&DataKey::Paused).unwrap_or(false) {
@@ -451,23 +749,22 @@ impl RwaMarketplace {
             .storage()
             .instance()
             .get(&DataKey::AvailableShares)
-            .unwrap();
+            .expect("Contract not initialized: available shares");
 
         if shares > available {
             panic!("Not enough shares available for purchase");
         }
 
-        let price: i128 = env.storage().instance().get(&DataKey::PricePerShare).unwrap();
+        Self::require_accepted_token(&env, &payment_token);
+
+        let price: i128 = env.storage().instance().get(&DataKey::PricePerShare)
+            .expect("Contract not initialized: price");
         let total_cost = price * (shares as i128);
 
-        let admin: Address = env.storage().instance().get(&DataKey::Admin).unwrap();
-        let token_id: Address = env
-            .storage()
-            .instance()
-            .get(&DataKey::PaymentToken)
-            .unwrap();
+        let admin: Address = env.storage().instance().get(&DataKey::Admin)
+            .expect("Contract not initialized: admin");
 
-        let client = token::TokenClient::new(&env, &token_id);
+        let client = token::TokenClient::new(&env, &payment_token);
         client.transfer(&buyer, &admin, &total_cost);
 
         env.storage()
@@ -805,6 +1102,147 @@ impl RwaMarketplace {
         .publish(&env);
     }
 
+    /// Set the maximum number of shares any single address may hold.
+    /// Only the admin may call this. A value of 0 disables the cap (unlimited).
+    /// The new cap is not applied retroactively to existing holders; it only
+    /// constrains future `buy_shares` purchases.
+    pub fn set_max_shares_per_user(env: Env, amount: u32) {
+        let admin: Address = env.storage().instance().get(&DataKey::Admin)
+            .expect("Contract not initialized: admin");
+        admin.require_auth();
+
+        let old_max: u32 = env
+            .storage()
+            .instance()
+            .get(&DataKey::MaxSharesPerUser)
+            .unwrap_or(0);
+
+        env.storage()
+            .instance()
+            .set(&DataKey::MaxSharesPerUser, &amount);
+
+        EventSetMaxSharesPerUser {
+            old_max,
+            new_max: amount,
+        }
+        .publish(&env);
+    }
+
+    /// Return the current per-address share cap. 0 means no limit.
+    pub fn get_max_shares_per_user(env: Env) -> u32 {
+        env.storage()
+            .instance()
+            .get(&DataKey::MaxSharesPerUser)
+            .unwrap_or(0)
+    }
+
+    // ── Share Transfer (secondary market) ──────────────────────────────────
+
+    /// Approve `spender` to transfer up to `amount` of the caller's shares.
+    pub fn approve(env: Env, owner: Address, spender: Address, amount: u32) {
+        owner.require_auth();
+        env.storage()
+            .persistent()
+            .set(&DataKey::Allowance(owner.clone(), spender.clone()), &amount);
+        EventApproval { owner, spender, amount }.publish(&env);
+    }
+
+    /// Return how many shares `spender` is allowed to transfer on behalf of `owner`.
+    pub fn allowance(env: Env, owner: Address, spender: Address) -> u32 {
+        env.storage()
+            .persistent()
+            .get(&DataKey::Allowance(owner, spender))
+            .unwrap_or(0)
+    }
+
+    /// Transfer `amount` shares from caller to `to`. Requires caller auth.
+    pub fn transfer_shares(env: Env, from: Address, to: Address, amount: u32) {
+        from.require_auth();
+
+        if amount == 0 {
+            panic!("Transfer amount must be positive");
+        }
+
+        let from_balance: u32 = env
+            .storage()
+            .persistent()
+            .get(&DataKey::Balance(from.clone()))
+            .unwrap_or(0);
+
+        if amount > from_balance {
+            panic!("Insufficient shares to transfer");
+        }
+
+        let to_balance: u32 = env
+            .storage()
+            .persistent()
+            .get(&DataKey::Balance(to.clone()))
+            .unwrap_or(0);
+
+        env.storage()
+            .persistent()
+            .set(&DataKey::Balance(from.clone()), &checked_sub_u32(from_balance, amount));
+        env.storage()
+            .persistent()
+            .set(&DataKey::Balance(to.clone()), &checked_add_u32(to_balance, amount));
+
+        Self::register_holder(&env, to.clone());
+
+        EventTransfer { from, to, amount }.publish(&env);
+    }
+
+    /// Transfer `amount` shares from `from` to `to` using an allowance. Requires spender auth.
+    pub fn transfer_shares_from(env: Env, spender: Address, from: Address, to: Address, amount: u32) {
+        spender.require_auth();
+
+        if amount == 0 {
+            panic!("Transfer amount must be positive");
+        }
+
+        let allowance_key = DataKey::Allowance(from.clone(), spender.clone());
+        let current_allowance: u32 = env
+            .storage()
+            .persistent()
+            .get(&allowance_key)
+            .unwrap_or(0);
+
+        if amount > current_allowance {
+            panic!("Transfer amount exceeds allowance");
+        }
+
+        let from_balance: u32 = env
+            .storage()
+            .persistent()
+            .get(&DataKey::Balance(from.clone()))
+            .unwrap_or(0);
+
+        if amount > from_balance {
+            panic!("Insufficient shares to transfer");
+        }
+
+        let to_balance: u32 = env
+            .storage()
+            .persistent()
+            .get(&DataKey::Balance(to.clone()))
+            .unwrap_or(0);
+
+        // Deduct allowance
+        env.storage()
+            .persistent()
+            .set(&allowance_key, &checked_sub_u32(current_allowance, amount));
+
+        env.storage()
+            .persistent()
+            .set(&DataKey::Balance(from.clone()), &checked_sub_u32(from_balance, amount));
+        env.storage()
+            .persistent()
+            .set(&DataKey::Balance(to.clone()), &checked_add_u32(to_balance, amount));
+
+        Self::register_holder(&env, to.clone());
+
+        EventTransfer { from, to, amount }.publish(&env);
+    }
+
     /// List `amount` of the caller's liquid shares for sale at `price_per_share`.
     /// Shares are escrowed in the contract until filled or cancelled.
     pub fn place_sell_order(env: Env, seller: Address, amount: u32, price_per_share: i128) -> u64 {
@@ -906,6 +1344,157 @@ impl RwaMarketplace {
     pub fn get_sell_order(env: Env, order_id: u64) -> Option<SellOrder> {
         env.storage().persistent().get(&DataKey::SellOrder(order_id))
     }
+
+    // ── Buyback ────────────────────────────────────────────────────────────
+
+    /// Contract buys back `amount` shares from `seller` at the current
+    /// `price_per_share`. The contract must hold sufficient payment-token
+    /// balance. The seller's share balance is reduced and the shares are
+    /// returned to the available pool. Seller auth is required.
+    pub fn buyback_shares(env: Env, seller: Address, amount: u32) {
+        seller.require_auth();
+
+        if amount == 0 {
+            panic!("Buyback amount must be positive");
+        }
+
+        let seller_balance: u32 = env
+            .storage()
+            .persistent()
+            .get(&DataKey::Balance(seller.clone()))
+            .unwrap_or(0);
+
+        if amount > seller_balance {
+            panic!("Seller has insufficient shares");
+        }
+
+        let price: i128 = env
+            .storage()
+            .instance()
+            .get(&DataKey::PricePerShare)
+            .expect("Contract not initialized: price");
+
+        let total_cost = checked_mul_i128(price, amount as i128);
+
+        let token_id: Address = env
+            .storage()
+            .instance()
+            .get(&DataKey::PaymentToken)
+            .expect("Contract not initialized: payment token");
+
+        // Transfer payment from contract to seller
+        token::TokenClient::new(&env, &token_id)
+            .transfer(&env.current_contract_address(), &seller, &total_cost);
+
+        // Reduce seller balance
+        env.storage().persistent().set(
+            &DataKey::Balance(seller.clone()),
+            &checked_sub_u32(seller_balance, amount),
+        );
+
+        // Return shares to available pool
+        let available: u32 = env
+            .storage()
+            .instance()
+            .get(&DataKey::AvailableShares)
+            .expect("Contract not initialized: available shares");
+        env.storage()
+            .instance()
+            .set(&DataKey::AvailableShares, &checked_add_u32(available, amount));
+
+        EventBuybackShares { seller, amount, total_cost }.publish(&env);
+    }
+
+    /// Admin sets the auto-buyback configuration.
+    /// `budget` tokens must already be held (or will be deposited) by the
+    /// contract. Calling this again replaces the previous configuration and
+    /// resets the `LastBuyback` timestamp.
+    pub fn auto_buyback_config(env: Env, interval: u64, max_amount: u32, budget: i128) {
+        let admin: Address = env
+            .storage()
+            .instance()
+            .get(&DataKey::Admin)
+            .expect("Contract not initialized: admin");
+        admin.require_auth();
+
+        if interval == 0 {
+            panic!("Interval must be positive");
+        }
+        if max_amount == 0 {
+            panic!("Max amount must be positive");
+        }
+        if budget <= 0 {
+            panic!("Budget must be positive");
+        }
+
+        let config = AutoBuybackConfig { interval, max_amount, budget };
+        env.storage().instance().set(&DataKey::BuybackConfig, &config);
+        env.storage().instance().set(&DataKey::BuybackBudget, &budget);
+        // Reset last-buyback so the first call is not gated
+        env.storage().instance().set(&DataKey::LastBuyback, &0u64);
+
+        EventAutoBuybackConfig { interval, max_amount, budget }.publish(&env);
+    }
+
+    /// Trigger an auto-buyback for `seller`. Callable by anyone.
+    /// Validates that:
+    ///   - a config exists
+    ///   - the interval since the last auto-buyback has elapsed
+    ///   - `amount` does not exceed `config.max_amount`
+    ///   - the remaining budget covers the cost
+    pub fn process_auto_buyback(env: Env, seller: Address, amount: u32) {
+        if amount == 0 {
+            panic!("Buyback amount must be positive");
+        }
+
+        let config: AutoBuybackConfig = env
+            .storage()
+            .instance()
+            .get(&DataKey::BuybackConfig)
+            .expect("Auto-buyback not configured");
+
+        let last: u64 = env
+            .storage()
+            .instance()
+            .get(&DataKey::LastBuyback)
+            .unwrap_or(0);
+
+        let now = env.ledger().timestamp();
+        if now < last.saturating_add(config.interval) {
+            panic!("Auto-buyback interval has not elapsed");
+        }
+
+        if amount > config.max_amount {
+            panic!("Amount exceeds auto-buyback max");
+        }
+
+        let price: i128 = env
+            .storage()
+            .instance()
+            .get(&DataKey::PricePerShare)
+            .expect("Contract not initialized: price");
+
+        let total_cost = checked_mul_i128(price, amount as i128);
+
+        let remaining_budget: i128 = env
+            .storage()
+            .instance()
+            .get(&DataKey::BuybackBudget)
+            .unwrap_or(0);
+
+        if total_cost > remaining_budget {
+            panic!("Insufficient auto-buyback budget");
+        }
+
+        // Update budget and timestamp before the external call (CEI pattern)
+        env.storage()
+            .instance()
+            .set(&DataKey::BuybackBudget, &checked_sub_i128(remaining_budget, total_cost));
+        env.storage().instance().set(&DataKey::LastBuyback, &now);
+
+        // Delegate to the core buyback, which requires seller auth
+        Self::buyback_shares(env, seller, amount);
+    }
 }
 
 #[cfg(test)]
@@ -962,7 +1551,7 @@ mod test {
         let c = client(&te);
         c.init(&te.admin, &te.token_id, &100, &1000);
         mint(&te, &te.buyer, 100000);
-        c.buy_shares(&te.buyer, &25);
+        c.buy_shares(&te.buyer, &25, &te.token_id);
     }
 
     #[test]
@@ -976,7 +1565,7 @@ mod test {
         c.add_to_whitelist(&te.buyer);
         assert!(c.is_whitelisted(&te.buyer));
 
-        c.buy_shares(&te.buyer, &25);
+        c.buy_shares(&te.buyer, &25, &te.token_id);
         assert_eq!(c.get_shares(&te.buyer), 25);
         assert_eq!(c.get_available_shares(), 975);
     }
@@ -994,7 +1583,7 @@ mod test {
         c.remove_from_whitelist(&te.buyer);
         assert!(!c.is_whitelisted(&te.buyer));
 
-        c.buy_shares(&te.buyer, &25);
+        c.buy_shares(&te.buyer, &25, &te.token_id);
     }
 
     #[test]
@@ -1005,8 +1594,8 @@ mod test {
         mint(&te, &te.buyer, 100000);
         c.add_to_whitelist(&te.buyer);
 
-        c.buy_shares(&te.buyer, &10);
-        c.buy_shares(&te.buyer, &20);
+        c.buy_shares(&te.buyer, &10, &te.token_id);
+        c.buy_shares(&te.buyer, &20, &te.token_id);
         assert_eq!(c.get_shares(&te.buyer), 30);
         assert_eq!(c.get_available_shares(), 970);
     }
@@ -1031,7 +1620,7 @@ mod test {
         let c = client(&te);
         c.init(&te.admin, &te.token_id, &100, &1000);
         c.pause();
-        c.buy_shares(&te.buyer, &1);
+        c.buy_shares(&te.buyer, &1, &te.token_id);
     }
 
     #[test]
@@ -1076,7 +1665,7 @@ mod test {
         c.add_to_whitelist(&te.buyer);
         mint(&te, &te.buyer, 100000);
         c.add_to_whitelist(&te.buyer);
-        c.buy_shares(&te.buyer, &20);
+        c.buy_shares(&te.buyer, &20, &te.token_id);
     }
 
     #[test]
@@ -1086,7 +1675,7 @@ mod test {
         let c = client(&te);
         c.init(&te.admin, &te.token_id, &100, &1000);
         c.add_to_whitelist(&te.buyer);
-        c.buy_shares(&te.buyer, &0);
+        c.buy_shares(&te.buyer, &0, &te.token_id);
     }
 
     #[test]
@@ -1110,11 +1699,11 @@ mod test {
         // Before any purchase, registry is empty
         assert_eq!(c.get_holders().len(), 0);
 
-        c.buy_shares(&te.buyer, &10);
+        c.buy_shares(&te.buyer, &10, &te.token_id);
         assert_eq!(c.get_holders().len(), 1);
 
         // Second buy by same buyer — should NOT add duplicate
-        c.buy_shares(&te.buyer, &5);
+        c.buy_shares(&te.buyer, &5, &te.token_id);
         assert_eq!(c.get_holders().len(), 1);
     }
 
@@ -1130,8 +1719,8 @@ mod test {
         c.add_to_whitelist(&te.buyer);
         c.add_to_whitelist(&buyer2);
 
-        c.buy_shares(&te.buyer, &10);
-        c.buy_shares(&buyer2, &20);
+        c.buy_shares(&te.buyer, &10, &te.token_id);
+        c.buy_shares(&buyer2, &20, &te.token_id);
 
         assert_eq!(c.get_holders().len(), 2);
     }
@@ -1144,7 +1733,7 @@ mod test {
         mint(&te, &te.buyer, 100_000);
         c.add_to_whitelist(&te.buyer);
 
-        c.buy_shares(&te.buyer, &500); // buyer owns 500 / 1000 shares = 50%
+        c.buy_shares(&te.buyer, &500, &te.token_id); // buyer owns 500 / 1000 shares = 50%
 
         // Mint dividend tokens to the contract
         let dividend_amount: i128 = 10_000;
@@ -1171,8 +1760,8 @@ mod test {
         c.add_to_whitelist(&buyer2);
 
         // buyer: 250 shares (25%), buyer2: 750 shares (75%)
-        c.buy_shares(&te.buyer, &250);
-        c.buy_shares(&buyer2, &750);
+        c.buy_shares(&te.buyer, &250, &te.token_id);
+        c.buy_shares(&buyer2, &750, &te.token_id);
 
         let dividend_amount: i128 = 10_000;
         mint(&te, &te.contract_id, dividend_amount);
@@ -1205,8 +1794,8 @@ mod test {
         c.add_to_whitelist(&te.buyer);
         c.add_to_whitelist(&buyer2);
 
-        c.buy_shares(&te.buyer, &10);
-        c.buy_shares(&buyer2, &20);
+        c.buy_shares(&te.buyer, &10, &te.token_id);
+        c.buy_shares(&buyer2, &20, &te.token_id);
         assert_eq!(c.get_holders().len(), 2);
 
         // Manually zero out buyer's balance to simulate a future sell/transfer
@@ -1264,7 +1853,7 @@ mod test {
         c.add_to_whitelist(&te.buyer);
 
         c.set_price(&200);
-        c.buy_shares(&te.buyer, &10);
+        c.buy_shares(&te.buyer, &10, &te.token_id);
 
         let token_client = token::TokenClient::new(&te.env, &te.token_id);
         assert_eq!(token_client.balance(&te.buyer), 100_000 - 10 * 200);
@@ -1307,7 +1896,7 @@ mod test {
         mint(&te, &te.buyer, 100_000);
         c.add_to_whitelist(&te.buyer);
 
-        c.buy_shares(&te.buyer, &100);
+        c.buy_shares(&te.buyer, &100, &te.token_id);
         assert_eq!(c.get_available_shares(), 900);
 
         c.set_total_shares(&1200);
@@ -1348,7 +1937,7 @@ mod test {
         c.add_to_whitelist(&te.buyer);
         
         // This should panic because price * shares overflows
-        c.buy_shares(&te.buyer, &2);
+        c.buy_shares(&te.buyer, &2, &te.token_id);
     }
 
     #[test]
@@ -1362,7 +1951,7 @@ mod test {
         c.add_to_whitelist(&te.buyer);
         
         // Buy more shares than available (caught by logic check, not arithmetic)
-        c.buy_shares(&te.buyer, &2000);
+        c.buy_shares(&te.buyer, &2000, &te.token_id);
     }
 
     #[test]
@@ -1383,7 +1972,7 @@ mod test {
         });
         
         // Now buying 20 more shares should trigger overflow in checked_add_u32
-        c.buy_shares(&te.buyer, &20);
+        c.buy_shares(&te.buyer, &20, &te.token_id);
     }
 
     #[test]
@@ -1396,7 +1985,7 @@ mod test {
         mint(&te, &te.buyer, 100_000);
         c.add_to_whitelist(&te.buyer);
         
-        c.buy_shares(&te.buyer, &500);
+        c.buy_shares(&te.buyer, &500, &te.token_id);
         
         // Use extremely large dividend amount that will overflow when multiplied by holder_shares
         let huge_dividend: i128 = i128::MAX / 2;
@@ -1417,7 +2006,7 @@ mod test {
         c.add_to_whitelist(&te.buyer);
         
         // Buy some shares to create issued_shares
-        c.buy_shares(&te.buyer, &600);
+        c.buy_shares(&te.buyer, &600, &te.token_id);
         
         // Try to set new_total to less than issued_shares
         // This is caught by the logic check before any arithmetic
@@ -1441,9 +2030,9 @@ mod test {
     #[test]
     #[should_panic(expected = "Buyer is not whitelisted")]
     fn test_pre_init_buy_shares() {
-        let (env, client, _, _) = pre_init_client();
+        let (env, client, token_id, _) = pre_init_client();
         let buyer = Address::generate(&env);
-        client.buy_shares(&buyer, &1);
+        client.buy_shares(&buyer, &1, &token_id);
     }
 
     #[test]
@@ -1486,6 +2075,30 @@ mod test {
     fn test_pre_init_emergency_withdraw() {
         let (_, client, _, admin) = pre_init_client();
         client.emergency_withdraw(&admin, &0);
+    }
+
+    #[test]
+    #[should_panic(expected = "Contract not initialized")]
+    fn test_pre_init_add_to_whitelist() {
+        let (env, client, _, _) = pre_init_client();
+        let addr = Address::generate(&env);
+        client.add_to_whitelist(&addr);
+    }
+
+    #[test]
+    #[should_panic(expected = "Contract not initialized")]
+    fn test_pre_init_remove_from_whitelist() {
+        let (env, client, _, _) = pre_init_client();
+        let addr = Address::generate(&env);
+        client.remove_from_whitelist(&addr);
+    }
+
+    #[test]
+    #[should_panic(expected = "Contract not initialized")]
+    fn test_pre_init_buy_vested_shares() {
+        let (env, client, token_id, _) = pre_init_client();
+        let buyer = Address::generate(&env);
+        client.buy_vested_shares(&buyer, &1, &3600, &token_id);
     }
 
     // ── Metadata URI tests ──────────────────────────────────────────────
@@ -1609,8 +2222,8 @@ mod test {
         c.add_to_whitelist(&te.buyer);
         c.add_to_whitelist(&buyer2);
 
-        c.buy_shares(&te.buyer, &300);
-        c.buy_shares(&buyer2, &700);
+        c.buy_shares(&te.buyer, &300, &te.token_id);
+        c.buy_shares(&buyer2, &700, &te.token_id);
         assert_eq!(c.get_available_shares(), 0);
 
         // Set schedule: 10 tokens per share, daily
@@ -1640,7 +2253,7 @@ mod test {
 
         mint(&te, &te.buyer, 100_000);
         c.add_to_whitelist(&te.buyer);
-        c.buy_shares(&te.buyer, &500);
+        c.buy_shares(&te.buyer, &500, &te.token_id);
 
         c.set_dividend_schedule(&1, &100);
         mint(&te, &te.contract_id, 500);
@@ -1658,7 +2271,7 @@ mod test {
 
         mint(&te, &te.buyer, 100_000);
         c.add_to_whitelist(&te.buyer);
-        c.buy_shares(&te.buyer, &500);
+        c.buy_shares(&te.buyer, &500, &te.token_id);
 
         c.set_dividend_schedule(&1, &100);
         mint(&te, &te.contract_id, 1000);
@@ -1678,7 +2291,7 @@ mod test {
 
         mint(&te, &te.buyer, 100_000);
         c.add_to_whitelist(&te.buyer);
-        c.buy_shares(&te.buyer, &500);
+        c.buy_shares(&te.buyer, &500, &te.token_id);
 
         c.set_dividend_schedule(&5, &3600); // every hour
         mint(&te, &te.contract_id, 2500);
@@ -1709,6 +2322,612 @@ mod test {
         c.set_dividend_schedule(&10, &1);
         te.env.ledger().set_timestamp(te.env.ledger().timestamp() + 2);
         c.process_scheduled_dividend();
+    }
+
+    // ── Max shares per user tests ───────────────────────────────────────
+
+    #[test]
+    fn test_max_shares_per_user_default_unlimited() {
+        let te = setup();
+        let c = client(&te);
+        c.init(&te.admin, &te.token_id, &100, &1000);
+
+        // Defaults to 0, meaning no cap is enforced.
+        assert_eq!(c.get_max_shares_per_user(), 0);
+    }
+
+    #[test]
+    fn test_set_and_get_max_shares_per_user() {
+        let te = setup();
+        let c = client(&te);
+        c.init(&te.admin, &te.token_id, &100, &1000);
+
+        c.set_max_shares_per_user(&50);
+        assert_eq!(c.get_max_shares_per_user(), 50);
+    }
+
+    #[test]
+    fn test_buy_within_cap_succeeds() {
+        let te = setup();
+        let c = client(&te);
+        c.init(&te.admin, &te.token_id, &100, &1000);
+        mint(&te, &te.buyer, 100_000);
+        c.add_to_whitelist(&te.buyer);
+
+        c.set_max_shares_per_user(&50);
+        c.buy_shares(&te.buyer, &50, &te.token_id);
+        assert_eq!(c.get_shares(&te.buyer), 50);
+    }
+
+    #[test]
+    #[should_panic(expected = "Purchase exceeds max shares per user")]
+    fn test_buy_exceeding_cap_single_purchase() {
+        let te = setup();
+        let c = client(&te);
+        c.init(&te.admin, &te.token_id, &100, &1000);
+        mint(&te, &te.buyer, 100_000);
+        c.add_to_whitelist(&te.buyer);
+
+        c.set_max_shares_per_user(&50);
+        c.buy_shares(&te.buyer, &51, &te.token_id);
+    }
+
+    #[test]
+    #[should_panic(expected = "Purchase exceeds max shares per user")]
+    fn test_cap_checks_current_holdings_plus_purchase() {
+        let te = setup();
+        let c = client(&te);
+        c.init(&te.admin, &te.token_id, &100, &1000);
+        mint(&te, &te.buyer, 100_000);
+        c.add_to_whitelist(&te.buyer);
+
+        c.set_max_shares_per_user(&50);
+        // First purchase is fine (40 <= 50).
+        c.buy_shares(&te.buyer, &40, &te.token_id);
+        assert_eq!(c.get_shares(&te.buyer), 40);
+        // Second purchase pushes total to 60 > 50 → rejected.
+        c.buy_shares(&te.buyer, &20, &te.token_id);
+    }
+
+    #[test]
+    fn test_buy_up_to_cap_across_multiple_purchases() {
+        let te = setup();
+        let c = client(&te);
+        c.init(&te.admin, &te.token_id, &100, &1000);
+        mint(&te, &te.buyer, 100_000);
+        c.add_to_whitelist(&te.buyer);
+
+        c.set_max_shares_per_user(&50);
+        c.buy_shares(&te.buyer, &30, &te.token_id);
+        c.buy_shares(&te.buyer, &20, &te.token_id); // exactly hits the cap
+        assert_eq!(c.get_shares(&te.buyer), 50);
+    }
+
+    #[test]
+    fn test_cap_does_not_block_transfer_when_rejected() {
+        let te = setup();
+        let c = client(&te);
+        c.init(&te.admin, &te.token_id, &100, &1000);
+        mint(&te, &te.buyer, 100_000);
+        c.add_to_whitelist(&te.buyer);
+
+        c.set_max_shares_per_user(&50);
+
+        // A purchase that exceeds the cap must revert before transferring any
+        // tokens. Use the non-panicking client to assert the call fails and
+        // that no balances or available shares changed.
+        let result = c.try_buy_shares(&te.buyer, &60, &te.token_id);
+        assert!(result.is_err());
+
+        let token_client = token::TokenClient::new(&te.env, &te.token_id);
+        assert_eq!(token_client.balance(&te.buyer), 100_000);
+        assert_eq!(c.get_shares(&te.buyer), 0);
+        assert_eq!(c.get_available_shares(), 1000);
+    }
+
+    #[test]
+    fn test_cap_zero_means_unlimited() {
+        let te = setup();
+        let c = client(&te);
+        c.init(&te.admin, &te.token_id, &100, &1000);
+        mint(&te, &te.buyer, 1_000_000);
+        c.add_to_whitelist(&te.buyer);
+
+        c.set_max_shares_per_user(&50);
+        c.set_max_shares_per_user(&0); // disable cap
+        c.buy_shares(&te.buyer, &900, &te.token_id);
+        assert_eq!(c.get_shares(&te.buyer), 900);
+    }
+
+    #[test]
+    fn test_raising_cap_allows_more_purchases() {
+        let te = setup();
+        let c = client(&te);
+        c.init(&te.admin, &te.token_id, &100, &1000);
+        mint(&te, &te.buyer, 100_000);
+        c.add_to_whitelist(&te.buyer);
+
+        c.set_max_shares_per_user(&50);
+        c.buy_shares(&te.buyer, &50, &te.token_id);
+
+        c.set_max_shares_per_user(&100);
+        c.buy_shares(&te.buyer, &50, &te.token_id);
+        assert_eq!(c.get_shares(&te.buyer), 100);
+    }
+
+    #[test]
+    fn test_cap_is_per_address_not_global() {
+        let te = setup();
+        let c = client(&te);
+        c.init(&te.admin, &te.token_id, &100, &1000);
+
+        let buyer2 = Address::generate(&te.env);
+        mint(&te, &te.buyer, 100_000);
+        mint(&te, &buyer2, 100_000);
+        c.add_to_whitelist(&te.buyer);
+        c.add_to_whitelist(&buyer2);
+
+        c.set_max_shares_per_user(&50);
+        c.buy_shares(&te.buyer, &50, &te.token_id);
+        c.buy_shares(&buyer2, &50, &te.token_id);
+        assert_eq!(c.get_shares(&te.buyer), 50);
+        assert_eq!(c.get_shares(&buyer2), 50);
+    }
+
+    #[test]
+    #[should_panic(expected = "Contract not initialized")]
+    fn test_pre_init_set_max_shares_per_user() {
+        let (_, client, _, _) = pre_init_client();
+        client.set_max_shares_per_user(&50);
+    }
+
+    // ── Transfer tests ──────────────────────────────────────────────────
+
+    #[test]
+    fn test_transfer_shares_basic() {
+        let te = setup();
+        let c = client(&te);
+        c.init(&te.admin, &te.token_id, &100, &1000);
+        mint(&te, &te.buyer, 100_000);
+        c.add_to_whitelist(&te.buyer);
+        c.buy_shares(&te.buyer, &50, &te.token_id);
+
+        let recipient = Address::generate(&te.env);
+        c.transfer_shares(&te.buyer, &recipient, &20);
+
+        assert_eq!(c.get_shares(&te.buyer), 30);
+        assert_eq!(c.get_shares(&recipient), 20);
+    }
+
+    #[test]
+    #[should_panic(expected = "Insufficient shares to transfer")]
+    fn test_transfer_shares_insufficient_balance() {
+        let te = setup();
+        let c = client(&te);
+        c.init(&te.admin, &te.token_id, &100, &1000);
+        mint(&te, &te.buyer, 100_000);
+        c.add_to_whitelist(&te.buyer);
+        c.buy_shares(&te.buyer, &10, &te.token_id);
+
+        let recipient = Address::generate(&te.env);
+        c.transfer_shares(&te.buyer, &recipient, &20);
+    }
+
+    #[test]
+    #[should_panic(expected = "Transfer amount must be positive")]
+    fn test_transfer_shares_zero_amount() {
+        let te = setup();
+        let c = client(&te);
+        c.init(&te.admin, &te.token_id, &100, &1000);
+        mint(&te, &te.buyer, 100_000);
+        c.add_to_whitelist(&te.buyer);
+        c.buy_shares(&te.buyer, &10, &te.token_id);
+
+        let recipient = Address::generate(&te.env);
+        c.transfer_shares(&te.buyer, &recipient, &0);
+    }
+
+    #[test]
+    fn test_approve_and_transfer_from() {
+        let te = setup();
+        let c = client(&te);
+        c.init(&te.admin, &te.token_id, &100, &1000);
+        mint(&te, &te.buyer, 100_000);
+        c.add_to_whitelist(&te.buyer);
+        c.buy_shares(&te.buyer, &50, &te.token_id);
+
+        let spender = Address::generate(&te.env);
+        let recipient = Address::generate(&te.env);
+
+        c.approve(&te.buyer, &spender, &30);
+        assert_eq!(c.allowance(&te.buyer, &spender), 30);
+
+        c.transfer_shares_from(&spender, &te.buyer, &recipient, &20);
+
+        assert_eq!(c.get_shares(&te.buyer), 30);
+        assert_eq!(c.get_shares(&recipient), 20);
+        // Allowance reduced
+        assert_eq!(c.allowance(&te.buyer, &spender), 10);
+    }
+
+    #[test]
+    #[should_panic(expected = "Transfer amount exceeds allowance")]
+    fn test_transfer_from_exceeds_allowance() {
+        let te = setup();
+        let c = client(&te);
+        c.init(&te.admin, &te.token_id, &100, &1000);
+        mint(&te, &te.buyer, 100_000);
+        c.add_to_whitelist(&te.buyer);
+        c.buy_shares(&te.buyer, &50, &te.token_id);
+
+        let spender = Address::generate(&te.env);
+        let recipient = Address::generate(&te.env);
+
+        c.approve(&te.buyer, &spender, &10);
+        c.transfer_shares_from(&spender, &te.buyer, &recipient, &20);
+    }
+
+    #[test]
+    fn test_transfer_registers_recipient_as_holder() {
+        let te = setup();
+        let c = client(&te);
+        c.init(&te.admin, &te.token_id, &100, &1000);
+        mint(&te, &te.buyer, 100_000);
+        c.add_to_whitelist(&te.buyer);
+        c.buy_shares(&te.buyer, &50, &te.token_id);
+
+        let recipient = Address::generate(&te.env);
+        assert_eq!(c.get_holders().len(), 1);
+
+        c.transfer_shares(&te.buyer, &recipient, &10);
+        assert_eq!(c.get_holders().len(), 2);
+    }
+
+    // ── Buyback tests ───────────────────────────────────────────────────
+
+    #[test]
+    fn test_buyback_shares_basic() {
+        let te = setup();
+        let c = client(&te);
+        c.init(&te.admin, &te.token_id, &100, &1000);
+        mint(&te, &te.buyer, 100_000);
+        c.add_to_whitelist(&te.buyer);
+        c.buy_shares(&te.buyer, &100, &te.token_id);
+
+        // Fund contract so it can pay seller
+        mint(&te, &te.contract_id, 10_000);
+
+        let available_before = c.get_available_shares(); // 900
+        let token_client = token::TokenClient::new(&te.env, &te.token_id);
+        let seller_balance_before = token_client.balance(&te.buyer);
+
+        c.buyback_shares(&te.buyer, &50);
+
+        // Seller loses 50 shares, gains 50*100=5000 tokens
+        assert_eq!(c.get_shares(&te.buyer), 50);
+        assert_eq!(token_client.balance(&te.buyer), seller_balance_before + 5_000);
+        // Available increases by 50
+        assert_eq!(c.get_available_shares(), available_before + 50);
+    }
+
+    #[test]
+    #[should_panic(expected = "Buyback amount must be positive")]
+    fn test_buyback_shares_zero() {
+        let te = setup();
+        let c = client(&te);
+        c.init(&te.admin, &te.token_id, &100, &1000);
+        mint(&te, &te.buyer, 100_000);
+        c.add_to_whitelist(&te.buyer);
+        c.buy_shares(&te.buyer, &10, &te.token_id);
+        c.buyback_shares(&te.buyer, &0);
+    }
+
+    #[test]
+    #[should_panic(expected = "Seller has insufficient shares")]
+    fn test_buyback_shares_insufficient() {
+        let te = setup();
+        let c = client(&te);
+        c.init(&te.admin, &te.token_id, &100, &1000);
+        mint(&te, &te.buyer, 100_000);
+        c.add_to_whitelist(&te.buyer);
+        c.buy_shares(&te.buyer, &10, &te.token_id);
+        mint(&te, &te.contract_id, 1_000_000);
+        c.buyback_shares(&te.buyer, &20);
+    }
+
+    #[test]
+    fn test_auto_buyback_config_sets_values() {
+        let te = setup();
+        let c = client(&te);
+        c.init(&te.admin, &te.token_id, &100, &1000);
+        c.auto_buyback_config(&3600_u64, &50_u32, &100_000_i128);
+        // Config set without error; process should succeed after interval
+    }
+
+    #[test]
+    #[should_panic(expected = "Interval must be positive")]
+    fn test_auto_buyback_config_zero_interval() {
+        let te = setup();
+        let c = client(&te);
+        c.init(&te.admin, &te.token_id, &100, &1000);
+        c.auto_buyback_config(&0_u64, &10_u32, &1000_i128);
+    }
+
+    #[test]
+    #[should_panic(expected = "Max amount must be positive")]
+    fn test_auto_buyback_config_zero_max_amount() {
+        let te = setup();
+        let c = client(&te);
+        c.init(&te.admin, &te.token_id, &100, &1000);
+        c.auto_buyback_config(&3600_u64, &0_u32, &1000_i128);
+    }
+
+    #[test]
+    #[should_panic(expected = "Budget must be positive")]
+    fn test_auto_buyback_config_zero_budget() {
+        let te = setup();
+        let c = client(&te);
+        c.init(&te.admin, &te.token_id, &100, &1000);
+        c.auto_buyback_config(&3600_u64, &10_u32, &0_i128);
+    }
+
+    #[test]
+    fn test_process_auto_buyback_succeeds() {
+        let te = setup();
+        let c = client(&te);
+        c.init(&te.admin, &te.token_id, &100, &1000);
+        mint(&te, &te.buyer, 100_000);
+        c.add_to_whitelist(&te.buyer);
+        c.buy_shares(&te.buyer, &100, &te.token_id);
+
+        // Fund contract and configure auto-buyback
+        mint(&te, &te.contract_id, 50_000);
+        c.auto_buyback_config(&3600_u64, &50_u32, &50_000_i128);
+
+        // Advance past interval
+        te.env.ledger().set_timestamp(te.env.ledger().timestamp() + 3601);
+
+        c.process_auto_buyback(&te.buyer, &30);
+
+        assert_eq!(c.get_shares(&te.buyer), 70);
+        assert_eq!(c.get_available_shares(), 930);
+    }
+
+    #[test]
+    #[should_panic(expected = "Auto-buyback interval has not elapsed")]
+    fn test_process_auto_buyback_too_soon() {
+        let te = setup();
+        let c = client(&te);
+        c.init(&te.admin, &te.token_id, &100, &1000);
+        mint(&te, &te.buyer, 100_000);
+        c.add_to_whitelist(&te.buyer);
+        c.buy_shares(&te.buyer, &100, &te.token_id);
+        mint(&te, &te.contract_id, 50_000);
+        c.auto_buyback_config(&3600_u64, &50_u32, &50_000_i128);
+
+        // Do NOT advance time — should fail immediately
+        c.process_auto_buyback(&te.buyer, &10);
+    }
+
+    #[test]
+    #[should_panic(expected = "Amount exceeds auto-buyback max")]
+    fn test_process_auto_buyback_exceeds_max() {
+        let te = setup();
+        let c = client(&te);
+        c.init(&te.admin, &te.token_id, &100, &1000);
+        mint(&te, &te.buyer, 100_000);
+        c.add_to_whitelist(&te.buyer);
+        c.buy_shares(&te.buyer, &100, &te.token_id);
+        mint(&te, &te.contract_id, 50_000);
+        c.auto_buyback_config(&3600_u64, &20_u32, &50_000_i128);
+
+        te.env.ledger().set_timestamp(te.env.ledger().timestamp() + 3601);
+        c.process_auto_buyback(&te.buyer, &30);
+    }
+
+    #[test]
+    #[should_panic(expected = "Insufficient auto-buyback budget")]
+    fn test_process_auto_buyback_exceeds_budget() {
+        let te = setup();
+        let c = client(&te);
+        c.init(&te.admin, &te.token_id, &100, &1000);
+        mint(&te, &te.buyer, 100_000);
+        c.add_to_whitelist(&te.buyer);
+        c.buy_shares(&te.buyer, &100, &te.token_id);
+
+        // Budget of 500 → can afford only 5 shares at price 100
+        mint(&te, &te.contract_id, 500);
+        c.auto_buyback_config(&3600_u64, &50_u32, &500_i128);
+
+        te.env.ledger().set_timestamp(te.env.ledger().timestamp() + 3601);
+        c.process_auto_buyback(&te.buyer, &10); // 10 * 100 = 1000 > 500
+    }
+
+    #[test]
+    #[should_panic(expected = "Auto-buyback not configured")]
+    fn test_process_auto_buyback_not_configured() {
+        let te = setup();
+        let c = client(&te);
+        c.init(&te.admin, &te.token_id, &100, &1000);
+        c.process_auto_buyback(&te.buyer, &10);
+    }
+
+    // ── NFT minting tests ───────────────────────────────────────────────
+
+    use share_certificate_nft::ShareCertificate;
+
+    fn setup_nft(te: &TestEnv) -> Address {
+        let nft_id = te.env.register(ShareCertificate, ());
+        let nft_client = share_certificate_nft::ShareCertificateClient::new(&te.env, &nft_id);
+        nft_client.init(
+            &te.contract_id, // minter = marketplace contract
+            &soroban_sdk::String::from_str(&te.env, "ipfs://rwa/"),
+            &soroban_sdk::String::from_str(&te.env, "RWA Share Certificate"),
+            &soroban_sdk::String::from_str(&te.env, "RWAC"),
+        );
+        nft_id
+    }
+
+    #[test]
+    fn test_set_and_get_nft_contract() {
+        let te = setup();
+        let c = client(&te);
+        c.init(&te.admin, &te.token_id, &100, &1000);
+
+        let nft_id = setup_nft(&te);
+        c.set_nft_contract(&nft_id);
+        assert_eq!(c.get_nft_contract(), Some(nft_id));
+    }
+
+    #[test]
+    fn test_get_nft_contract_default_none() {
+        let te = setup();
+        let c = client(&te);
+        c.init(&te.admin, &te.token_id, &100, &1000);
+
+        assert_eq!(c.get_nft_contract(), None);
+    }
+
+    #[test]
+    fn test_buy_shares_mints_nfts() {
+        let te = setup();
+        let c = client(&te);
+        c.init(&te.admin, &te.token_id, &100, &1000);
+        mint(&te, &te.buyer, 100_000);
+        c.add_to_whitelist(&te.buyer);
+
+        let nft_id = setup_nft(&te);
+        c.set_nft_contract(&nft_id);
+
+        c.buy_shares(&te.buyer, &3, &te.token_id);
+
+        // 3 shares purchased → 3 NFTs minted
+        use stellar_tokens::non_fungible::Base;
+        te.env.as_contract(&nft_id, || {
+            assert_eq!(Base::balance(&te.env, &te.buyer), 3);
+        });
+    }
+
+    #[test]
+    fn test_buy_shares_without_nft_contract_still_works() {
+        let te = setup();
+        let c = client(&te);
+        c.init(&te.admin, &te.token_id, &100, &1000);
+        mint(&te, &te.buyer, 100_000);
+        c.add_to_whitelist(&te.buyer);
+
+        // No NFT contract configured — buy_shares should succeed normally
+        c.buy_shares(&te.buyer, &5, &te.token_id);
+        assert_eq!(c.get_shares(&te.buyer), 5);
+    }
+
+    #[test]
+    fn test_nft_owner_is_buyer() {
+        let te = setup();
+        let c = client(&te);
+        c.init(&te.admin, &te.token_id, &100, &1000);
+        mint(&te, &te.buyer, 100_000);
+        c.add_to_whitelist(&te.buyer);
+
+        let nft_id = setup_nft(&te);
+        c.set_nft_contract(&nft_id);
+
+        c.buy_shares(&te.buyer, &1, &te.token_id);
+
+        use stellar_tokens::non_fungible::Base;
+        te.env.as_contract(&nft_id, || {
+            assert_eq!(Base::owner_of(&te.env, 0), te.buyer);
+        });
+    }
+
+    // ── Re-entrancy guard tests ───────────────────────────────────────────────
+
+    #[test]
+    #[should_panic(expected = "Re-entrancy detected")]
+    fn test_reentrancy_is_blocked() {
+        let te = setup();
+        let c = client(&te);
+        c.init(&te.admin, &te.token_id, &100, &1000);
+        mint(&te, &te.buyer, 100_000);
+        c.add_to_whitelist(&te.buyer);
+
+        // Manually set the reentrancy guard to simulate an ongoing call
+        te.env.as_contract(&te.contract_id, || {
+            te.env.storage().instance().set(&DataKey::ReentrancyGuard, &true);
+        });
+
+        // This call should fail with re-entrancy error
+        c.buy_shares(&te.buyer, &10, &te.token_id);
+    }
+
+    #[test]
+    fn test_reentrancy_guard_cleared_after_successful_buy() {
+        let te = setup();
+        let c = client(&te);
+        c.init(&te.admin, &te.token_id, &100, &1000);
+        mint(&te, &te.buyer, 100_000);
+        c.add_to_whitelist(&te.buyer);
+
+        // Guard should be false initially
+        te.env.as_contract(&te.contract_id, || {
+            assert!(!te.env.storage().instance().get::<DataKey, bool>(&DataKey::ReentrancyGuard).unwrap_or(false));
+        });
+
+        c.buy_shares(&te.buyer, &10, &te.token_id);
+
+        // Guard should be cleared after successful buy
+        te.env.as_contract(&te.contract_id, || {
+            assert!(!te.env.storage().instance().get::<DataKey, bool>(&DataKey::ReentrancyGuard).unwrap_or(true));
+        });
+    }
+
+    #[test]
+    #[should_panic(expected = "Re-entrancy detected")]
+    fn test_reentrancy_blocked_on_panic_path() {
+        let te = setup();
+        let c = client(&te);
+        c.init(&te.admin, &te.token_id, &100, &1000);
+        mint(&te, &te.buyer, 100_000);
+        c.add_to_whitelist(&te.buyer);
+
+        // Set guard and unpause to trigger panic after guard is set
+        te.env.as_contract(&te.contract_id, || {
+            te.env.storage().instance().set(&DataKey::ReentrancyGuard, &true);
+            te.env.storage().instance().set(&DataKey::Paused, &true);
+        });
+
+        // Should panic with re-entrancy detected (guard check happens first)
+        c.buy_shares(&te.buyer, &10, &te.token_id);
+    }
+
+    #[test]
+    fn test_reentrancy_guard_default_false() {
+        let te = setup();
+        let c = client(&te);
+        c.init(&te.admin, &te.token_id, &100, &1000);
+
+        // Check that reentrancy guard is not set by default after init
+        te.env.as_contract(&te.contract_id, || {
+            assert!(!te.env.storage().instance().get::<DataKey, bool>(&DataKey::ReentrancyGuard).unwrap_or(false));
+        });
+    }
+
+    #[test]
+    #[should_panic(expected = "Re-entrancy detected")]
+    fn test_double_reentrancy_blocked() {
+        let te = setup();
+        let c = client(&te);
+        c.init(&te.admin, &te.token_id, &100, &1000);
+        mint(&te, &te.buyer, 100_000);
+        c.add_to_whitelist(&te.buyer);
+
+        // Manually lock the guard
+        te.env.as_contract(&te.contract_id, || {
+            te.env.storage().instance().set(&DataKey::ReentrancyGuard, &true);
+        });
+
+        // First call should fail
+        c.buy_shares(&te.buyer, &10, &te.token_id);
     }
 }
 // --- TIMELOCK MODULE ---
@@ -1888,7 +3107,7 @@ mod property_tests {
                         if paused || shares > available {
                             continue;
                         }
-                        client.buy_shares(&buyers[buyer_idx], &shares);
+                        client.buy_shares(&buyers[buyer_idx], &shares, &token_id);
                         balances[buyer_idx] += shares;
                         available -= shares;
                     }
@@ -1990,7 +3209,7 @@ mod property_tests {
                 if shares > available {
                     continue;
                 }
-                client.buy_shares(&buyer, &shares);
+                client.buy_shares(&buyer, &shares, &token_id);
                 total_bought += shares;
 
                 // available + total_bought == INIT_TOTAL
@@ -2020,6 +3239,19 @@ pub struct EventContractUpgraded {
 #[contractimpl]
 impl RwaMarketplace {
 
+    /// Return the admin address. Panics if the contract is not initialized.
+    pub fn get_admin(env: Env) -> Address {
+        env.storage()
+            .instance()
+            .get(&DataKey::Admin)
+            .expect("Contract not initialized: admin")
+    }
+
+    /// Return whether the contract has been initialized.
+    pub fn is_initialized(env: Env) -> bool {
+        env.storage().instance().has(&DataKey::Admin)
+    }
+
     /// Upgrade the smart contract to a new version.
     /// Only the admin can call this function.
     pub fn upgrade(env: Env, new_wasm_hash: BytesN<32>) {
@@ -2032,5 +3264,400 @@ impl RwaMarketplace {
         env.deployer().update_current_contract_wasm(new_wasm_hash.clone());
 
         EventContractUpgraded { new_wasm_hash }.publish(&env);
+    }
+}
+
+// ====================== ORACLE INTEGRATION (#169) =========================
+
+#[contractimpl]
+impl RwaMarketplace {
+    /// Set the oracle contract address for real-time pricing. Admin only.
+    ///
+    /// Once set, `buy_shares` will attempt to fetch the price from the oracle
+    /// and fall back to the admin-set price if the oracle call fails.
+    ///
+    /// Pass `None` equivalent (remove the key) via `clear_oracle` to disable.
+    pub fn set_oracle(env: Env, oracle: Address) {
+        let admin: Address = env.storage().instance().get(&DataKey::Admin)
+            .expect("Contract not initialized: admin");
+        admin.require_auth();
+
+        env.storage().instance().set(&DataKey::OracleAddress, &oracle);
+        EventSetOracle { oracle }.publish(&env);
+    }
+
+    /// Remove the oracle address, reverting to admin-set pricing. Admin only.
+    pub fn clear_oracle(env: Env) {
+        let admin: Address = env.storage().instance().get(&DataKey::Admin)
+            .expect("Contract not initialized: admin");
+        admin.require_auth();
+        env.storage().instance().remove(&DataKey::OracleAddress);
+    }
+
+    /// Return the configured oracle address, or None if not set.
+    pub fn get_oracle(env: Env) -> Option<Address> {
+        env.storage().instance().get(&DataKey::OracleAddress)
+    }
+}
+
+// ====================== CROSS-CHAIN BRIDGE (#170) =========================
+
+#[contractimpl]
+impl RwaMarketplace {
+    /// Lock `amount` shares for bridging to another chain.
+    ///
+    /// The caller's liquid balance is debited and the locked amount is
+    /// recorded in `BridgeLocked(caller)`. Emits `EventLockForBridge`.
+    ///
+    /// Panics if:
+    /// - `amount` is 0
+    /// - caller does not have enough liquid balance
+    pub fn lock_for_bridge(env: Env, user: Address, amount: u32) {
+        user.require_auth();
+
+        if amount == 0 {
+            panic!("Bridge lock amount must be greater than zero");
+        }
+
+        let balance: u32 = env
+            .storage()
+            .persistent()
+            .get(&DataKey::Balance(user.clone()))
+            .unwrap_or(0);
+
+        if amount > balance {
+            panic!("Insufficient liquid balance to lock for bridge");
+        }
+
+        // Debit liquid balance
+        let new_balance = checked_sub_u32(balance, amount);
+        env.storage()
+            .persistent()
+            .set(&DataKey::Balance(user.clone()), &new_balance);
+
+        // Increase locked amount
+        let prev_locked: u32 = env
+            .storage()
+            .persistent()
+            .get(&DataKey::BridgeLocked(user.clone()))
+            .unwrap_or(0);
+        let total_locked = checked_add_u32(prev_locked, amount);
+        env.storage()
+            .persistent()
+            .set(&DataKey::BridgeLocked(user.clone()), &total_locked);
+
+        EventLockForBridge { user, amount, total_locked }.publish(&env);
+    }
+
+    /// Unlock `amount` shares from a bridge operation using a 32-byte proof.
+    ///
+    /// The proof is a bytes32 value (e.g., a merkle proof hash or bridge tx ID)
+    /// supplied by the relayer. The locked amount is reduced and the caller's
+    /// liquid balance is credited. Emits `EventUnlockFromBridge`.
+    ///
+    /// Panics if:
+    /// - `amount` is 0
+    /// - the proof is all-zeros (invalid proof sentinel)
+    /// - caller does not have enough locked balance to unlock
+    pub fn unlock_from_bridge(env: Env, user: Address, amount: u32, proof: BytesN<32>) {
+        user.require_auth();
+
+        if amount == 0 {
+            panic!("Bridge unlock amount must be greater than zero");
+        }
+
+        // Reject zero proof (invalid sentinel)
+        let zero: BytesN<32> = BytesN::from_array(&env, &[0u8; 32]);
+        if proof == zero {
+            panic!("Invalid bridge proof: proof cannot be all-zeros");
+        }
+
+        let locked: u32 = env
+            .storage()
+            .persistent()
+            .get(&DataKey::BridgeLocked(user.clone()))
+            .unwrap_or(0);
+
+        if amount > locked {
+            panic!("Insufficient locked balance to unlock from bridge");
+        }
+
+        // Reduce locked amount
+        let new_locked = checked_sub_u32(locked, amount);
+        env.storage()
+            .persistent()
+            .set(&DataKey::BridgeLocked(user.clone()), &new_locked);
+
+        // Credit liquid balance
+        let balance: u32 = env
+            .storage()
+            .persistent()
+            .get(&DataKey::Balance(user.clone()))
+            .unwrap_or(0);
+        let new_balance = checked_add_u32(balance, amount);
+        env.storage()
+            .persistent()
+            .set(&DataKey::Balance(user.clone()), &new_balance);
+
+        EventUnlockFromBridge { user, amount, proof }.publish(&env);
+    }
+
+    /// Return the amount of shares currently locked for bridging by `user`.
+    pub fn get_bridge_locked(env: Env, user: Address) -> u32 {
+        env.storage()
+            .persistent()
+            .get(&DataKey::BridgeLocked(user))
+            .unwrap_or(0)
+    }
+}
+
+// ====================== ORACLE & BRIDGE UNIT TESTS ========================
+
+#[cfg(test)]
+mod oracle_bridge_tests {
+    use super::*;
+    use soroban_sdk::{
+        testutils::{Address as _, Ledger},
+        token, Env,
+    };
+
+    type Client<'a> = RwaMarketplaceClient<'a>;
+
+    const INIT_PRICE: i128 = 100;
+    const INIT_TOTAL: u32 = 1_000;
+
+    struct TestEnv {
+        env: Env,
+        contract_id: Address,
+        admin: Address,
+        token_id: Address,
+        buyer: Address,
+    }
+
+    fn setup() -> TestEnv {
+        let env = Env::default();
+        env.mock_all_auths();
+        let admin = Address::generate(&env);
+        let token_id = env.register_stellar_asset_contract_v2(admin.clone()).address();
+        let contract_id = env.register(RwaMarketplace, ());
+        let buyer = Address::generate(&env);
+        token::StellarAssetClient::new(&env, &token_id).mint(&buyer, &100_000_000);
+        TestEnv { env, contract_id, admin, token_id, buyer }
+    }
+
+    fn client(te: &TestEnv) -> Client {
+        RwaMarketplaceClient::new(&te.env, &te.contract_id)
+    }
+
+    fn init(te: &TestEnv) {
+        let c = client(te);
+        c.init(&te.admin, &te.token_id, &INIT_PRICE, &INIT_TOTAL);
+        c.add_to_whitelist(&te.buyer);
+    }
+
+    // ── Oracle tests (Issue #169) ─────────────────────────────────────────────
+
+    #[test]
+    fn test_set_and_get_oracle() {
+        let te = setup();
+        init(&te);
+        let c = client(&te);
+        let oracle_addr = Address::generate(&te.env);
+
+        assert!(c.get_oracle().is_none());
+        c.set_oracle(&oracle_addr);
+        assert_eq!(c.get_oracle(), Some(oracle_addr));
+    }
+
+    #[test]
+    fn test_clear_oracle() {
+        let te = setup();
+        init(&te);
+        let c = client(&te);
+        let oracle_addr = Address::generate(&te.env);
+
+        c.set_oracle(&oracle_addr);
+        assert!(c.get_oracle().is_some());
+        c.clear_oracle();
+        assert!(c.get_oracle().is_none());
+    }
+
+    #[test]
+    #[should_panic(expected = "Contract not initialized: admin")]
+    fn test_set_oracle_requires_init() {
+        let te = setup();
+        let c = client(&te);
+        let oracle_addr = Address::generate(&te.env);
+        // No init() called — must panic
+        c.set_oracle(&oracle_addr);
+    }
+
+    #[test]
+    fn test_buy_shares_without_oracle_uses_admin_price() {
+        let te = setup();
+        init(&te);
+        let c = client(&te);
+
+        let balance_before: i128 =
+            token::TokenClient::new(&te.env, &te.token_id).balance(&te.buyer);
+        c.buy_shares(&te.buyer, &10, &te.token_id);
+        let balance_after: i128 =
+            token::TokenClient::new(&te.env, &te.token_id).balance(&te.buyer);
+
+        // 10 shares * INIT_PRICE = 1000 tokens spent
+        assert_eq!(balance_before - balance_after, 10 * INIT_PRICE);
+        assert_eq!(c.get_shares(&te.buyer), 10);
+    }
+
+    // ── Bridge tests (Issue #170) ─────────────────────────────────────────────
+
+    #[test]
+    fn test_lock_for_bridge_reduces_liquid_balance() {
+        let te = setup();
+        init(&te);
+        let c = client(&te);
+
+        c.buy_shares(&te.buyer, &100, &te.token_id);
+        assert_eq!(c.get_shares(&te.buyer), 100);
+
+        c.lock_for_bridge(&te.buyer, &30);
+        // Liquid balance reduced
+        assert_eq!(c.get_shares(&te.buyer), 70);
+        // Locked balance set
+        assert_eq!(c.get_bridge_locked(&te.buyer), 30);
+    }
+
+    #[test]
+    fn test_multiple_lock_for_bridge_accumulates() {
+        let te = setup();
+        init(&te);
+        let c = client(&te);
+
+        c.buy_shares(&te.buyer, &100, &te.token_id);
+        c.lock_for_bridge(&te.buyer, &20);
+        c.lock_for_bridge(&te.buyer, &10);
+
+        assert_eq!(c.get_shares(&te.buyer), 70);
+        assert_eq!(c.get_bridge_locked(&te.buyer), 30);
+    }
+
+    #[test]
+    #[should_panic(expected = "Insufficient liquid balance to lock for bridge")]
+    fn test_lock_for_bridge_insufficient_balance() {
+        let te = setup();
+        init(&te);
+        let c = client(&te);
+
+        c.buy_shares(&te.buyer, &10, &te.token_id);
+        // Try to lock more than owned
+        c.lock_for_bridge(&te.buyer, &100);
+    }
+
+    #[test]
+    #[should_panic(expected = "Bridge lock amount must be greater than zero")]
+    fn test_lock_for_bridge_zero_amount() {
+        let te = setup();
+        init(&te);
+        let c = client(&te);
+        c.lock_for_bridge(&te.buyer, &0);
+    }
+
+    #[test]
+    fn test_unlock_from_bridge_restores_liquid_balance() {
+        let te = setup();
+        init(&te);
+        let c = client(&te);
+
+        c.buy_shares(&te.buyer, &100, &te.token_id);
+        c.lock_for_bridge(&te.buyer, &50);
+
+        let valid_proof: BytesN<32> = BytesN::from_array(&te.env, &[1u8; 32]);
+        c.unlock_from_bridge(&te.buyer, &50, &valid_proof);
+
+        // Liquid balance restored
+        assert_eq!(c.get_shares(&te.buyer), 100);
+        // Bridge locked cleared
+        assert_eq!(c.get_bridge_locked(&te.buyer), 0);
+    }
+
+    #[test]
+    fn test_partial_unlock_from_bridge() {
+        let te = setup();
+        init(&te);
+        let c = client(&te);
+
+        c.buy_shares(&te.buyer, &100, &te.token_id);
+        c.lock_for_bridge(&te.buyer, &60);
+
+        let proof: BytesN<32> = BytesN::from_array(&te.env, &[2u8; 32]);
+        c.unlock_from_bridge(&te.buyer, &25, &proof);
+
+        assert_eq!(c.get_shares(&te.buyer), 65);
+        assert_eq!(c.get_bridge_locked(&te.buyer), 35);
+    }
+
+    #[test]
+    #[should_panic(expected = "Insufficient locked balance to unlock from bridge")]
+    fn test_unlock_from_bridge_excess_amount() {
+        let te = setup();
+        init(&te);
+        let c = client(&te);
+
+        c.buy_shares(&te.buyer, &100, &te.token_id);
+        c.lock_for_bridge(&te.buyer, &10);
+
+        let proof: BytesN<32> = BytesN::from_array(&te.env, &[3u8; 32]);
+        c.unlock_from_bridge(&te.buyer, &100, &proof);
+    }
+
+    #[test]
+    #[should_panic(expected = "Invalid bridge proof: proof cannot be all-zeros")]
+    fn test_unlock_from_bridge_zero_proof_rejected() {
+        let te = setup();
+        init(&te);
+        let c = client(&te);
+
+        c.buy_shares(&te.buyer, &50, &te.token_id);
+        c.lock_for_bridge(&te.buyer, &10);
+
+        let zero_proof: BytesN<32> = BytesN::from_array(&te.env, &[0u8; 32]);
+        c.unlock_from_bridge(&te.buyer, &10, &zero_proof);
+    }
+
+    #[test]
+    #[should_panic(expected = "Bridge unlock amount must be greater than zero")]
+    fn test_unlock_from_bridge_zero_amount() {
+        let te = setup();
+        init(&te);
+        let c = client(&te);
+
+        c.buy_shares(&te.buyer, &50, &te.token_id);
+        c.lock_for_bridge(&te.buyer, &10);
+
+        let proof: BytesN<32> = BytesN::from_array(&te.env, &[4u8; 32]);
+        c.unlock_from_bridge(&te.buyer, &0, &proof);
+    }
+
+    #[test]
+    fn test_get_bridge_locked_default_zero() {
+        let te = setup();
+        init(&te);
+        let c = client(&te);
+        // No lock operations performed — should return 0
+        assert_eq!(c.get_bridge_locked(&te.buyer), 0);
+    }
+
+    #[test]
+    fn test_bridge_lock_does_not_affect_total_shares() {
+        let te = setup();
+        init(&te);
+        let c = client(&te);
+
+        let total_before = c.get_total_shares();
+        c.buy_shares(&te.buyer, &100, &te.token_id);
+        c.lock_for_bridge(&te.buyer, &50);
+
+        // Total shares never change from bridge operations
+        assert_eq!(c.get_total_shares(), total_before);
     }
 }

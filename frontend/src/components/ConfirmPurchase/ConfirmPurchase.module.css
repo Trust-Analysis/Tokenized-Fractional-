@@ -1,0 +1,35 @@
+.table {
+  width: 100%;
+  border-collapse: collapse;
+  font-size: var(--font-size-md);
+}
+
+.table th,
+.table td {
+  padding: var(--spacing-sm) 0;
+  text-align: left;
+}
+
+.table th {
+  color: var(--text-secondary);
+  font-weight: var(--font-weight-medium);
+  width: 55%;
+}
+
+.table td {
+  color: var(--text-primary);
+  font-weight: var(--font-weight-semibold);
+  text-align: right;
+}
+
+.table tr + tr th,
+.table tr + tr td {
+  border-top: 1px solid var(--border-color);
+}
+
+.total th,
+.total td {
+  color: var(--primary);
+  font-size: var(--font-size-lg);
+  padding-top: var(--spacing-md);
+}

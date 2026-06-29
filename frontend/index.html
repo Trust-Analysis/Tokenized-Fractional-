@@ -3,6 +3,35 @@
   <head>
     <meta charset="UTF-8" />
     <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <!--
+      Content-Security-Policy
+      - default-src 'self': block everything not explicitly allowed
+      - script-src 'self' 'wasm-unsafe-eval': allow local scripts + WebAssembly (Stellar SDK)
+      - style-src 'self' 'unsafe-inline' https://fonts.googleapis.com: inline styles (Vite HMR / CSS-in-JS) + Google Fonts
+      - font-src 'self' https://fonts.gstatic.com: Google Fonts files
+      - img-src 'self' data: https:: repo avatar + arbitrary asset images stored in backend (user-provided HTTPS URLs)
+      - connect-src 'self' Stellar RPC + backend API + Sentry ingest + Vite HMR WebSocket
+      - frame-ancestors 'none': prevent clickjacking (note: also set as HTTP header for full support)
+      - object-src 'none': block Flash / plugins
+    -->
+    <meta
+      http-equiv="Content-Security-Policy"
+      content="
+        default-src 'self';
+        script-src 'self' 'wasm-unsafe-eval';
+        style-src 'self' 'unsafe-inline' https://fonts.googleapis.com;
+        font-src 'self' https://fonts.gstatic.com;
+        img-src 'self' data: https:;
+        connect-src 'self'
+          https://soroban-testnet.stellar.org
+          https://soroban.stellar.org
+          http://localhost:3001
+          https://*.ingest.sentry.io
+          ws://localhost:5173;
+        object-src 'none';
+        frame-ancestors 'none';
+      "
+    />
     <title>RWA Marketplace</title>
     <link rel="preconnect" href="https://fonts.googleapis.com" />
     <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />

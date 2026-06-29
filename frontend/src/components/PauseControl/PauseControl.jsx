@@ -4,6 +4,13 @@ import Spinner from '../Spinner/Spinner';
 import styles from './PauseControl.module.css';
 import { useToastStore } from '../../store/useToastStore';
 import useTransactionStatus from '../../hooks/useTransactionStatus';
+import {
+  PAUSE_SUCCESS,
+  PAUSE_TOGGLE_FAILED,
+  WALLET_AND_CONTRACT_REQUIRED,
+  SIGNING_FAILED,
+  FAILED_TO_TOGGLE_PAUSE,
+} from '../../constants/errors';
 
 const CONTRACT_ID = import.meta.env.VITE_CONTRACT_ID || 'C...';
 const RPC_URL = import.meta.env.VITE_RPC_URL || 'https://soroban-testnet.stellar.org:443';
@@ -28,14 +35,14 @@ export default function PauseControl({ publicKey }) {
         removeToast(pendingToastRef.current);
         pendingToastRef.current = null;
       }
-      addToast({ message: `Marketplace ${isPaused ? 'unpaused' : 'paused'} successfully`, type: 'success', txHash: lastTxHash });
+      addToast({ message: PAUSE_SUCCESS(isPaused), type: 'success', txHash: lastTxHash });
     } else if (txStatus === 'failed') {
       notifiedRef.current[lastTxHash] = true;
       if (pendingToastRef.current) {
         removeToast(pendingToastRef.current);
         pendingToastRef.current = null;
       }
-      addToast({ message: 'Pause toggle transaction failed', type: 'error', txHash: lastTxHash });
+      addToast({ message: PAUSE_TOGGLE_FAILED, type: 'error', txHash: lastTxHash });
     }
   }, [lastTxHash, txStatus]);
 
@@ -72,7 +79,7 @@ export default function PauseControl({ publicKey }) {
 
   const handleToggle = async () => {
     if (!publicKey || CONTRACT_ID.length < 50) {
-      addToast({ message: 'Wallet must be connected and contract must be configured', type: 'error' });
+      addToast({ message: WALLET_AND_CONTRACT_REQUIRED, type: 'error' });
       return;
     }
 
@@ -102,7 +109,7 @@ export default function PauseControl({ publicKey }) {
       const { signedTxXdr, error: signError } = await signTransaction(tx.toXDR(), {
         networkPassphrase: NETWORK_PASSPHRASE,
       });
-      if (signError || !signedTxXdr) throw new Error(signError?.message || 'Signing failed');
+      if (signError || !signedTxXdr) throw new Error(signError?.message || SIGNING_FAILED);
 
       const submitRes = await server.sendTransaction(
         TransactionBuilder.fromXDR(signedTxXdr, NETWORK_PASSPHRASE)
@@ -117,7 +124,7 @@ export default function PauseControl({ publicKey }) {
         txHash: hash,
       });
     } catch (err) {
-      addToast({ message: err.message || 'Failed to toggle pause state', type: 'error' });
+      addToast({ message: err.message || FAILED_TO_TOGGLE_PAUSE, type: 'error' });
     } finally {
       setLoading(false);
     }

@@ -1,0 +1,184 @@
+.buyCard {
+  /* Card is used as wrapper, styles here are for inner layout */
+}
+
+.holdingsRow {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+}
+
+.holdingsLabel {
+  font-size: var(--font-size-md);
+  color: var(--text-secondary);
+  font-weight: var(--font-weight-medium);
+}
+
+.holdingsValue {
+  font-size: var(--font-size-xl);
+  font-weight: var(--font-weight-bold);
+}
+
+.holdingsValueLoading {
+  display: flex;
+  align-items: center;
+  gap: var(--spacing-sm);
+}
+
+.divider {
+  border: none;
+  border-top: 1px solid var(--border-color);
+  margin: var(--spacing-md) 0;
+}
+
+.purchaseHeader {
+  font-size: var(--font-size-md);
+  margin-bottom: var(--spacing-sm);
+  color: var(--text-primary);
+  font-weight: var(--font-weight-semibold);
+}
+
+.purchaseRow {
+  display: flex;
+  align-items: flex-end;
+  gap: var(--spacing-sm);
+  flex-wrap: wrap;
+}
+
+.buyInput {
+  width: 120px;
+}
+
+.buyLoadingHint {
+  display: flex;
+  align-items: center;
+  gap: var(--spacing-sm);
+  margin-top: var(--spacing-sm);
+  font-size: var(--font-size-sm);
+  color: var(--text-muted);
+  animation: fadeIn 0.2s ease;
+}
+
+@keyframes fadeIn {
+  from { opacity: 0; transform: translateY(-4px); }
+  to   { opacity: 1; transform: translateY(0); }
+}
+
+.tokenRow {
+  display: flex;
+  align-items: center;
+  gap: var(--spacing-sm);
+  margin-bottom: var(--spacing-sm);
+}
+
+.tokenLabel {
+  font-size: var(--font-size-sm);
+  color: var(--text-secondary);
+  white-space: nowrap;
+}
+
+.tokenSelect {
+  flex: 1;
+  max-width: 20rem;
+  background-color: var(--bg-input, var(--bg-surface));
+  border: 1px solid var(--border-color);
+  border-radius: var(--radius-sm);
+  color: var(--text-primary);
+  font-size: var(--font-size-sm);
+  padding: 0.3rem 0.5rem;
+  font-family: monospace;
+}
+
+.tokenSelect:disabled {
+  opacity: 0.6;
+  cursor: not-allowed;
+}
+
+/* ── Availability ──────────────────────────────────────────────────────────── */
+.availabilitySection {
+  margin-bottom: var(--spacing-md);
+}
+
+.availabilityHeader {
+  display: flex;
+  justify-content: space-between;
+  align-items: baseline;
+  margin-bottom: var(--spacing-xs);
+}
+
+.availabilityLabel {
+  font-size: var(--font-size-sm);
+  color: var(--text-secondary);
+  font-weight: var(--font-weight-medium);
+}
+
+.availabilityCount {
+  font-size: var(--font-size-sm);
+  color: var(--text-primary);
+}
+
+.availabilityTotal {
+  color: var(--text-secondary);
+}
+
+.progressTrack {
+  height: 8px;
+  background: var(--border-color);
+  border-radius: 99px;
+  overflow: hidden;
+}
+
+.progressFill {
+  height: 100%;
+  background: var(--color-primary, #4a9eff);
+  border-radius: 99px;
+  transition: width 0.4s ease;
+}
+
+.progressCaption {
+  font-size: var(--font-size-xs, 0.75rem);
+  color: var(--text-muted);
+  margin-top: var(--spacing-xs);
+  display: block;
+}
+
+/* ── Price ─────────────────────────────────────────────────────────────────── */
+.priceSection {
+  background: var(--bg-surface-alt, var(--bg-card));
+  border: 1px solid var(--border-color);
+  border-radius: var(--radius-sm);
+  padding: var(--spacing-sm) var(--spacing-md);
+  margin-bottom: var(--spacing-md);
+  display: flex;
+  flex-direction: column;
+  gap: var(--spacing-xs);
+}
+
+.priceRow {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+}
+
+.priceLabel {
+  font-size: var(--font-size-sm);
+  color: var(--text-secondary);
+}
+
+.priceLabelSub {
+  color: var(--text-muted);
+}
+
+.priceValue {
+  font-size: var(--font-size-sm);
+  font-weight: var(--font-weight-semibold);
+  color: var(--text-primary);
+  font-variant-numeric: tabular-nums;
+}
+
+.totalCostValue {
+  font-size: var(--font-size-md);
+  font-weight: var(--font-weight-bold);
+  color: var(--color-primary, #4a9eff);
+  font-variant-numeric: tabular-nums;
+}
