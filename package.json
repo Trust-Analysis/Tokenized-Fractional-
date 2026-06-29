@@ -1,0 +1,30 @@
+{
+  "name": "tokenized-fractional",
+  "version": "1.0.0",
+  "type": "module",
+  "description": "Tokenized Fractional Asset Platform \u2013 monorepo root",
+  "private": true,
+  "scripts": {
+    "prepare": "husky",
+    "lint:backend": "cd backend && npm run lint --if-present",
+    "test:backend": "cd backend && npm test",
+    "test:frontend": "cd frontend && npm run test:e2e --if-present"
+  },
+  "devDependencies": {
+    "@commitlint/cli": "^19.6.0",
+    "@commitlint/config-conventional": "^19.6.0",
+    "husky": "^9.1.7",
+    "lint-staged": "^15.2.10"
+  },
+  "lint-staged": {
+    "backend/**/*.js": [
+      "node --check"
+    ],
+    "frontend/src/**/*.{js,jsx,ts,tsx}": [
+      "node --check || true"
+    ],
+    "**/*.json": [
+      "node -e \"JSON.parse(require('fs').readFileSync(process.argv[1]))\" --"
+    ]
+  }
+}
