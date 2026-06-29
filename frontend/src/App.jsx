@@ -20,6 +20,8 @@ import ShortcutHelpModal from './components/ShortcutHelp/ShortcutHelp';
 import VirtualTour from './components/VirtualTour/VirtualTour';
 import NewsSection from './components/NewsSection/NewsSection';
 import PriceAlert from './components/PriceAlert/PriceAlert';
+import AssetComparison from './components/AssetComparison/AssetComparison';
+import FavoritesPage from './components/FavoritesPage/FavoritesPage';
 import styles from './App.module.css';
 
 import { useWalletStore } from './store/useWalletStore';
@@ -358,6 +360,18 @@ function App() {
         >
           History
         </button>
+        <button
+          className={`${styles.tab} ${view === 'compare' ? styles.tabActive : ''}`}
+          onClick={() => setView('compare')}
+        >
+          Compare
+        </button>
+        <button
+          className={`${styles.tab} ${view === 'favorites' ? styles.tabActive : ''}`}
+          onClick={() => setView('favorites')}
+        >
+          ★ Favorites
+        </button>
       </nav>
 
       <ToastContainer />
@@ -371,6 +385,10 @@ function App() {
         />
       ) : view === 'history' ? (
         <TransactionHistory />
+      ) : view === 'compare' ? (
+        <AssetComparison />
+      ) : view === 'favorites' ? (
+        <FavoritesPage />
       ) : (
         <>
       {/* Wallet errors (connection issues) */}
