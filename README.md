@@ -97,6 +97,7 @@ graph TB
 - [Architecture Overview & Diagrams](docs/architecture.md)
 - [Architecture Decision Records (ADRs)](docs/adr/README.md) — Technical decisions and rationale
 - [Performance Benchmarks](docs/performance.md) — Gas costs, API latency, frontend metrics
+- [CDN Configuration](docs/cdn.md) — Serve frontend assets and uploaded media through Cloudflare
 - [Troubleshooting Guide](docs/troubleshooting.md) — Common issues and solutions
 - [Multi-Region Deployment](docs/multi-region-deployment.md) — Deployment strategy and failover
 - [NFT Certificates](docs/NFT_CERTIFICATES.md)
@@ -182,6 +183,8 @@ VITE_CONTRACT_ID=<YOUR_CONTRACT_ID>
 VITE_RPC_URL=https://soroban-testnet.stellar.org:443
 VITE_NETWORK_PASSPHRASE="Test SDF Network ; September 2015"
 VITE_API_URL=http://localhost:3001
+# Optional production CDN for built frontend assets
+# VITE_CDN_URL=https://cdn.example.com
 ```
 
 **Backend** — copy and fill in `backend/.env.example` as `backend/.env`:
@@ -191,6 +194,9 @@ PORT=3001
 CORS_ORIGINS=http://localhost:5173
 ADMIN_API_KEY=<generate-a-strong-random-key>
 DATA_FILE=data.json
+# Optional CDN for relative image/document metadata URLs
+# CDN_URL=https://cdn.example.com
+# ASSET_CDN_URL=https://assets-cdn.example.com
 ```
 
 ### 6. Run the Application

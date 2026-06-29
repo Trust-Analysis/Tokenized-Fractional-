@@ -33,7 +33,30 @@ const RULES = [
     description: 'Redis cache TTL in seconds',
     invalid: 'must be a positive integer',
   },
+  {
+    key: 'CDN_URL',
+    required: false,
+    validate: (v) => isValidHttpUrl(v),
+    description: 'Default CDN base URL for generated asset URLs',
+    invalid: 'must be a valid http(s) URL',
+  },
+  {
+    key: 'ASSET_CDN_URL',
+    required: false,
+    validate: (v) => isValidHttpUrl(v),
+    description: 'CDN base URL for uploaded images and documents',
+    invalid: 'must be a valid http(s) URL',
+  },
 ];
+
+function isValidHttpUrl(value) {
+  try {
+    const url = new URL(value);
+    return url.protocol === 'http:' || url.protocol === 'https:';
+  } catch {
+    return false;
+  }
+}
 
 export function validateEnv() {
   // Skip strict validation in test environment

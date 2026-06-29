@@ -39,6 +39,7 @@ services:
       VITE_RPC_URL: ${VITE_RPC_URL:-https://soroban-testnet.stellar.org:443}
       VITE_NETWORK_PASSPHRASE: ${VITE_NETWORK_PASSPHRASE:-Test SDF Network ; September 2015}
       VITE_API_URL: ${VITE_API_URL:-http://localhost:3001}
+      VITE_CDN_URL: ${VITE_CDN_URL:-}
     ports:
       - "5173:5173"
     volumes:
@@ -60,6 +61,7 @@ services:
         VITE_RPC_URL: ${VITE_RPC_URL:-https://soroban-testnet.stellar.org:443}
         VITE_NETWORK_PASSPHRASE: ${VITE_NETWORK_PASSPHRASE:-Test SDF Network ; September 2015}
         VITE_API_URL: ${VITE_API_URL:-http://backend:3001}
+        VITE_CDN_URL: ${VITE_CDN_URL:-}
     restart: unless-stopped
     ports:
       - "80:80"

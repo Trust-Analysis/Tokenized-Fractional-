@@ -18,6 +18,10 @@ services:
         generateValue: true
       - key: DATA_FILE
         value: data.json
+      - key: CDN_URL
+        sync: false   # set to your CDN base URL, e.g. https://cdn.example.com
+      - key: ASSET_CDN_URL
+        sync: false   # optional override for uploaded image/document URLs
       # Optional — set in dashboard if using Redis
       # - key: REDIS_URL
       #   fromService:
@@ -52,3 +56,5 @@ services:
         value: "Test SDF Network ; September 2015"
       - key: VITE_API_URL
         sync: false   # set to your backend Render URL, e.g. https://rwa-marketplace-backend.onrender.com
+      - key: VITE_CDN_URL
+        sync: false   # set to the CDN origin for static frontend assets
