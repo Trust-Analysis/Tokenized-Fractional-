@@ -96,12 +96,14 @@ graph TB
 
 - [Architecture Overview & Diagrams](docs/architecture.md)
 - [Architecture Decision Records (ADRs)](docs/adr/README.md) — Technical decisions and rationale
+- [Security Best Practices Guide](docs/security.md) — Security guidelines, audit checklist, and incident response
 - [Performance Benchmarks](docs/performance.md) — Gas costs, API latency, frontend metrics
 - [Troubleshooting Guide](docs/troubleshooting.md) — Common issues and solutions
 - [Multi-Region Deployment](docs/multi-region-deployment.md) — Deployment strategy and failover
 - [NFT Certificates](docs/NFT_CERTIFICATES.md)
 - [NFT Quickstart](docs/NFT_QUICKSTART.md)
 - [FAQ](docs/FAQ.md)
+- [Contributors Spotlight](CONTRIBUTORS.md) — Recognize the people who make this project possible
 
 ## Prerequisites
 
@@ -302,3 +304,7 @@ cd frontend && npm run deploy
 ```
 
 > **Note:** Free-tier Render services spin down after inactivity. Upgrade to a paid plan for always-on availability.
+
+## Contributors
+
+We appreciate all contributions! See [CONTRIBUTORS.md](CONTRIBUTORS.md) for the full contributor spotlight. To contribute, please review [CONTRIBUTING.md](CONTRIBUTING.md).
