@@ -380,6 +380,27 @@ const writeLimiter = rateLimit({
   message: { error: 'Too many write requests, please try again later' },
 });
 
+// ── Prometheus Metrics ─────────────────────────────────────────────────────────
+import prometheus from 'express-prom-bundle';
+
+const metricsMiddleware = prometheus({
+  includeMethod: true,
+  includePath: true,
+  includeStatusCode: true,
+  includeUp: true,
+  customLabels: { app: 'rwa-backend' },
+  promClient: {
+    collectDefaultMetrics: { timeout: 5000 },
+  },
+});
+
+app.use(metricsMiddleware);
+
+app.get('/metrics', async (_req, res) => {
+  res.setHeader('Content-Type', metricsMiddleware.promClient.register.contentType);
+  res.send(await metricsMiddleware.promClient.register.metrics());
+});
+
 // ── API Documentation ──────────────────────────────────────────────────────────
 app.use('/api-docs', swaggerUi.serve, swaggerUi.setup(swaggerSpec, {
   customSiteTitle: 'RWA Marketplace API Docs',
