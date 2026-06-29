@@ -33,6 +33,23 @@ const RULES = [
     description: 'Redis cache TTL in seconds',
     invalid: 'must be a positive integer',
   },
+
+  {
+    key: 'PINATA_JWT',
+    required: false,
+    validate: (v) => v.trim().length > 0,
+    description: 'Pinata JWT for IPFS document uploads',
+    invalid: 'must not be empty if set',
+  },
+  {
+    key: 'PINATA_GATEWAY',
+    required: false,
+    validate: (v) => {
+      try { new URL(v); return true; } catch { return false; }
+    },
+    description: 'IPFS gateway base URL (default: https://gateway.pinata.cloud)',
+    invalid: 'must be a valid URL',
+  },
 ];
 
 export function validateEnv() {

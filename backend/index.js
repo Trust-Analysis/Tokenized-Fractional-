@@ -20,8 +20,26 @@ import { setTimeout } from 'timers/promises';
 import swaggerUi from 'swagger-ui-express';
 import { swaggerSpec } from './docs.js';
 import { cacheGet, cacheSet, cacheDel } from './cache.js';
+import multer from 'multer';
+import { uploadToIPFS, getIPFSFileUrl, unpinFromIPFS } from './ipfs.js';
 
 const __dirname = dirname(fileURLToPath(import.meta.url));
+// multer memoryStorage keeps the file in memory as a Buffer (req.file.buffer).
+// We never write documents to disk — they go straight from memory to Pinata.
+// 10MB limit is generous for PDFs and title deeds.
+const upload = multer({
+  storage: multer.memoryStorage(),
+  limits: { fileSize: 10 * 1024 * 1024 }, // 10MB
+  fileFilter: (_req, file, cb) => {
+    // Only accept PDFs and common image formats for now
+    const allowed = ['application/pdf', 'image/jpeg', 'image/png', 'image/webp'];
+    if (allowed.includes(file.mimetype)) {
+      cb(null, true);
+    } else {
+      cb(new Error(`Unsupported file type: ${file.mimetype}. Allowed: PDF, JPEG, PNG, WEBP`));
+    }
+  },
+});
 const PORT = process.env.PORT || 3001;
 const CORS_ORIGINS = process.env.CORS_ORIGINS
   ? process.env.CORS_ORIGINS.split(',').map(s => s.trim())
@@ -895,6 +913,23 @@ v1.delete('/rwa/:contractId', adminAuth, writeLimiter, async (req, res) => {
   if (!data[contractId]) return res.status(404).json({ error: 'Asset metadata not found' });
 
   const deleted = { contractId, ...data[contractId] };
+
+  // Unpin all IPFS documents before deleting the asset record.
+  // Fire-and-forget — we don't block the response on Pinata's API.
+  if (Array.isArray(deleted.documents) && deleted.documents.length > 0) {
+    Promise.allSettled(
+      deleted.documents
+        .filter(d => d.cid)
+        .map(d => unpinFromIPFS(d.cid))
+    ).then(results => {
+      results.forEach((r, i) => {
+        if (r.status === 'rejected') {
+          logger.warn({ cid: deleted.documents[i].cid, err: r.reason }, 'Failed to unpin document');
+        }
+      });
+    });
+  }
+
   delete data[contractId];
   saveData(data);
 
@@ -1002,6 +1037,136 @@ v1.patch('/rwa/:contractId', adminAuth, writeLimiter, async (req, res) => {
 
   req.log?.info({ contractId, fields: Object.keys(patch) }, 'Asset partially updated');
   res.json({ contractId, ...data[contractId] });
+});
+
+/**
+ * @openapi
+ * /api/v1/rwa/{contractId}/documents:
+ *   post:
+ *     tags: [Assets]
+ *     summary: Upload a document to IPFS for an asset
+ *     description: Uploads a file to IPFS via Pinata and stores the CID in asset metadata. Requires admin API key.
+ *     security:
+ *       - ApiKeyAuth: []
+ *     parameters:
+ *       - in: path
+ *         name: contractId
+ *         required: true
+ *         schema:
+ *           type: string
+ *     requestBody:
+ *       required: true
+ *       content:
+ *         multipart/form-data:
+ *           schema:
+ *             type: object
+ *             properties:
+ *               document:
+ *                 type: string
+ *                 format: binary
+ *     responses:
+ *       200:
+ *         description: Document uploaded and CID stored in asset metadata
+ *       400:
+ *         description: No file uploaded or unsupported file type
+ *       404:
+ *         description: Asset not found
+ *       502:
+ *         description: IPFS upload failed
+ */
+v1.post('/rwa/:contractId/documents', adminAuth, writeLimiter, upload.single('document'), async (req, res) => {
+  const { contractId } = req.params;
+
+  // multer puts the uploaded file on req.file
+  if (!req.file) {
+    return res.status(400).json({ error: 'No file uploaded. Send a multipart/form-data request with field name "document".' });
+  }
+
+  const data = loadData();
+  if (!data[contractId]) {
+    return res.status(404).json({ error: 'Asset metadata not found' });
+  }
+
+  try {
+    // Upload the buffer directly to Pinata — no disk writes
+    const { cid, url, name } = await uploadToIPFS(
+      req.file.buffer,
+      req.file.originalname,
+      data[contractId].title || contractId
+    );
+
+    // Store the document entry in the asset's documents array
+    const docEntry = {
+      cid,
+      url,
+      name,
+      mimeType: req.file.mimetype,
+      size: req.file.size,
+      uploadedAt: new Date().toISOString(),
+    };
+
+    if (!Array.isArray(data[contractId].documents)) {
+      data[contractId].documents = [];
+    }
+    data[contractId].documents.push(docEntry);
+    data[contractId].updatedAt = new Date().toISOString();
+    saveData(data);
+
+    // Bust the cache so the updated asset is returned immediately
+    cacheDel('rwa:all', cacheKey(contractId)).catch(() => {});
+
+    req.log?.info({ contractId, cid }, 'Document uploaded to IPFS');
+    res.json({ contractId, document: docEntry, documents: data[contractId].documents });
+
+  } catch (err) {
+    req.log?.error({ err, contractId }, 'IPFS upload failed');
+    res.status(502).json({ error: `IPFS upload failed: ${err.message}` });
+  }
+});
+
+/**
+ * @openapi
+ * /api/v1/rwa/{contractId}/documents/{cid}:
+ *   get:
+ *     tags: [Assets]
+ *     summary: Retrieve a document from IPFS by CID
+ *     description: Redirects to the IPFS gateway URL for the given CID.
+ *     parameters:
+ *       - in: path
+ *         name: contractId
+ *         required: true
+ *         schema:
+ *           type: string
+ *       - in: path
+ *         name: cid
+ *         required: true
+ *         schema:
+ *           type: string
+ *     responses:
+ *       302:
+ *         description: Redirect to IPFS gateway URL
+ *       404:
+ *         description: Asset or document not found
+ */
+v1.get('/rwa/:contractId/documents/:cid', async (req, res) => {
+  const { contractId, cid } = req.params;
+
+  const data = loadData();
+  const asset = data[contractId];
+  if (!asset) {
+    return res.status(404).json({ error: 'Asset metadata not found' });
+  }
+
+  // Verify this CID actually belongs to this asset before redirecting
+  const doc = asset.documents?.find(d => d.cid === cid);
+  if (!doc) {
+    return res.status(404).json({ error: 'Document not found on this asset' });
+  }
+
+  // Redirect to the IPFS gateway — the file is served from IPFS, not our server
+  const url = getIPFSFileUrl(cid);
+  req.log?.info({ contractId, cid, url }, 'Redirecting to IPFS document');
+  res.redirect(302, url);
 });
 
 /**
