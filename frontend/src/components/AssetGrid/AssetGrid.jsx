@@ -1,6 +1,6 @@
 import React from 'react';
 import AssetCard from '../AssetCard/AssetCard';
-import Skeleton from '../Skeleton/Skeleton';
+import AssetCardSkeleton from '../Skeleton/AssetCardSkeleton';
 import Card from '../Card/Card';
 import { FAILED_TO_LOAD_ASSETS } from '../../constants/errors';
 import styles from './AssetGrid.module.css';
@@ -19,17 +19,7 @@ export default function AssetGrid({ assets = [], loading = false, error = null, 
     return (
       <div className={styles.grid}>
         {Array.from({ length: 6 }).map((_, i) => (
-          <Card key={i}>
-            <div className={styles.skeletonImage}>
-              <Skeleton variant="rect" height="100%" style={{ borderRadius: 'var(--radius-sm)' }} />
-            </div>
-            <div className={styles.skeletonBody}>
-              <Skeleton variant="text" height="0.75rem" width="30%" style={{ marginBottom: 'var(--spacing-xs)' }} />
-              <Skeleton variant="text" height="1.1em" width="75%" style={{ marginBottom: 'var(--spacing-xs)' }} />
-              <Skeleton variant="text" height="0.9em" width="50%" style={{ marginBottom: 'var(--spacing-sm)' }} />
-              <Skeleton variant="text" height="0.9em" width="40%" />
-            </div>
-          </Card>
+          <AssetCardSkeleton key={i} />
         ))}
       </div>
     );

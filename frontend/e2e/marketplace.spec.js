@@ -43,7 +43,7 @@ test.describe('RWA Marketplace — critical user flows', () => {
   test('displays the marketplace heading and asset grid on load', async ({ page }) => {
     await page.goto('/');
 
-    await expect(page.getByRole('heading', { name: 'RWA Marketplace' })).toBeVisible();
+    await expect(page.getByRole('heading', { name: 'RWA Marketplace', exact: true })).toBeVisible();
     await expect(page.getByRole('heading', { name: /available assets/i })).toBeVisible();
 
     // Asset card from the mocked API should appear
