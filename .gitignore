@@ -9,6 +9,7 @@ target/
 data.json
 webhooks.json
 test-data.json
+.blue-green-state.json
 
 # Playwright
 test-results/

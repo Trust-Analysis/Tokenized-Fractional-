@@ -400,6 +400,9 @@ app.get('/api/admin/verify', adminAuth, (_req, res) => {
 const v1 = Router();
 
 app.get('/health', async (_req, res) => {
+  const deploymentColor = process.env.DEPLOYMENT_COLOR || 'local';
+  const serviceName = process.env.SERVICE_NAME || 'backend';
+  const buildId = process.env.BUILD_ID || process.env.GITHUB_SHA || 'local';
   const deps = {
     storage: { status: 'ok' },
     redis: { status: 'not_configured' },
@@ -424,7 +427,16 @@ app.get('/health', async (_req, res) => {
     }
   }
 
-  res.json({ status: 'ok', timestamp: new Date().toISOString(), dependencies: deps });
+  res.json({
+    status: 'ok',
+    timestamp: new Date().toISOString(),
+    service: {
+      name: serviceName,
+      deploymentColor,
+      buildId,
+    },
+    dependencies: deps,
+  });
 });
 
 /**

@@ -261,6 +261,8 @@ Interactive API documentation is available at [`/api-docs`](http://localhost:300
 
 This project includes a [`render.yaml`](./render.yaml) Blueprint for one-click deployment to [Render](https://render.com).
 
+For zero-downtime releases, the repository now includes a blue-green deployment workflow described in [docs/blue-green-deployment.md](docs/blue-green-deployment.md). It uses paired blue and green services, health checks before traffic switches, and rollback support.
+
 ### Services deployed
 
 | Service | Type | Description |
