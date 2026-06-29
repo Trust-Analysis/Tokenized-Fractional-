@@ -20,6 +20,7 @@ import ShortcutHelpModal from './components/ShortcutHelp/ShortcutHelp';
 import VirtualTour from './components/VirtualTour/VirtualTour';
 import NewsSection from './components/NewsSection/NewsSection';
 import PriceAlert from './components/PriceAlert/PriceAlert';
+import InvestmentCalculator from './components/InvestmentCalculator/InvestmentCalculator';
 import styles from './App.module.css';
 
 import { useWalletStore } from './store/useWalletStore';
@@ -463,6 +464,14 @@ function App() {
           currentPrice={pricePerShare}
         />
       )}
+
+      {/* ── Investment Calculator (Issue #189) ───────────────────────────── */}
+      <InvestmentCalculator
+        pricePerShare={pricePerShare}
+        assetTitle={assetMeta?.title || 'Asset'}
+        totalShares={totalShares}
+        availableShares={availableShares}
+      />
         </>
       )}
 
