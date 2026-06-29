@@ -17,6 +17,9 @@ import ConfirmPurchase from './components/ConfirmPurchase/ConfirmPurchase';
 import LanguageSwitcher from './components/LanguageSwitcher/LanguageSwitcher';
 import TransactionHistory from './components/TransactionHistory/TransactionHistory';
 import ShortcutHelpModal from './components/ShortcutHelp/ShortcutHelp';
+import VirtualTour from './components/VirtualTour/VirtualTour';
+import NewsSection from './components/NewsSection/NewsSection';
+import PriceAlert from './components/PriceAlert/PriceAlert';
 import styles from './App.module.css';
 
 import { useWalletStore } from './store/useWalletStore';
@@ -402,6 +405,9 @@ function App() {
               <img src={assetMeta.imageUrl} alt={assetMeta.title} className={styles.assetImage} />
             </div>
           )}
+          {assetMeta.assetType === 'real_estate' && assetMeta.imageUrl && (
+            <VirtualTour imageUrl={assetMeta.imageUrl} title={assetMeta.title} />
+          )}
           <h2 className={styles.assetTitle}>{assetMeta.title}</h2>
           <p className={styles.assetLocation}>
             <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" className={styles.svgIcon}><path d="M21 10c0 7-9 13-9 13s-9-6-9-13a9 9 0 0 1 18 0z"></path><circle cx="12" cy="10" r="3"></circle></svg>
@@ -428,6 +434,9 @@ function App() {
         />
       </section>
 
+      {/* ── News & Updates Section (Issue #191) ─────────────────────────── */}
+      <NewsSection />
+
       {/* ── Holdings + Buy Card ─────────────────────────────────────────── */}
       {publicKey && (
         <BuyShares
@@ -443,6 +452,15 @@ function App() {
           pricePerShare={pricePerShare}
           buyAmount={buyAmount}
           onBuyAmountChange={setBuyAmount}
+        />
+      )}
+
+      {/* ── Price Alerts (Issue #188) ─────────────────────────────────────── */}
+      {CONTRACT_ID.length >= 50 && pricePerShare != null && (
+        <PriceAlert
+          contractId={CONTRACT_ID}
+          assetTitle={assetMeta?.title || 'Asset'}
+          currentPrice={pricePerShare}
         />
       )}
         </>
