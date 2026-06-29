@@ -13,6 +13,16 @@ pub trait NftContractInterface {
     fn mint_certificate(env: Env, to: Address) -> u32;
 }
 
+/// Issue #169 – Minimal oracle interface.
+/// The oracle contract must expose a `get_price() -> i128` function
+/// that returns the current asset price per share in the payment token's
+/// smallest unit. This is intentionally minimal to support any Stellar-based
+/// oracle that follows this convention.
+#[contractclient(name = "OracleContractClient")]
+pub trait OracleContractInterface {
+    fn get_price(env: Env) -> i128;
+}
+
 #[contract]
 pub struct RwaMarketplace;
 
@@ -45,6 +55,10 @@ pub enum DataKey {
     NftContract,
     /// Reentrancy guard flag for defense-in-depth protection
     ReentrancyGuard,
+    /// Issue #169: Price oracle contract address (optional)
+    OracleAddress,
+    /// Issue #170: Locked-for-bridge amount per user
+    BridgeLocked(Address),
 }
 
 #[contracttype]
@@ -208,6 +222,40 @@ pub struct EventApproval {
     amount: u32,
 }
 
+// ── Issue #169: Oracle events ────────────────────────────────────────────────
+
+#[contractevent(data_format = "vec")]
+pub struct EventSetOracle {
+    oracle: Address,
+}
+
+#[contractevent(data_format = "vec")]
+pub struct EventOraclePriceFetched {
+    oracle: Address,
+    price: i128,
+}
+
+#[contractevent(data_format = "vec")]
+pub struct EventOraclePriceFallback {
+    admin_price: i128,
+}
+
+// ── Issue #170: Bridge events ────────────────────────────────────────────────
+
+#[contractevent(data_format = "vec")]
+pub struct EventLockForBridge {
+    user: Address,
+    amount: u32,
+    total_locked: u32,
+}
+
+#[contractevent(data_format = "vec")]
+pub struct EventUnlockFromBridge {
+    user: Address,
+    amount: u32,
+    proof: BytesN<32>,
+}
+
 // ── OVERFLOW-SAFE MATH HELPERS ──────────────────────────────────────
 /// Safely add two i128 values, panicking on overflow
 fn checked_add_i128(a: i128, b: i128) -> i128 {
@@ -354,8 +402,32 @@ impl RwaMarketplace {
 
         Self::require_accepted_token(&env, &payment_token);
 
-        let price: i128 = env.storage().instance().get(&DataKey::PricePerShare)
+        // Issue #169: Fetch price from oracle if configured; fallback to admin price on error.
+        let admin_price: i128 = env.storage().instance().get(&DataKey::PricePerShare)
             .expect("Contract not initialized: price");
+
+        let price: i128 = if let Some(oracle_addr) = env
+            .storage()
+            .instance()
+            .get::<DataKey, Address>(&DataKey::OracleAddress)
+        {
+            // Attempt to call oracle.get_price(); on any failure fall back to admin_price.
+            let oracle_client = OracleContractClient::new(&env, &oracle_addr);
+            let oracle_result = oracle_client.try_get_price();
+            match oracle_result {
+                Ok(Ok(p)) if p > 0 => {
+                    EventOraclePriceFetched { oracle: oracle_addr, price: p }.publish(&env);
+                    p
+                }
+                _ => {
+                    EventOraclePriceFallback { admin_price }.publish(&env);
+                    admin_price
+                }
+            }
+        } else {
+            admin_price
+        };
+
         let total_cost = checked_mul_i128(price, shares as i128);
 
         let admin: Address = env.storage().instance().get(&DataKey::Admin)
@@ -3192,5 +3264,400 @@ impl RwaMarketplace {
         env.deployer().update_current_contract_wasm(new_wasm_hash.clone());
 
         EventContractUpgraded { new_wasm_hash }.publish(&env);
+    }
+}
+
+// ====================== ORACLE INTEGRATION (#169) =========================
+
+#[contractimpl]
+impl RwaMarketplace {
+    /// Set the oracle contract address for real-time pricing. Admin only.
+    ///
+    /// Once set, `buy_shares` will attempt to fetch the price from the oracle
+    /// and fall back to the admin-set price if the oracle call fails.
+    ///
+    /// Pass `None` equivalent (remove the key) via `clear_oracle` to disable.
+    pub fn set_oracle(env: Env, oracle: Address) {
+        let admin: Address = env.storage().instance().get(&DataKey::Admin)
+            .expect("Contract not initialized: admin");
+        admin.require_auth();
+
+        env.storage().instance().set(&DataKey::OracleAddress, &oracle);
+        EventSetOracle { oracle }.publish(&env);
+    }
+
+    /// Remove the oracle address, reverting to admin-set pricing. Admin only.
+    pub fn clear_oracle(env: Env) {
+        let admin: Address = env.storage().instance().get(&DataKey::Admin)
+            .expect("Contract not initialized: admin");
+        admin.require_auth();
+        env.storage().instance().remove(&DataKey::OracleAddress);
+    }
+
+    /// Return the configured oracle address, or None if not set.
+    pub fn get_oracle(env: Env) -> Option<Address> {
+        env.storage().instance().get(&DataKey::OracleAddress)
+    }
+}
+
+// ====================== CROSS-CHAIN BRIDGE (#170) =========================
+
+#[contractimpl]
+impl RwaMarketplace {
+    /// Lock `amount` shares for bridging to another chain.
+    ///
+    /// The caller's liquid balance is debited and the locked amount is
+    /// recorded in `BridgeLocked(caller)`. Emits `EventLockForBridge`.
+    ///
+    /// Panics if:
+    /// - `amount` is 0
+    /// - caller does not have enough liquid balance
+    pub fn lock_for_bridge(env: Env, user: Address, amount: u32) {
+        user.require_auth();
+
+        if amount == 0 {
+            panic!("Bridge lock amount must be greater than zero");
+        }
+
+        let balance: u32 = env
+            .storage()
+            .persistent()
+            .get(&DataKey::Balance(user.clone()))
+            .unwrap_or(0);
+
+        if amount > balance {
+            panic!("Insufficient liquid balance to lock for bridge");
+        }
+
+        // Debit liquid balance
+        let new_balance = checked_sub_u32(balance, amount);
+        env.storage()
+            .persistent()
+            .set(&DataKey::Balance(user.clone()), &new_balance);
+
+        // Increase locked amount
+        let prev_locked: u32 = env
+            .storage()
+            .persistent()
+            .get(&DataKey::BridgeLocked(user.clone()))
+            .unwrap_or(0);
+        let total_locked = checked_add_u32(prev_locked, amount);
+        env.storage()
+            .persistent()
+            .set(&DataKey::BridgeLocked(user.clone()), &total_locked);
+
+        EventLockForBridge { user, amount, total_locked }.publish(&env);
+    }
+
+    /// Unlock `amount` shares from a bridge operation using a 32-byte proof.
+    ///
+    /// The proof is a bytes32 value (e.g., a merkle proof hash or bridge tx ID)
+    /// supplied by the relayer. The locked amount is reduced and the caller's
+    /// liquid balance is credited. Emits `EventUnlockFromBridge`.
+    ///
+    /// Panics if:
+    /// - `amount` is 0
+    /// - the proof is all-zeros (invalid proof sentinel)
+    /// - caller does not have enough locked balance to unlock
+    pub fn unlock_from_bridge(env: Env, user: Address, amount: u32, proof: BytesN<32>) {
+        user.require_auth();
+
+        if amount == 0 {
+            panic!("Bridge unlock amount must be greater than zero");
+        }
+
+        // Reject zero proof (invalid sentinel)
+        let zero: BytesN<32> = BytesN::from_array(&env, &[0u8; 32]);
+        if proof == zero {
+            panic!("Invalid bridge proof: proof cannot be all-zeros");
+        }
+
+        let locked: u32 = env
+            .storage()
+            .persistent()
+            .get(&DataKey::BridgeLocked(user.clone()))
+            .unwrap_or(0);
+
+        if amount > locked {
+            panic!("Insufficient locked balance to unlock from bridge");
+        }
+
+        // Reduce locked amount
+        let new_locked = checked_sub_u32(locked, amount);
+        env.storage()
+            .persistent()
+            .set(&DataKey::BridgeLocked(user.clone()), &new_locked);
+
+        // Credit liquid balance
+        let balance: u32 = env
+            .storage()
+            .persistent()
+            .get(&DataKey::Balance(user.clone()))
+            .unwrap_or(0);
+        let new_balance = checked_add_u32(balance, amount);
+        env.storage()
+            .persistent()
+            .set(&DataKey::Balance(user.clone()), &new_balance);
+
+        EventUnlockFromBridge { user, amount, proof }.publish(&env);
+    }
+
+    /// Return the amount of shares currently locked for bridging by `user`.
+    pub fn get_bridge_locked(env: Env, user: Address) -> u32 {
+        env.storage()
+            .persistent()
+            .get(&DataKey::BridgeLocked(user))
+            .unwrap_or(0)
+    }
+}
+
+// ====================== ORACLE & BRIDGE UNIT TESTS ========================
+
+#[cfg(test)]
+mod oracle_bridge_tests {
+    use super::*;
+    use soroban_sdk::{
+        testutils::{Address as _, Ledger},
+        token, Env,
+    };
+
+    type Client<'a> = RwaMarketplaceClient<'a>;
+
+    const INIT_PRICE: i128 = 100;
+    const INIT_TOTAL: u32 = 1_000;
+
+    struct TestEnv {
+        env: Env,
+        contract_id: Address,
+        admin: Address,
+        token_id: Address,
+        buyer: Address,
+    }
+
+    fn setup() -> TestEnv {
+        let env = Env::default();
+        env.mock_all_auths();
+        let admin = Address::generate(&env);
+        let token_id = env.register_stellar_asset_contract_v2(admin.clone()).address();
+        let contract_id = env.register(RwaMarketplace, ());
+        let buyer = Address::generate(&env);
+        token::StellarAssetClient::new(&env, &token_id).mint(&buyer, &100_000_000);
+        TestEnv { env, contract_id, admin, token_id, buyer }
+    }
+
+    fn client(te: &TestEnv) -> Client {
+        RwaMarketplaceClient::new(&te.env, &te.contract_id)
+    }
+
+    fn init(te: &TestEnv) {
+        let c = client(te);
+        c.init(&te.admin, &te.token_id, &INIT_PRICE, &INIT_TOTAL);
+        c.add_to_whitelist(&te.buyer);
+    }
+
+    // ── Oracle tests (Issue #169) ─────────────────────────────────────────────
+
+    #[test]
+    fn test_set_and_get_oracle() {
+        let te = setup();
+        init(&te);
+        let c = client(&te);
+        let oracle_addr = Address::generate(&te.env);
+
+        assert!(c.get_oracle().is_none());
+        c.set_oracle(&oracle_addr);
+        assert_eq!(c.get_oracle(), Some(oracle_addr));
+    }
+
+    #[test]
+    fn test_clear_oracle() {
+        let te = setup();
+        init(&te);
+        let c = client(&te);
+        let oracle_addr = Address::generate(&te.env);
+
+        c.set_oracle(&oracle_addr);
+        assert!(c.get_oracle().is_some());
+        c.clear_oracle();
+        assert!(c.get_oracle().is_none());
+    }
+
+    #[test]
+    #[should_panic(expected = "Contract not initialized: admin")]
+    fn test_set_oracle_requires_init() {
+        let te = setup();
+        let c = client(&te);
+        let oracle_addr = Address::generate(&te.env);
+        // No init() called — must panic
+        c.set_oracle(&oracle_addr);
+    }
+
+    #[test]
+    fn test_buy_shares_without_oracle_uses_admin_price() {
+        let te = setup();
+        init(&te);
+        let c = client(&te);
+
+        let balance_before: i128 =
+            token::TokenClient::new(&te.env, &te.token_id).balance(&te.buyer);
+        c.buy_shares(&te.buyer, &10, &te.token_id);
+        let balance_after: i128 =
+            token::TokenClient::new(&te.env, &te.token_id).balance(&te.buyer);
+
+        // 10 shares * INIT_PRICE = 1000 tokens spent
+        assert_eq!(balance_before - balance_after, 10 * INIT_PRICE);
+        assert_eq!(c.get_shares(&te.buyer), 10);
+    }
+
+    // ── Bridge tests (Issue #170) ─────────────────────────────────────────────
+
+    #[test]
+    fn test_lock_for_bridge_reduces_liquid_balance() {
+        let te = setup();
+        init(&te);
+        let c = client(&te);
+
+        c.buy_shares(&te.buyer, &100, &te.token_id);
+        assert_eq!(c.get_shares(&te.buyer), 100);
+
+        c.lock_for_bridge(&te.buyer, &30);
+        // Liquid balance reduced
+        assert_eq!(c.get_shares(&te.buyer), 70);
+        // Locked balance set
+        assert_eq!(c.get_bridge_locked(&te.buyer), 30);
+    }
+
+    #[test]
+    fn test_multiple_lock_for_bridge_accumulates() {
+        let te = setup();
+        init(&te);
+        let c = client(&te);
+
+        c.buy_shares(&te.buyer, &100, &te.token_id);
+        c.lock_for_bridge(&te.buyer, &20);
+        c.lock_for_bridge(&te.buyer, &10);
+
+        assert_eq!(c.get_shares(&te.buyer), 70);
+        assert_eq!(c.get_bridge_locked(&te.buyer), 30);
+    }
+
+    #[test]
+    #[should_panic(expected = "Insufficient liquid balance to lock for bridge")]
+    fn test_lock_for_bridge_insufficient_balance() {
+        let te = setup();
+        init(&te);
+        let c = client(&te);
+
+        c.buy_shares(&te.buyer, &10, &te.token_id);
+        // Try to lock more than owned
+        c.lock_for_bridge(&te.buyer, &100);
+    }
+
+    #[test]
+    #[should_panic(expected = "Bridge lock amount must be greater than zero")]
+    fn test_lock_for_bridge_zero_amount() {
+        let te = setup();
+        init(&te);
+        let c = client(&te);
+        c.lock_for_bridge(&te.buyer, &0);
+    }
+
+    #[test]
+    fn test_unlock_from_bridge_restores_liquid_balance() {
+        let te = setup();
+        init(&te);
+        let c = client(&te);
+
+        c.buy_shares(&te.buyer, &100, &te.token_id);
+        c.lock_for_bridge(&te.buyer, &50);
+
+        let valid_proof: BytesN<32> = BytesN::from_array(&te.env, &[1u8; 32]);
+        c.unlock_from_bridge(&te.buyer, &50, &valid_proof);
+
+        // Liquid balance restored
+        assert_eq!(c.get_shares(&te.buyer), 100);
+        // Bridge locked cleared
+        assert_eq!(c.get_bridge_locked(&te.buyer), 0);
+    }
+
+    #[test]
+    fn test_partial_unlock_from_bridge() {
+        let te = setup();
+        init(&te);
+        let c = client(&te);
+
+        c.buy_shares(&te.buyer, &100, &te.token_id);
+        c.lock_for_bridge(&te.buyer, &60);
+
+        let proof: BytesN<32> = BytesN::from_array(&te.env, &[2u8; 32]);
+        c.unlock_from_bridge(&te.buyer, &25, &proof);
+
+        assert_eq!(c.get_shares(&te.buyer), 65);
+        assert_eq!(c.get_bridge_locked(&te.buyer), 35);
+    }
+
+    #[test]
+    #[should_panic(expected = "Insufficient locked balance to unlock from bridge")]
+    fn test_unlock_from_bridge_excess_amount() {
+        let te = setup();
+        init(&te);
+        let c = client(&te);
+
+        c.buy_shares(&te.buyer, &100, &te.token_id);
+        c.lock_for_bridge(&te.buyer, &10);
+
+        let proof: BytesN<32> = BytesN::from_array(&te.env, &[3u8; 32]);
+        c.unlock_from_bridge(&te.buyer, &100, &proof);
+    }
+
+    #[test]
+    #[should_panic(expected = "Invalid bridge proof: proof cannot be all-zeros")]
+    fn test_unlock_from_bridge_zero_proof_rejected() {
+        let te = setup();
+        init(&te);
+        let c = client(&te);
+
+        c.buy_shares(&te.buyer, &50, &te.token_id);
+        c.lock_for_bridge(&te.buyer, &10);
+
+        let zero_proof: BytesN<32> = BytesN::from_array(&te.env, &[0u8; 32]);
+        c.unlock_from_bridge(&te.buyer, &10, &zero_proof);
+    }
+
+    #[test]
+    #[should_panic(expected = "Bridge unlock amount must be greater than zero")]
+    fn test_unlock_from_bridge_zero_amount() {
+        let te = setup();
+        init(&te);
+        let c = client(&te);
+
+        c.buy_shares(&te.buyer, &50, &te.token_id);
+        c.lock_for_bridge(&te.buyer, &10);
+
+        let proof: BytesN<32> = BytesN::from_array(&te.env, &[4u8; 32]);
+        c.unlock_from_bridge(&te.buyer, &0, &proof);
+    }
+
+    #[test]
+    fn test_get_bridge_locked_default_zero() {
+        let te = setup();
+        init(&te);
+        let c = client(&te);
+        // No lock operations performed — should return 0
+        assert_eq!(c.get_bridge_locked(&te.buyer), 0);
+    }
+
+    #[test]
+    fn test_bridge_lock_does_not_affect_total_shares() {
+        let te = setup();
+        init(&te);
+        let c = client(&te);
+
+        let total_before = c.get_total_shares();
+        c.buy_shares(&te.buyer, &100, &te.token_id);
+        c.lock_for_bridge(&te.buyer, &50);
+
+        // Total shares never change from bridge operations
+        assert_eq!(c.get_total_shares(), total_before);
     }
 }
