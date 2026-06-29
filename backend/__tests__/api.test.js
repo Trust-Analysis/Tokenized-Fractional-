@@ -6,7 +6,7 @@ process.env.DATA_FILE = 'test-data.json';
 import request from 'supertest';
 import { unlinkSync, existsSync } from 'fs';
 import crypto from 'crypto';
-import { app } from '../index.js';
+import { app, tokenize, buildSearchIndex, scoreSearch } from '../index.js';
 import { setClient } from '../cache.js';
 
 // Ensure Redis is disabled (null = graceful fallback) for these tests
@@ -1057,5 +1057,207 @@ describe('Rate limiting', () => {
     // In test mode the write limit is 1000, so all 25 should succeed
     expect(statuses.every(s => s === 201)).toBe(true);
     expect(statuses.length).toBe(25);
+  });
+});
+
+// -- Full-Text Search Index (Issue #181) ---------------------------------------
+
+describe('tokenize()', () => {
+  test('lowercases and splits on whitespace', () => {
+    expect(tokenize('Hello World')).toEqual(['hello', 'world']);
+  });
+
+  test('removes punctuation', () => {
+    expect(tokenize('Hello, World!')).toEqual(['hello', 'world']);
+  });
+
+  test('returns empty array for empty/null input', () => {
+    expect(tokenize('')).toEqual([]);
+    expect(tokenize(null)).toEqual([]);
+    expect(tokenize(undefined)).toEqual([]);
+  });
+
+  test('handles multiple spaces', () => {
+    expect(tokenize('foo   bar')).toEqual(['foo', 'bar']);
+  });
+});
+
+describe('buildSearchIndex() and scoreSearch()', () => {
+  const mockData = {
+    'CAAA': { title: 'Coffee Farm', location: 'Ethiopia', description: 'Premium coffee', assetType: 'Agriculture' },
+    'CBBB': { title: 'Downtown Office', location: 'New York', description: 'Manhattan building', assetType: 'Real Estate' },
+    'CCCC': { title: 'Solar Plant', location: 'Arizona', description: 'Renewable energy', assetType: 'Energy' },
+  };
+
+  test('builds a non-empty index', () => {
+    const { index, totalDocs } = buildSearchIndex(mockData);
+    expect(totalDocs).toBe(3);
+    expect(typeof index).toBe('object');
+    expect(Object.keys(index).length).toBeGreaterThan(0);
+  });
+
+  test('coffee appears in index and scores CAAA highest', () => {
+    buildSearchIndex(mockData);
+    const results = scoreSearch('coffee', mockData);
+    expect(results.length).toBeGreaterThan(0);
+    expect(results[0].contractId).toBe('CAAA');
+    expect(results[0].score).toBeGreaterThan(0);
+  });
+
+  test('manhattan matches CBBB', () => {
+    buildSearchIndex(mockData);
+    const results = scoreSearch('manhattan', mockData);
+    expect(results.some(r => r.contractId === 'CBBB')).toBe(true);
+  });
+
+  test('unknown term returns empty results', () => {
+    buildSearchIndex(mockData);
+    const results = scoreSearch('xyznonexistent', mockData);
+    expect(results).toEqual([]);
+  });
+
+  test('empty query returns all docs with score 1', () => {
+    buildSearchIndex(mockData);
+    const results = scoreSearch('', mockData);
+    expect(results.length).toBe(Object.keys(mockData).length);
+    expect(results.every(r => r.score === 1)).toBe(true);
+  });
+});
+
+describe('GET /api/v1/rwa/search', () => {
+  const SEARCH_ID_A = 'C' + 'S'.repeat(55);
+  const SEARCH_ID_B = 'C' + 'T'.repeat(55);
+  const SEARCH_ID_C = 'C' + 'U'.repeat(55);
+
+  beforeAll(async () => {
+    await createAndApproveAsset({
+      contractId: SEARCH_ID_A,
+      title: 'Mango Orchard',
+      location: 'Ghana',
+      description: 'Tropical mango farm in West Africa',
+      assetType: 'Agriculture',
+    });
+    await createAndApproveAsset({
+      contractId: SEARCH_ID_B,
+      title: 'Beachfront Villa',
+      location: 'Lagos',
+      description: 'Luxury oceanfront property',
+      assetType: 'Real Estate',
+    });
+    await createAndApproveAsset({
+      contractId: SEARCH_ID_C,
+      title: 'Wind Energy Farm',
+      location: 'Ghana',
+      description: 'Renewable wind power installation',
+      assetType: 'Energy',
+    });
+  });
+
+  test('returns 400 when q is missing', async () => {
+    const res = await request(app).get('/api/v1/rwa/search');
+    expect(res.status).toBe(400);
+    expect(res.body.error).toMatch(/q/i);
+  });
+
+  test('returns 400 when q is empty string', async () => {
+    const res = await request(app).get('/api/v1/rwa/search?q=');
+    expect(res.status).toBe(400);
+  });
+
+  test('returns results with data, pagination, and facets', async () => {
+    const res = await request(app).get('/api/v1/rwa/search?q=mango');
+    expect(res.status).toBe(200);
+    expect(Array.isArray(res.body.data)).toBe(true);
+    expect(res.body.pagination).toBeDefined();
+    expect(res.body.facets).toBeDefined();
+    expect(res.body.facets.assetType).toBeDefined();
+    expect(res.body.facets.location).toBeDefined();
+  });
+
+  test('mango query returns SEARCH_ID_A as top result', async () => {
+    const res = await request(app).get('/api/v1/rwa/search?q=mango');
+    expect(res.status).toBe(200);
+    expect(res.body.data.length).toBeGreaterThan(0);
+    expect(res.body.data[0].contractId).toBe(SEARCH_ID_A);
+    expect(res.body.data[0]._score).toBeGreaterThan(0);
+  });
+
+  test('results include _score for relevance', async () => {
+    const res = await request(app).get('/api/v1/rwa/search?q=farm');
+    expect(res.status).toBe(200);
+    res.body.data.forEach(asset => {
+      expect(typeof asset._score).toBe('number');
+      expect(asset._score).toBeGreaterThan(0);
+    });
+  });
+
+  test('searches across title, description, and location', async () => {
+    const res = await request(app).get('/api/v1/rwa/search?q=Ghana');
+    expect(res.status).toBe(200);
+    const ids = res.body.data.map(a => a.contractId);
+    expect(ids).toContain(SEARCH_ID_A);
+    expect(ids).toContain(SEARCH_ID_C);
+  });
+
+  test('faceted filter by assetType narrows results', async () => {
+    const res = await request(app).get('/api/v1/rwa/search?q=farm&assetType=Energy');
+    expect(res.status).toBe(200);
+    expect(res.body.data.every(a => a.assetType === 'Energy')).toBe(true);
+  });
+
+  test('faceted filter by location narrows results', async () => {
+    const res = await request(app).get('/api/v1/rwa/search?q=farm&location=Ghana');
+    expect(res.status).toBe(200);
+    expect(res.body.data.every(a => a.location && a.location.toLowerCase().includes('ghana'))).toBe(true);
+  });
+
+  test('pagination works on search results', async () => {
+    const res = await request(app).get('/api/v1/rwa/search?q=farm&limit=1&page=1');
+    expect(res.status).toBe(200);
+    expect(res.body.data.length).toBeLessThanOrEqual(1);
+    expect(res.body.pagination.limit).toBe(1);
+    expect(res.body.pagination.page).toBe(1);
+  });
+
+  test('also works on /api/rwa/search (legacy alias)', async () => {
+    const res = await request(app).get('/api/rwa/search?q=mango');
+    expect(res.status).toBe(200);
+    expect(Array.isArray(res.body.data)).toBe(true);
+  });
+
+  test('index syncs after asset creation (new asset appears in search)', async () => {
+    const newId = 'C' + 'N'.repeat(55);
+    await createAndApproveAsset({
+      contractId: newId,
+      title: 'Pineapple Plantation',
+      location: 'Ivory Coast',
+      description: 'Tropical pineapple export farm',
+      assetType: 'Agriculture',
+    });
+
+    const res = await request(app).get('/api/v1/rwa/search?q=pineapple');
+    expect(res.status).toBe(200);
+    const ids = res.body.data.map(a => a.contractId);
+    expect(ids).toContain(newId);
+  });
+
+  test('index syncs after asset deletion (removed asset disappears from search)', async () => {
+    const delId = 'C' + 'M'.repeat(55);
+    await createAndApproveAsset({
+      contractId: delId,
+      title: 'Papaya Grove',
+      location: 'Kenya',
+      description: 'Organic papaya cultivation',
+      assetType: 'Agriculture',
+    });
+
+    // Confirm it appears first
+    const before = await request(app).get('/api/v1/rwa/search?q=papaya');
+    expect(before.body.data.some(a => a.contractId === delId)).toBe(true);
+
+    // Delete and confirm it disappears
+    await request(app).delete(`/api/rwa/${delId}`).set('x-api-key', API_KEY);
+    const after = await request(app).get('/api/v1/rwa/search?q=papaya');
+    expect(after.body.data.some(a => a.contractId === delId)).toBe(false);
   });
 });

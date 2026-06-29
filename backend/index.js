@@ -89,6 +89,104 @@ function cacheKey(contractId) {
   return `rwa:${contractId}`;
 }
 
+// ── Full-Text Search Index (Issue #181) ────────────────────────────────────────
+// In-memory inverted index: term → Set of contractIds
+let _searchIndex = null;
+
+/**
+ * Tokenise a string into lowercase words (removes punctuation).
+ */
+export function tokenize(text) {
+  if (!text) return [];
+  return String(text)
+    .toLowerCase()
+    .replace(/[^a-z0-9\s]/g, ' ')
+    .split(/\s+/)
+    .filter(Boolean);
+}
+
+/**
+ * Build or rebuild the full-text inverted index from the current data store.
+ * Called once at startup and after every mutating operation.
+ */
+export function buildSearchIndex(data) {
+  const index = {}; // term → { contractId: tf }
+  const docCount = {}; // contractId → total token count
+
+  for (const [contractId, meta] of Object.entries(data)) {
+    const fields = [
+      { value: meta.title,       weight: 3 },
+      { value: meta.location,    weight: 2 },
+      { value: meta.description, weight: 1 },
+      { value: meta.assetType,   weight: 2 },
+    ];
+
+    const termFreq = {};
+    let total = 0;
+    for (const { value, weight } of fields) {
+      const tokens = tokenize(value);
+      for (const token of tokens) {
+        termFreq[token] = (termFreq[token] || 0) + weight;
+        total += weight;
+      }
+    }
+    docCount[contractId] = total || 1;
+
+    for (const [term, freq] of Object.entries(termFreq)) {
+      if (!index[term]) index[term] = {};
+      index[term][contractId] = freq / docCount[contractId]; // TF
+    }
+  }
+
+  _searchIndex = { index, totalDocs: Object.keys(data).length };
+  return _searchIndex;
+}
+
+/**
+ * Ensure the index is built (lazy init).
+ */
+function getSearchIndex() {
+  if (!_searchIndex) buildSearchIndex(loadData());
+  return _searchIndex;
+}
+
+/**
+ * Sync the search index after data mutations (fire-and-forget safe).
+ */
+export function syncSearchIndex() {
+  try {
+    buildSearchIndex(loadData());
+  } catch (err) {
+    logger.error({ err }, 'Failed to sync search index');
+  }
+}
+
+/**
+ * Score assets for a query using TF-IDF-like relevance.
+ * Returns an array of { contractId, score } sorted descending.
+ */
+export function scoreSearch(query, data) {
+  const { index, totalDocs } = getSearchIndex();
+  const terms = tokenize(query);
+  if (terms.length === 0) return Object.keys(data).map(id => ({ contractId: id, score: 1 }));
+
+  const scores = {};
+  for (const term of terms) {
+    const postings = index[term] || {};
+    const df = Object.keys(postings).length;
+    if (df === 0) continue;
+    // IDF: log(N / df)
+    const idf = Math.log((totalDocs + 1) / (df + 1)) + 1;
+    for (const [contractId, tf] of Object.entries(postings)) {
+      scores[contractId] = (scores[contractId] || 0) + tf * idf;
+    }
+  }
+
+  return Object.entries(scores)
+    .map(([contractId, score]) => ({ contractId, score }))
+    .sort((a, b) => b.score - a.score);
+}
+
 function adminAuth(req, res, next) {
   const apiKey = req.headers['x-api-key'];
   const expected = process.env.ADMIN_API_KEY || 'dev-key-change-in-production';
@@ -303,6 +401,9 @@ app.get('/api/admin/verify', adminAuth, (_req, res) => {
 const v1 = Router();
 
 app.get('/health', async (_req, res) => {
+  const deploymentColor = process.env.DEPLOYMENT_COLOR || 'local';
+  const serviceName = process.env.SERVICE_NAME || 'backend';
+  const buildId = process.env.BUILD_ID || process.env.GITHUB_SHA || 'local';
   const deps = {
     storage: { status: 'ok' },
     redis: { status: 'not_configured' },
@@ -327,7 +428,16 @@ app.get('/health', async (_req, res) => {
     }
   }
 
-  res.json({ status: 'ok', timestamp: new Date().toISOString(), dependencies: deps });
+  res.json({
+    status: 'ok',
+    timestamp: new Date().toISOString(),
+    service: {
+      name: serviceName,
+      deploymentColor,
+      buildId,
+    },
+    dependencies: deps,
+  });
 });
 
 /**
@@ -447,20 +557,33 @@ v1.get('/rwa', (req, res) => {
     .filter(([, meta]) => isApproved(meta))
     .map(([contractId, meta]) => withCdnAssetUrls({ contractId, ...meta }));
 
-  // Filter: assetType (case-insensitive)
-  const { assetType, search, page, limit } = req.query;
+  // Filter: assetType (case-insensitive) — faceted filter
+  const { assetType, location, search, page, limit } = req.query;
   if (assetType) {
     const lower = assetType.toLowerCase();
     assets = assets.filter(a => a.assetType?.toLowerCase() === lower);
   }
 
-  // Filter: text search on title and description
+  // Filter: location (faceted filter)
+  if (location) {
+    const lower = location.toLowerCase();
+    assets = assets.filter(a => a.location?.toLowerCase().includes(lower));
+  }
+
+  // Filter: full-text search with relevance scoring on title, description, location
   if (search) {
-    const lower = search.toLowerCase();
-    assets = assets.filter(a =>
-      a.title?.toLowerCase().includes(lower) ||
-      a.description?.toLowerCase().includes(lower)
+    const approvedData = Object.fromEntries(
+      Object.entries(data).filter(([, m]) => isApproved(m))
     );
+    // Rebuild index scoped to approved assets for accurate IDF
+    buildSearchIndex(approvedData);
+    const ranked = scoreSearch(search, approvedData);
+    const rankedIds = new Set(ranked.map(r => r.contractId));
+    // Preserve relevance order
+    const byId = Object.fromEntries(assets.map(a => [a.contractId, a]));
+    assets = ranked
+      .filter(r => rankedIds.has(r.contractId) && byId[r.contractId])
+      .map(r => ({ ...byId[r.contractId], _score: r.score }));
   }
 
   const total = assets.length;
@@ -478,6 +601,103 @@ v1.get('/rwa', (req, res) => {
 
   // Cache the full asset list (fire-and-forget)
   cacheSet('rwa:all', { data: assets, pagination: { total, page: pageNum, limit: pageSize, totalPages } }).catch(() => {});
+});
+
+/**
+ * @openapi
+ * /api/v1/rwa/search:
+ *   get:
+ *     tags: [Assets]
+ *     summary: Full-text search with relevance scoring
+ *     description: Search assets by query across title, description, and location with TF-IDF relevance scoring and faceted filters.
+ *     parameters:
+ *       - in: query
+ *         name: q
+ *         required: true
+ *         schema:
+ *           type: string
+ *         description: Search query
+ *       - in: query
+ *         name: assetType
+ *         schema:
+ *           type: string
+ *         description: Facet filter by asset type
+ *       - in: query
+ *         name: location
+ *         schema:
+ *           type: string
+ *         description: Facet filter by location (partial match)
+ *       - in: query
+ *         name: page
+ *         schema:
+ *           type: integer
+ *           default: 1
+ *       - in: query
+ *         name: limit
+ *         schema:
+ *           type: integer
+ *           default: 20
+ *     responses:
+ *       200:
+ *         description: Ranked search results with facets
+ *       400:
+ *         description: Missing query parameter
+ */
+v1.get('/rwa/search', (req, res) => {
+  const { q, assetType, location, page, limit } = req.query;
+  if (!q || !String(q).trim()) {
+    return res.status(400).json({ error: 'Missing required query parameter: q' });
+  }
+
+  const data = loadData();
+  // Only search approved assets
+  const approvedData = Object.fromEntries(
+    Object.entries(data).filter(([, m]) => isApproved(m))
+  );
+
+  // Rebuild index from current approved data to stay in sync
+  buildSearchIndex(approvedData);
+  let ranked = scoreSearch(q, approvedData);
+
+  // Apply faceted filters post-ranking
+  if (assetType) {
+    const lower = assetType.toLowerCase();
+    ranked = ranked.filter(r => approvedData[r.contractId]?.assetType?.toLowerCase() === lower);
+  }
+  if (location) {
+    const lower = location.toLowerCase();
+    ranked = ranked.filter(r => approvedData[r.contractId]?.location?.toLowerCase().includes(lower));
+  }
+
+  const total = ranked.length;
+  const pageNum = Math.max(1, parseInt(page) || 1);
+  const pageSize = Math.min(100, Math.max(1, parseInt(limit) || 20));
+  const totalPages = Math.ceil(total / pageSize) || 1;
+  const slice = ranked.slice((pageNum - 1) * pageSize, pageNum * pageSize);
+
+  // Build facets (counts of distinct values across ALL matching results)
+  const facets = { assetType: {}, location: {} };
+  for (const { contractId } of ranked) {
+    const m = approvedData[contractId];
+    if (!m) continue;
+    if (m.assetType) facets.assetType[m.assetType] = (facets.assetType[m.assetType] || 0) + 1;
+    if (m.location) {
+      const loc = m.location.split(',')[0].trim(); // city-level bucket
+      facets.location[loc] = (facets.location[loc] || 0) + 1;
+    }
+  }
+
+  const results = slice.map(({ contractId, score }) => ({
+    contractId,
+    ...approvedData[contractId],
+    _score: score,
+  }));
+
+  res.json({
+    data: results,
+    pagination: { total, page: pageNum, limit: pageSize, totalPages },
+    facets,
+  });
 });
 
 /**
@@ -620,8 +840,9 @@ v1.post('/rwa', adminAuth, writeLimiter, async (req, res) => {
   };
   saveData(data);
 
-  // Invalidate caches (fire-and-forget)
+  // Invalidate caches and sync search index (fire-and-forget)
   cacheDel('rwa:all').catch(() => {});
+  syncSearchIndex();
   fireWebhooks(WEBHOOK_EVENTS.CREATED, { contractId, ...data[contractId] }).catch(() => {});
 
   req.log?.info({ contractId }, 'Asset created/updated');
@@ -678,8 +899,9 @@ v1.delete('/rwa/:contractId', adminAuth, writeLimiter, async (req, res) => {
   delete data[contractId];
   saveData(data);
 
-  // Invalidate caches (fire-and-forget)
+  // Invalidate caches and sync search index (fire-and-forget)
   cacheDel('rwa:all', cacheKey(contractId)).catch(() => {});
+  syncSearchIndex();
   fireWebhooks(WEBHOOK_EVENTS.DELETED, deleted).catch(() => {});
 
   req.log?.info({ contractId }, 'Asset deleted');
@@ -774,8 +996,9 @@ v1.patch('/rwa/:contractId', adminAuth, writeLimiter, async (req, res) => {
   data[contractId].updatedAt = new Date().toISOString();
   saveData(data);
 
-  // Invalidate caches (fire-and-forget)
+  // Invalidate caches and sync search index (fire-and-forget)
   cacheDel('rwa:all', cacheKey(contractId)).catch(() => {});
+  syncSearchIndex();
   fireWebhooks(WEBHOOK_EVENTS.UPDATED, { contractId, ...data[contractId] }).catch(() => {});
 
   req.log?.info({ contractId, fields: Object.keys(patch) }, 'Asset partially updated');

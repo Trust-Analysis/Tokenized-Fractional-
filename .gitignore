@@ -9,6 +9,7 @@ target/
 data.json
 webhooks.json
 test-data.json
+.blue-green-state.json
 
 # Playwright
 test-results/
@@ -37,3 +38,6 @@ storybook-static/
 
 # Temporary PR description files
 PR_DESCRIPTION_ISSUE_*.md
+
+# ELK stack data directories
+/elk/data/
