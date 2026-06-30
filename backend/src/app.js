@@ -29,6 +29,9 @@ import { swaggerSpec } from '../docs.js';
 import { initDatabase, getDatabase } from './services/database.js';
 import { createApiKeyService } from './services/apiKeyService.js';
 import { createApiKeysRouter } from './routes/apiKeys.js';
+import { createTransactionService } from './services/transactionService.js';
+import { createAnalyticsRoutes } from './routes/analytics.js';
+import { createPurchaseRoutes } from './routes/purchases.js';
 
 // ── Sentry init ───────────────────────────────────────────────────────────────
 if (SENTRY_DSN && process.env.NODE_ENV !== 'test') {
@@ -62,6 +65,9 @@ export const app = express();
 let apiKeyService = null;
 let adminAuth = legacyAdminAuth;
 let apiKeysRouter = null;
+let transactionService = null;
+let analyticsRoutes = null;
+let purchasesRoutes = null;
 
 /**
  * Initialize the app with database services.
@@ -83,7 +89,15 @@ export async function initializeApp() {
     // Setup API keys router
     apiKeysRouter = createApiKeysRouter(apiKeyService, logger);
 
-    return { db, apiKeyService };
+    // Create transaction service
+    transactionService = createTransactionService(db, logger);
+    logger.info('Transaction service initialized');
+
+    // Setup analytics and purchases routes
+    analyticsRoutes = createAnalyticsRoutes(transactionService, logger, adminAuth);
+    purchasesRoutes = createPurchaseRoutes(transactionService, logger);
+
+    return { db, apiKeyService, transactionService };
   } catch (error) {
     logger.error({ error: error.message }, 'Failed to initialize app');
     throw error;
@@ -193,6 +207,48 @@ app.use('/api/api-keys', (req, res, next) => {
     });
   }
   adminAuth(req, res, () => apiKeysRouter(req, res, next));
+});
+
+// Mount analytics routes
+app.use('/api/v1/analytics', (req, res, next) => {
+  if (!analyticsRoutes) {
+    return res.status(503).json({
+      error: 'Analytics service not initialized',
+      code: 'SERVICE_UNAVAILABLE',
+    });
+  }
+  analyticsRoutes(req, res, next);
+});
+
+app.use('/api/analytics', (req, res, next) => {
+  if (!analyticsRoutes) {
+    return res.status(503).json({
+      error: 'Analytics service not initialized',
+      code: 'SERVICE_UNAVAILABLE',
+    });
+  }
+  analyticsRoutes(req, res, next);
+});
+
+// Mount purchases routes (for recording blockchain transactions)
+app.use('/api/v1/purchases', (req, res, next) => {
+  if (!purchasesRoutes) {
+    return res.status(503).json({
+      error: 'Purchase service not initialized',
+      code: 'SERVICE_UNAVAILABLE',
+    });
+  }
+  purchasesRoutes(req, res, next);
+});
+
+app.use('/api/purchases', (req, res, next) => {
+  if (!purchasesRoutes) {
+    return res.status(503).json({
+      error: 'Purchase service not initialized',
+      code: 'SERVICE_UNAVAILABLE',
+    });
+  }
+  purchasesRoutes(req, res, next);
 });
 
 // 404 handler
