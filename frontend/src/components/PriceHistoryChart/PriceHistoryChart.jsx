@@ -152,11 +152,11 @@ export default function PriceHistoryChart({
                 className={`${styles.timeButton} ${timeRange === range ? styles.active : ''}`}
                 onClick={() => onTimeRangeChange(range)}
               >
-                {range === '1m' ? '1M'}
-                {range === '3m' ? '3M'}
-                {range === '6m' ? '6M'}
-                {range === '1y' ? '1Y'}
-                {range === 'all' ? 'ALL'}
+                {range === '1m' ? '1M' : ''}
+                {range === '3m' ? '3M' : ''}
+                {range === '6m' ? '6M' : ''}
+                {range === '1y' ? '1Y' : ''}
+                {range === 'all' ? 'ALL' : ''}
               </button>
             ))}
           </div>

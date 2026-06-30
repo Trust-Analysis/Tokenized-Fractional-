@@ -4,6 +4,7 @@ import Input from '../Input/Input';
 import Button from '../Button/Button';
 import Spinner from '../Spinner/Spinner';
 import Skeleton from '../Skeleton/Skeleton';
+import SocialShare from '../SocialShare/SocialShare';
 import styles from './BuyShares.module.css';
 
 const STROOP = 10_000_000; // 1 XLM = 10,000,000 stroops
@@ -27,6 +28,8 @@ function formatPrice(stroops) {
  * @param {number|null} pricePerShare - Price per share in stroops
  * @param {number}   buyAmount        - Controlled buy amount (optional)
  * @param {function} onBuyAmountChange - Controlled setter for buy amount (optional)
+ * @param {Object}   asset            - Asset object with title, location, assetType, contractId
+ * @param {string}   shareUrl         - Custom share URL (optional)
  */
 export default function BuyShares({
   shares = 0,
@@ -41,6 +44,8 @@ export default function BuyShares({
   pricePerShare = null,
   buyAmount: controlledBuyAmount,
   onBuyAmountChange,
+  asset = {},
+  shareUrl = '',
 }) {
   const [localBuyAmount, setLocalBuyAmount] = useState(1);
   const isControlled = controlledBuyAmount !== undefined && onBuyAmountChange !== undefined;
@@ -167,6 +172,24 @@ export default function BuyShares({
           <Spinner size="sm" label="Processing transaction…" />
           <span>Submitting transaction to the network…</span>
         </div>
+      )}
+
+      {/* ── Social Share Section ──────────────────────────────────────── */}
+      {asset && Object.keys(asset).length > 0 && (
+        <>
+          <hr className={styles.divider} />
+          <div className={styles.socialShareSection}>
+            <SocialShare
+              asset={asset}
+              url={shareUrl || window.location.href}
+              compact={false}
+              showLabel={true}
+              onShare={(platform) => {
+                console.log(`Shared on ${platform}`);
+              }}
+            />
+          </div>
+        </>
       )}
     </Card>
   );
