@@ -24,6 +24,7 @@ import NewsSection from './components/NewsSection/NewsSection';
 import PriceAlert from './components/PriceAlert/PriceAlert';
 import AssetComparison from './components/AssetComparison/AssetComparison';
 import FavoritesPage from './components/FavoritesPage/FavoritesPage';
+import UserProfile from './components/UserProfile/UserProfile';
 import styles from './App.module.css';
 
 import { useWalletStore } from './store/useWalletStore';
@@ -50,8 +51,8 @@ const NETWORK_PASSPHRASE = import.meta.env.VITE_NETWORK_PASSPHRASE || Networks.T
 const API_URL = import.meta.env.VITE_API_URL || 'http://localhost:3001';
 
 // Route path → Navbar view id mapping
-const PATH_TO_VIEW = { '/': 'marketplace', '/portfolio': 'portfolio', '/admin': 'admin', '/history': 'history' };
-const VIEW_TO_PATH = { marketplace: '/', portfolio: '/portfolio', admin: '/admin', history: '/history' };
+const PATH_TO_VIEW = { '/': 'marketplace', '/portfolio': 'portfolio', '/admin': 'admin', '/history': 'history', '/profile': 'profile' };
+const VIEW_TO_PATH = { marketplace: '/', portfolio: '/portfolio', admin: '/admin', history: '/history', profile: '/profile' };
 
 function MarketplacePage({ publicKey, walletError, assetMeta, assets, isFetchingAssets, assetsError, loadingMeta, shares, loadingShares, buyAmount, setBuyAmount, loadingBuy, handleBuyShares, pricePerShare }) {
   const isTestnet = NETWORK_PASSPHRASE === Networks.TESTNET;
@@ -462,6 +463,8 @@ function App() {
         <AssetComparison />
       ) : view === 'favorites' ? (
         <FavoritesPage />
+      ) : view === 'profile' ? (
+        <UserProfile />
       ) : (
         <>
       {/* Wallet errors (connection issues) */}
