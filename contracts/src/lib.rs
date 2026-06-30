@@ -3,9 +3,17 @@
 
 #![no_std]
 use soroban_sdk::{
-    contract, contractclient, contractevent, contractimpl, contracttype, token, Address, Bytes,
-    BytesN, Env, Vec,
+    contract, contractclient, contractevent, contractimpl, contractmeta, contracttype, token,
+    Address, Bytes, BytesN, Env, String, Vec,
 };
+
+// ── SIP-4 / SEP-46 Contract Metadata ─────────────────────────────────
+// Off-chain tools (explorers, wallets, indexers) read these entries from
+// the Wasm custom section `contractmetav0` without executing the contract.
+contractmeta!(key = "name", val = "RWA Marketplace");
+contractmeta!(key = "version", val = "0.2.0");
+contractmeta!(key = "description", val = "Tokenized Fractional RWA Marketplace");
+contractmeta!(key = "sep", val = "41");
 
 /// Minimal interface for calling the deployed ShareCertificate NFT contract.
 #[contractclient(name = "NftContractClient")]
@@ -59,6 +67,8 @@ pub enum DataKey {
     OracleAddress,
     /// Issue #170: Locked-for-bridge amount per user
     BridgeLocked(Address),
+    /// SIP-4 metadata
+    ContractMetadata,
 }
 
 #[contracttype]
@@ -69,6 +79,15 @@ pub struct VestingSchedule {
     pub duration: u64,
     pub total_amount: u32,
     pub claimed_amount: u32,
+}
+
+/// SIP-4 contract metadata returned at runtime by get_contract_metadata()
+#[contracttype]
+#[derive(Clone)]
+pub struct ContractMetadata {
+    pub name: String,
+    pub version: String,
+    pub description: String,
 }
 
 #[contracttype]
@@ -334,6 +353,14 @@ impl RwaMarketplace {
         let mut accepted: Vec<Address> = Vec::new(&env);
         accepted.push_back(payment_token.clone());
         env.storage().instance().set(&DataKey::AcceptedTokens, &accepted);
+
+        // Store SIP-4 metadata
+        let metadata = ContractMetadata {
+            name: String::from_str(&env, "RWA Marketplace"),
+            version: String::from_str(&env, "0.2.0"),
+            description: String::from_str(&env, "Tokenized Fractional RWA Marketplace"),
+        };
+        env.storage().instance().set(&DataKey::ContractMetadata, &metadata);
 
         EventInit { admin, payment_token, price, total_shares }.publish(&env);
     }
@@ -3239,6 +3266,15 @@ pub struct EventContractUpgraded {
 #[contractimpl]
 impl RwaMarketplace {
 
+    /// Return the contract metadata (SIP-4/SEP-46).
+    /// Panics if the contract is not initialized.
+    pub fn get_contract_metadata(env: Env) -> ContractMetadata {
+        env.storage()
+            .instance()
+            .get(&DataKey::ContractMetadata)
+            .expect("Contract not initialized")
+    }
+
     /// Return the admin address. Panics if the contract is not initialized.
     pub fn get_admin(env: Env) -> Address {
         env.storage()
@@ -3660,4 +3696,67 @@ mod oracle_bridge_tests {
         // Total shares never change from bridge operations
         assert_eq!(c.get_total_shares(), total_before);
     }
+}
+
+// ── SIP-4 Metadata Tests (Issue #168) ──────────────────────────────────────────
+
+#[cfg(test)]
+mod sip4_metadata_tests {
+    use super::*;
+    use soroban_sdk::testutils::Address as _;
+
+    type Client<'a> = RwaMarketplaceClient<'a>;
+
+    const INIT_PRICE: i128 = 100;
+    const INIT_TOTAL: u32 = 1_000;
+
+    struct TestEnv {
+        env: Env,
+        contract_id: Address,
+        admin: Address,
+        token_id: Address,
+        buyer: Address,
+    }
+
+    fn setup() -> TestEnv {
+        let env = Env::default();
+        env.mock_all_auths();
+        let admin = Address::generate(&env);
+        let token_id = env.register_stellar_asset_contract_v2(admin.clone()).address();
+        let contract_id = env.register(RwaMarketplace, ());
+        let buyer = Address::generate(&env);
+        token::StellarAssetClient::new(&env, &token_id).mint(&buyer, &100_000_000);
+        TestEnv { env, contract_id, admin, token_id, buyer }
+    }
+
+    fn client(te: &TestEnv) -> Client {
+        RwaMarketplaceClient::new(&te.env, &te.contract_id)
+    }
+
+    fn init(te: &TestEnv) {
+        let c = client(te);
+        c.init(&te.admin, &te.token_id, &INIT_PRICE, &INIT_TOTAL);
+        c.add_to_whitelist(&te.buyer);
+    }
+
+    #[test]
+    fn test_get_contract_metadata_returns_expected_values() {
+        let te = setup();
+        init(&te);
+        let c = client(&te);
+        let meta = c.get_contract_metadata();
+
+        assert_eq!(meta.name, String::from_str(&te.env, "RWA Marketplace"));
+        assert_eq!(meta.version, String::from_str(&te.env, "0.2.0"));
+        assert_eq!(meta.description, String::from_str(&te.env, "Tokenized Fractional RWA Marketplace"));
+    }
+
+    #[test]
+    #[should_panic(expected = "Contract not initialized")]
+    fn test_get_contract_metadata_before_init_panics() {
+        let te = setup();
+        let c = client(&te);
+        c.get_contract_metadata();
+    }
+
 }
