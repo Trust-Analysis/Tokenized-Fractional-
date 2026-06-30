@@ -18,6 +18,10 @@ services:
         generateValue: true
       - key: DATA_FILE
         value: data.json
+      - key: CDN_URL
+        sync: false   # set to your CDN base URL, e.g. https://cdn.example.com
+      - key: ASSET_CDN_URL
+        sync: false   # optional override for uploaded image/document URLs
       - key: DEPLOYMENT_COLOR
         value: blue
       - key: SERVICE_NAME
@@ -48,6 +52,10 @@ services:
         generateValue: true
       - key: DATA_FILE
         value: data.json
+      - key: CDN_URL
+        sync: false   # set to your CDN base URL, e.g. https://cdn.example.com
+      - key: ASSET_CDN_URL
+        sync: false   # optional override for uploaded image/document URLs
       - key: DEPLOYMENT_COLOR
         value: green
       - key: SERVICE_NAME
@@ -80,6 +88,8 @@ services:
         value: "Test SDF Network ; September 2015"
       - key: VITE_API_URL
         value: https://rwa-marketplace-backend-blue.onrender.com
+      - key: VITE_CDN_URL
+        sync: false   # set to the CDN origin for static frontend assets
 
   # ── Frontend (Static Site, Green) ──────────────────────────────────────────
   - type: web
@@ -108,3 +118,5 @@ services:
         value: "Test SDF Network ; September 2015"
       - key: VITE_API_URL
         value: https://rwa-marketplace-backend-green.onrender.com
+      - key: VITE_CDN_URL
+        sync: false   # set to the CDN origin for static frontend assets

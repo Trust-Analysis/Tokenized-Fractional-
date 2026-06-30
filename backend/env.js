@@ -52,6 +52,15 @@ const RULES = [
   },
 ];
 
+function isValidHttpUrl(value) {
+  try {
+    const url = new URL(value);
+    return url.protocol === 'http:' || url.protocol === 'https:';
+  } catch {
+    return false;
+  }
+}
+
 export function validateEnv() {
   // Skip strict validation in test environment
   if (process.env.NODE_ENV === 'test') return;

@@ -533,7 +533,7 @@ v1.get('/rwa/export', adminAuth, (req, res) => {
   if (to && isNaN(toDate)) return res.status(400).json({ error: 'Invalid "to" date' });
 
   const data = loadData();
-  let assets = Object.entries(data).map(([contractId, meta]) => ({ contractId, ...meta }));
+  let assets = Object.entries(data).map(([contractId, meta]) => withCdnAssetUrls({ contractId, ...meta }));
 
   if (fromDate) assets = assets.filter(a => new Date(a.updatedAt || a.createdAt) >= fromDate);
   if (toDate)   assets = assets.filter(a => new Date(a.updatedAt || a.createdAt) <= toDate);
@@ -597,7 +597,7 @@ v1.get('/rwa', (req, res) => {
   const data = loadData();
   let assets = Object.entries(data)
     .filter(([, meta]) => isApproved(meta))
-    .map(([contractId, meta]) => ({ contractId, ...meta }));
+    .map(([contractId, meta]) => withCdnAssetUrls({ contractId, ...meta }));
 
   // Filter: assetType (case-insensitive) — faceted filter
   const { assetType, location, search, page, limit } = req.query;
@@ -771,7 +771,7 @@ v1.get('/rwa/pending', adminAuth, (req, res) => {
   const data = loadData();
   const pending = Object.entries(data)
     .filter(([, meta]) => meta.status === ASSET_STATUS.PENDING)
-    .map(([contractId, meta]) => ({ contractId, ...meta }));
+    .map(([contractId, meta]) => withCdnAssetUrls({ contractId, ...meta }));
   res.json(pending);
 });
 
@@ -806,7 +806,7 @@ v1.get('/rwa/:contractId', async (req, res) => {
   const { contractId } = req.params;
 
   const cached = await cacheGet(cacheKey(contractId));
-  if (cached) return res.json(cached);
+  if (cached) return res.json(withCdnAssetUrls(cached));
 
   const data = loadData();
   const asset = data[contractId];
@@ -816,7 +816,7 @@ v1.get('/rwa/:contractId', async (req, res) => {
   const result = { contractId, ...asset };
   // Cache individual asset (fire-and-forget)
   cacheSet(cacheKey(contractId), result).catch(() => {});
-  res.json(result);
+  res.json(withCdnAssetUrls(result));
 });
 
 /**
@@ -888,7 +888,7 @@ v1.post('/rwa', adminAuth, writeLimiter, async (req, res) => {
   fireWebhooks(WEBHOOK_EVENTS.CREATED, { contractId, ...data[contractId] }).catch(() => {});
 
   req.log?.info({ contractId }, 'Asset created/updated');
-  res.status(201).json({ contractId, ...data[contractId] });
+  res.status(201).json(withCdnAssetUrls({ contractId, ...data[contractId] }));
 });
 
 /**
@@ -1061,7 +1061,7 @@ v1.patch('/rwa/:contractId', adminAuth, writeLimiter, async (req, res) => {
   fireWebhooks(WEBHOOK_EVENTS.UPDATED, { contractId, ...data[contractId] }).catch(() => {});
 
   req.log?.info({ contractId, fields: Object.keys(patch) }, 'Asset partially updated');
-  res.json({ contractId, ...data[contractId] });
+  res.json(withCdnAssetUrls({ contractId, ...data[contractId] }));
 });
 
 /**
@@ -1206,7 +1206,7 @@ v1.post('/rwa/:contractId/approve', adminAuth, writeLimiter, async (req, res) =>
   cacheDel('rwa:all', cacheKey(contractId)).catch(() => {});
   fireWebhooks(WEBHOOK_EVENTS.APPROVED, { contractId, ...data[contractId] }).catch(() => {});
   req.log?.info({ contractId }, 'Asset approved');
-  res.json({ contractId, ...data[contractId] });
+  res.json(withCdnAssetUrls({ contractId, ...data[contractId] }));
 });
 
 /**
@@ -1247,7 +1247,7 @@ v1.post('/rwa/:contractId/reject', adminAuth, writeLimiter, async (req, res) => 
   cacheDel('rwa:all', cacheKey(contractId)).catch(() => {});
   fireWebhooks(WEBHOOK_EVENTS.REJECTED, { contractId, ...data[contractId] }).catch(() => {});
   req.log?.info({ contractId }, 'Asset rejected');
-  res.json({ contractId, ...data[contractId] });
+  res.json(withCdnAssetUrls({ contractId, ...data[contractId] }));
 });
 
 // ── News / Updates ────────────────────────────────────────────────────────────
