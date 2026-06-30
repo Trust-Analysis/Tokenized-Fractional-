@@ -467,7 +467,7 @@ function App() {
         <UserProfile />
       ) : (
         <>
-      {/* Wallet errors (connection issues) */}
+          {/* Wallet errors (connection issues) */}
       {walletError && (
         <Alert variant="error">
           {walletError}
