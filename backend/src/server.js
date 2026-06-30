@@ -7,12 +7,15 @@
  * and starts listening on PORT.
  */
 
-import { app } from './app.js';
+import { app, initializeApp } from './app.js';
 import { logger } from './services/logger.js';
-import { PORT } from './config.js';
+import { PORT, NODE_ENV } from './config.js';
+
+// Initialise the app (database, services, etc.)
+await initializeApp();
 
 // Initialise Redis cache client when not running tests
-if (process.env.NODE_ENV !== 'test') {
+if (NODE_ENV !== 'test') {
   import('../cache.js').then(({ initClient }) => initClient()).catch(() => {});
 }
 

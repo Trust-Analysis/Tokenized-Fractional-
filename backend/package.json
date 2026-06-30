@@ -13,6 +13,7 @@
     "migrate:rollback": "knex migrate:rollback",
     "migrate:make": "knex migrate:make",
     "migrate:status": "knex migrate:list",
+    "bootstrap-api-key": "node bootstrap-api-key.js",
     "backup": "node backup.js",
     "backup:list": "node backup.js --list",
     "backup:verify": "node backup.js --verify-latest",

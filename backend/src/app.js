@@ -20,12 +20,15 @@ import * as Sentry from '@sentry/node';
 import swaggerUi from 'swagger-ui-express';
 import prometheus from 'express-prom-bundle';
 
-import { CORS_ORIGINS, SENTRY_DSN, SENTRY_TRACES_SAMPLE_RATE, SENTRY_PROFILES_SAMPLE_RATE, REDIS_URL, DEPLOYMENT_COLOR, SERVICE_NAME, BUILD_ID } from './config.js';
+import { CORS_ORIGINS, SENTRY_DSN, SENTRY_TRACES_SAMPLE_RATE, SENTRY_PROFILES_SAMPLE_RATE, REDIS_URL, DEPLOYMENT_COLOR, SERVICE_NAME, BUILD_ID, NODE_ENV } from './config.js';
 import { logger } from './services/logger.js';
 import { apiLimiter } from './middleware/rateLimiter.js';
-import { adminAuth } from './middleware/auth.js';
+import { createAdminAuth, adminAuth as legacyAdminAuth } from './middleware/auth.js';
 import { v1 } from './routes/rwa.js';
 import { swaggerSpec } from '../docs.js';
+import { initDatabase, getDatabase } from './services/database.js';
+import { createApiKeyService } from './services/apiKeyService.js';
+import { createApiKeysRouter } from './routes/apiKeys.js';
 
 // ── Sentry init ───────────────────────────────────────────────────────────────
 if (SENTRY_DSN && process.env.NODE_ENV !== 'test') {
@@ -54,6 +57,38 @@ const metricsMiddleware = prometheus({
 
 // ── App factory ───────────────────────────────────────────────────────────────
 export const app = express();
+
+// Store for initialized services
+let apiKeyService = null;
+let adminAuth = legacyAdminAuth;
+let apiKeysRouter = null;
+
+/**
+ * Initialize the app with database services.
+ * Must be called before starting the server.
+ */
+export async function initializeApp() {
+  try {
+    // Initialize database
+    const db = await initDatabase(NODE_ENV);
+    logger.info('Database initialized');
+
+    // Create API key service
+    apiKeyService = createApiKeyService(db, logger);
+
+    // Create and bind adminAuth middleware
+    adminAuth = createAdminAuth(apiKeyService);
+    logger.info('API key service initialized');
+
+    // Setup API keys router
+    apiKeysRouter = createApiKeysRouter(apiKeyService, logger);
+
+    return { db, apiKeyService };
+  } catch (error) {
+    logger.error({ error: error.message }, 'Failed to initialize app');
+    throw error;
+  }
+}
 
 // Sentry request handlers must be first
 if (SENTRY_DSN) {
@@ -100,8 +135,8 @@ app.use('/api-docs', swaggerUi.serve, swaggerUi.setup(swaggerSpec, {
 }));
 app.get('/api-docs.json', (_req, res) => res.json(swaggerSpec));
 
-// Admin key verification
-app.get('/api/admin/verify', adminAuth, (_req, res) => res.json({ ok: true }));
+// Admin key verification (requires initialization)
+app.get('/api/admin/verify', (req, res, next) => adminAuth(req, res, next), (_req, res) => res.json({ ok: true }));
 
 // Health check
 app.get('/health', async (_req, res) => {
@@ -138,6 +173,27 @@ app.get('/health', async (_req, res) => {
 // Mount versioned router and backward-compatible alias
 app.use('/api/v1', v1);
 app.use('/api', v1);
+
+// Mount API key management routes (admin only, after initialization)
+app.use('/api/v1/api-keys', (req, res, next) => {
+  if (!apiKeysRouter) {
+    return res.status(503).json({
+      error: 'API key service not initialized',
+      code: 'SERVICE_UNAVAILABLE',
+    });
+  }
+  adminAuth(req, res, () => apiKeysRouter(req, res, next));
+});
+
+app.use('/api/api-keys', (req, res, next) => {
+  if (!apiKeysRouter) {
+    return res.status(503).json({
+      error: 'API key service not initialized',
+      code: 'SERVICE_UNAVAILABLE',
+    });
+  }
+  adminAuth(req, res, () => apiKeysRouter(req, res, next));
+});
 
 // 404 handler
 app.use((_req, res) => {
