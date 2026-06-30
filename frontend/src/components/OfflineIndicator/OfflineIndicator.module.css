@@ -1,0 +1,44 @@
+/* OfflineIndicator.module.css */
+
+/* Shared base — sits at the top of the viewport, full width */
+.offline,
+.reconnected {
+  position: fixed;
+  top: 0;
+  left: 0;
+  right: 0;
+  z-index: 9999;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: 0.5rem;
+  padding: 0.5rem 1rem;
+  font-size: var(--font-size-sm, 0.875rem);
+  font-weight: var(--font-weight-medium, 500);
+  animation: slideDown 0.25s ease;
+}
+
+.offline {
+  background: #f59e0b;   /* amber */
+  color: #1c1917;
+}
+
+.reconnected {
+  background: #22c55e;   /* green */
+  color: #052e16;
+  animation: slideDown 0.25s ease, fadeOut 0.5s ease 2.5s forwards;
+}
+
+.icon {
+  flex-shrink: 0;
+}
+
+@keyframes slideDown {
+  from { transform: translateY(-100%); opacity: 0; }
+  to   { transform: translateY(0);     opacity: 1; }
+}
+
+@keyframes fadeOut {
+  from { opacity: 1; }
+  to   { opacity: 0; pointer-events: none; }
+}

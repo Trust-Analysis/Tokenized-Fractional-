@@ -22,6 +22,10 @@ import { swaggerSpec } from './docs.js';
 import { cacheGet, cacheSet, cacheDel } from './cache.js';
 import multer from 'multer';
 import { uploadToIPFS, getIPFSFileUrl, unpinFromIPFS } from './ipfs.js';
+import { wsManager } from './websocket.js';
+import { ApolloServer } from '@apollo/server';
+import { expressMiddleware } from '@apollo/server/express4';
+import { typeDefs, createResolvers } from './graphql.js';
 
 const __dirname = dirname(fileURLToPath(import.meta.url));
 // multer memoryStorage keeps the file in memory as a Buffer (req.file.buffer).
@@ -529,7 +533,7 @@ v1.get('/rwa/export', adminAuth, (req, res) => {
   if (to && isNaN(toDate)) return res.status(400).json({ error: 'Invalid "to" date' });
 
   const data = loadData();
-  let assets = Object.entries(data).map(([contractId, meta]) => ({ contractId, ...meta }));
+  let assets = Object.entries(data).map(([contractId, meta]) => withCdnAssetUrls({ contractId, ...meta }));
 
   if (fromDate) assets = assets.filter(a => new Date(a.updatedAt || a.createdAt) >= fromDate);
   if (toDate)   assets = assets.filter(a => new Date(a.updatedAt || a.createdAt) <= toDate);
@@ -593,7 +597,7 @@ v1.get('/rwa', (req, res) => {
   const data = loadData();
   let assets = Object.entries(data)
     .filter(([, meta]) => isApproved(meta))
-    .map(([contractId, meta]) => ({ contractId, ...meta }));
+    .map(([contractId, meta]) => withCdnAssetUrls({ contractId, ...meta }));
 
   // Filter: assetType (case-insensitive) — faceted filter
   const { assetType, location, search, page, limit } = req.query;
@@ -767,7 +771,7 @@ v1.get('/rwa/pending', adminAuth, (req, res) => {
   const data = loadData();
   const pending = Object.entries(data)
     .filter(([, meta]) => meta.status === ASSET_STATUS.PENDING)
-    .map(([contractId, meta]) => ({ contractId, ...meta }));
+    .map(([contractId, meta]) => withCdnAssetUrls({ contractId, ...meta }));
   res.json(pending);
 });
 
@@ -802,7 +806,7 @@ v1.get('/rwa/:contractId', async (req, res) => {
   const { contractId } = req.params;
 
   const cached = await cacheGet(cacheKey(contractId));
-  if (cached) return res.json(cached);
+  if (cached) return res.json(withCdnAssetUrls(cached));
 
   const data = loadData();
   const asset = data[contractId];
@@ -812,7 +816,7 @@ v1.get('/rwa/:contractId', async (req, res) => {
   const result = { contractId, ...asset };
   // Cache individual asset (fire-and-forget)
   cacheSet(cacheKey(contractId), result).catch(() => {});
-  res.json(result);
+  res.json(withCdnAssetUrls(result));
 });
 
 /**
@@ -884,7 +888,7 @@ v1.post('/rwa', adminAuth, writeLimiter, async (req, res) => {
   fireWebhooks(WEBHOOK_EVENTS.CREATED, { contractId, ...data[contractId] }).catch(() => {});
 
   req.log?.info({ contractId }, 'Asset created/updated');
-  res.status(201).json({ contractId, ...data[contractId] });
+  res.status(201).json(withCdnAssetUrls({ contractId, ...data[contractId] }));
 });
 
 /**
@@ -1057,43 +1061,17 @@ v1.patch('/rwa/:contractId', adminAuth, writeLimiter, async (req, res) => {
   fireWebhooks(WEBHOOK_EVENTS.UPDATED, { contractId, ...data[contractId] }).catch(() => {});
 
   req.log?.info({ contractId, fields: Object.keys(patch) }, 'Asset partially updated');
-  res.json({ contractId, ...data[contractId] });
+  res.json(withCdnAssetUrls({ contractId, ...data[contractId] }));
 });
 
 /**
- * @openapi
- * /api/v1/rwa/{contractId}/documents:
- *   post:
- *     tags: [Assets]
- *     summary: Upload a document to IPFS for an asset
- *     description: Uploads a file to IPFS via Pinata and stores the CID in asset metadata. Requires admin API key.
- *     security:
- *       - ApiKeyAuth: []
- *     parameters:
- *       - in: path
- *         name: contractId
- *         required: true
- *         schema:
- *           type: string
- *     requestBody:
- *       required: true
- *       content:
- *         multipart/form-data:
- *           schema:
- *             type: object
- *             properties:
- *               document:
- *                 type: string
- *                 format: binary
- *     responses:
- *       200:
- *         description: Document uploaded and CID stored in asset metadata
- *       400:
- *         description: No file uploaded or unsupported file type
- *       404:
- *         description: Asset not found
- *       502:
- *         description: IPFS upload failed
+ * backend/index.js — backward-compatibility shim.
+ *
+ * The application has been split into the src/ directory (issue #122).
+ * This file re-exports the public API so that existing tests and any
+ * external tooling that imports from `index.js` continues to work unchanged.
+ *
+ * New code should import directly from the relevant src/ module.
  */
 v1.post('/rwa/:contractId/documents', adminAuth, writeLimiter, upload.single('document'), async (req, res) => {
   const { contractId } = req.params;
@@ -1228,7 +1206,7 @@ v1.post('/rwa/:contractId/approve', adminAuth, writeLimiter, async (req, res) =>
   cacheDel('rwa:all', cacheKey(contractId)).catch(() => {});
   fireWebhooks(WEBHOOK_EVENTS.APPROVED, { contractId, ...data[contractId] }).catch(() => {});
   req.log?.info({ contractId }, 'Asset approved');
-  res.json({ contractId, ...data[contractId] });
+  res.json(withCdnAssetUrls({ contractId, ...data[contractId] }));
 });
 
 /**
@@ -1269,7 +1247,7 @@ v1.post('/rwa/:contractId/reject', adminAuth, writeLimiter, async (req, res) => 
   cacheDel('rwa:all', cacheKey(contractId)).catch(() => {});
   fireWebhooks(WEBHOOK_EVENTS.REJECTED, { contractId, ...data[contractId] }).catch(() => {});
   req.log?.info({ contractId }, 'Asset rejected');
-  res.json({ contractId, ...data[contractId] });
+  res.json(withCdnAssetUrls({ contractId, ...data[contractId] }));
 });
 
 // ── News / Updates ────────────────────────────────────────────────────────────
@@ -1501,6 +1479,113 @@ v1.delete('/webhooks/:id', adminAuth, writeLimiter, (req, res) => {
   res.json({ message: 'Webhook deleted', id: req.params.id });
 });
 
+// ── WebSocket Event Broadcasting Routes ────────────────────────────────────────
+/**
+ * POST /api/v1/notify/share-purchased
+ * Broadcasts share purchase events to all connected WebSocket clients
+ * Internal use: Called by frontend after successful transaction confirmation
+ */
+v1.post('/notify/share-purchased', (req, res) => {
+  const { contractId, buyerAddress, sharesToBuy, totalCost } = req.body;
+
+  if (!contractId || !buyerAddress || sharesToBuy === undefined || totalCost === undefined) {
+    return res.status(400).json({ error: 'Missing required fields' });
+  }
+
+  wsManager.broadcastSharePurchase(contractId, buyerAddress, sharesToBuy, totalCost);
+
+  req.log?.info(
+    { contractId, buyerAddress, sharesToBuy, totalCost },
+    'Share purchase event broadcasted'
+  );
+
+  res.json({ ok: true, message: 'Event broadcasted' });
+});
+
+/**
+ * POST /api/v1/notify/price-updated
+ * Broadcasts price update events to all connected WebSocket clients
+ * Internal use: Called by admin when updating price
+ */
+v1.post('/notify/price-updated', adminAuth, (req, res) => {
+  const { contractId, newPrice } = req.body;
+
+  if (!contractId || newPrice === undefined) {
+    return res.status(400).json({ error: 'Missing required fields' });
+  }
+
+  wsManager.broadcastPriceUpdate(contractId, newPrice);
+
+  req.log?.info({ contractId, newPrice }, 'Price update event broadcasted');
+
+  res.json({ ok: true, message: 'Event broadcasted' });
+});
+
+/**
+ * POST /api/v1/notify/availability-changed
+ * Broadcasts availability change events to all connected WebSocket clients
+ * Internal use: Called when available shares change
+ */
+v1.post('/notify/availability-changed', adminAuth, (req, res) => {
+  const { contractId, availableShares } = req.body;
+
+  if (!contractId || availableShares === undefined) {
+    return res.status(400).json({ error: 'Missing required fields' });
+  }
+
+  wsManager.broadcastAvailabilityChange(contractId, availableShares);
+
+  req.log?.info({ contractId, availableShares }, 'Availability change event broadcasted');
+
+  res.json({ ok: true, message: 'Event broadcasted' });
+});
+
+/**
+ * POST /api/v1/notify/asset-updated
+ * Broadcasts asset update events to all connected WebSocket clients
+ * Internal use: Called when asset metadata is updated
+ */
+v1.post('/notify/asset-updated', adminAuth, (req, res) => {
+  const { contractId, asset } = req.body;
+
+  if (!contractId || !asset) {
+    return res.status(400).json({ error: 'Missing required fields' });
+  }
+
+  wsManager.broadcastAssetUpdate(contractId, asset);
+
+  req.log?.info({ contractId }, 'Asset update event broadcasted');
+
+  res.json({ ok: true, message: 'Event broadcasted' });
+});
+
+/**
+ * POST /api/v1/notify/marketplace-status
+ * Broadcasts marketplace pause/unpause events to all connected WebSocket clients
+ * Internal use: Called by admin when pausing/unpausing marketplace
+ */
+v1.post('/notify/marketplace-status', adminAuth, (req, res) => {
+  const { isPaused } = req.body;
+
+  if (isPaused === undefined) {
+    return res.status(400).json({ error: 'Missing isPaused field' });
+  }
+
+  wsManager.broadcastMarketplaceStatus(isPaused);
+
+  req.log?.info({ isPaused }, 'Marketplace status event broadcasted');
+
+  res.json({ ok: true, message: 'Event broadcasted' });
+});
+
+/**
+ * GET /api/v1/ws/stats
+ * Returns WebSocket connection statistics
+ */
+v1.get('/ws/stats', (req, res) => {
+  res.json(wsManager.getStats());
+});
+
 // Mount versioned router and backward-compatible aliases
 app.use('/api/v1', v1);
 app.use('/api', v1); // legacy /api/rwa aliased to /api/v1/rwa
@@ -1521,19 +1606,83 @@ app.use((err, req, res, _next) => {
 
 export { app };
 
-if (process.env.NODE_ENV !== 'test') {
-  import('./cache.js').then(({ initClient }) => initClient());
-  // Optional in-process backup scheduler (no-op unless BACKUP_ENABLED=true).
-  import('./backup.js').then(({ startBackupScheduler }) =>
-    startBackupScheduler({
-      log: {
-        info: (m) => logger.info(m),
-        warn: (m) => logger.warn(m),
-        error: (m) => logger.error(m),
+/**
+ * Initialize Apollo GraphQL Server
+ * Returns a promise that resolves when the server is ready
+ */
+async function initializeApolloServer(expressApp) {
+  try {
+    // Create data layer object for resolvers
+    const dataLayer = {
+      loadData,
+      saveData,
+      validateContractId,
+      validateRwaBody,
+      scoreSearch,
+      syncSearchIndex,
+    };
+
+    // Create Apollo Server instance
+    const server = new ApolloServer({
+      typeDefs,
+      resolvers: createResolvers(dataLayer),
+      context: ({ req }) => {
+        // Check if request has admin API key
+        const apiKey = req.headers['x-api-key'];
+        const isAdmin = apiKey === process.env.ADMIN_API_KEY;
+        return { isAdmin, apiKey };
       },
-    })
-  );
-  app.listen(PORT, () => {
-    logger.info({ port: PORT }, 'RWA Off-chain Metadata Backend started');
+      formatError: (error) => {
+        logger.error({ error: error.message, extensions: error.extensions }, 'GraphQL error');
+        return {
+          message: error.message,
+          extensions: {
+            code: error.extensions?.code || 'INTERNAL_SERVER_ERROR',
+          },
+        };
+      },
+    });
+
+    await server.start();
+    logger.info('Apollo Server started');
+
+    // Mount GraphQL middleware at /graphql
+    expressApp.use(
+      '/graphql',
+      expressMiddleware(server, {
+        context: async ({ req }) => {
+          const apiKey = req.headers['x-api-key'];
+          const isAdmin = apiKey === process.env.ADMIN_API_KEY;
+          return { isAdmin, apiKey };
+        },
+      })
+    );
+
+    logger.info('GraphQL endpoint available at /graphql');
+    return server;
+  } catch (error) {
+    logger.error({ error: error.message }, 'Failed to initialize Apollo Server');
+    throw error;
+  }
+}
+
+if (process.env.NODE_ENV !== 'test') {
+  import('http').then(({ createServer }) => {
+    const server = createServer(app);
+    
+    // Initialize WebSocket server
+    wsManager.initialize(server);
+    logger.info('WebSocket server initialized');
+    
+    // Initialize Apollo GraphQL Server
+    initializeApolloServer(app).catch(err => {
+      logger.error({ error: err.message }, 'Failed to start Apollo Server');
+    });
+    
+    import('./cache.js').then(({ initClient }) => initClient());
+    
+    server.listen(PORT, () => {
+      logger.info({ port: PORT }, 'RWA Off-chain Metadata Backend started with WebSocket & GraphQL support');
+    });
   });
 }

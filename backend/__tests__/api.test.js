@@ -118,6 +118,32 @@ describe('GET /api/rwa', () => {
     expect(res.body.pagination.totalPages).toBeGreaterThanOrEqual(1);
   });
 
+  test('returns relative image and document paths through configured CDN', async () => {
+    const previousAssetCdnUrl = process.env.ASSET_CDN_URL;
+    process.env.ASSET_CDN_URL = 'https://assets.example.com';
+    const contractId = 'C' + 'D'.repeat(55);
+
+    try {
+      await createAndApproveAsset({
+        contractId,
+        title: 'CDN Enabled Asset',
+        location: 'Singapore',
+        description: 'Asset with relative media paths',
+        assetType: 'Real Estate',
+        imageUrl: '/uploads/cdn-asset.jpg',
+        documents: ['/documents/deed.pdf'],
+      });
+
+      const res = await request(app).get(`/api/rwa/${contractId}`);
+      expect(res.status).toBe(200);
+      expect(res.body.imageUrl).toBe('https://assets.example.com/uploads/cdn-asset.jpg');
+      expect(res.body.documents).toEqual(['https://assets.example.com/documents/deed.pdf']);
+    } finally {
+      if (previousAssetCdnUrl === undefined) delete process.env.ASSET_CDN_URL;
+      else process.env.ASSET_CDN_URL = previousAssetCdnUrl;
+    }
+  });
+
   test('filters by assetType', async () => {
     const res = await request(app).get('/api/rwa?assetType=agriculture');
     expect(res.status).toBe(200);
