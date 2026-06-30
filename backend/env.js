@@ -33,19 +33,22 @@ const RULES = [
     description: 'Redis cache TTL in seconds',
     invalid: 'must be a positive integer',
   },
+
   {
-    key: 'CDN_URL',
+    key: 'PINATA_JWT',
     required: false,
-    validate: (v) => isValidHttpUrl(v),
-    description: 'Default CDN base URL for generated asset URLs',
-    invalid: 'must be a valid http(s) URL',
+    validate: (v) => v.trim().length > 0,
+    description: 'Pinata JWT for IPFS document uploads',
+    invalid: 'must not be empty if set',
   },
   {
-    key: 'ASSET_CDN_URL',
+    key: 'PINATA_GATEWAY',
     required: false,
-    validate: (v) => isValidHttpUrl(v),
-    description: 'CDN base URL for uploaded images and documents',
-    invalid: 'must be a valid http(s) URL',
+    validate: (v) => {
+      try { new URL(v); return true; } catch { return false; }
+    },
+    description: 'IPFS gateway base URL (default: https://gateway.pinata.cloud)',
+    invalid: 'must be a valid URL',
   },
 ];
 

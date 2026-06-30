@@ -20,9 +20,30 @@ import { setTimeout } from 'timers/promises';
 import swaggerUi from 'swagger-ui-express';
 import { swaggerSpec } from './docs.js';
 import { cacheGet, cacheSet, cacheDel } from './cache.js';
-import { withCdnAssetUrls } from './cdn.js';
+import multer from 'multer';
+import { uploadToIPFS, getIPFSFileUrl, unpinFromIPFS } from './ipfs.js';
+import { wsManager } from './websocket.js';
+import { ApolloServer } from '@apollo/server';
+import { expressMiddleware } from '@apollo/server/express4';
+import { typeDefs, createResolvers } from './graphql.js';
 
 const __dirname = dirname(fileURLToPath(import.meta.url));
+// multer memoryStorage keeps the file in memory as a Buffer (req.file.buffer).
+// We never write documents to disk — they go straight from memory to Pinata.
+// 10MB limit is generous for PDFs and title deeds.
+const upload = multer({
+  storage: multer.memoryStorage(),
+  limits: { fileSize: 10 * 1024 * 1024 }, // 10MB
+  fileFilter: (_req, file, cb) => {
+    // Only accept PDFs and common image formats for now
+    const allowed = ['application/pdf', 'image/jpeg', 'image/png', 'image/webp'];
+    if (allowed.includes(file.mimetype)) {
+      cb(null, true);
+    } else {
+      cb(new Error(`Unsupported file type: ${file.mimetype}. Allowed: PDF, JPEG, PNG, WEBP`));
+    }
+  },
+});
 const PORT = process.env.PORT || 3001;
 const CORS_ORIGINS = process.env.CORS_ORIGINS
   ? process.env.CORS_ORIGINS.split(',').map(s => s.trim())
@@ -917,6 +938,23 @@ v1.delete('/rwa/:contractId', adminAuth, writeLimiter, async (req, res) => {
   if (!data[contractId]) return res.status(404).json({ error: 'Asset metadata not found' });
 
   const deleted = { contractId, ...data[contractId] };
+
+  // Unpin all IPFS documents before deleting the asset record.
+  // Fire-and-forget — we don't block the response on Pinata's API.
+  if (Array.isArray(deleted.documents) && deleted.documents.length > 0) {
+    Promise.allSettled(
+      deleted.documents
+        .filter(d => d.cid)
+        .map(d => unpinFromIPFS(d.cid))
+    ).then(results => {
+      results.forEach((r, i) => {
+        if (r.status === 'rejected') {
+          logger.warn({ cid: deleted.documents[i].cid, err: r.reason }, 'Failed to unpin document');
+        }
+      });
+    });
+  }
+
   delete data[contractId];
   saveData(data);
 
@@ -1024,6 +1062,110 @@ v1.patch('/rwa/:contractId', adminAuth, writeLimiter, async (req, res) => {
 
   req.log?.info({ contractId, fields: Object.keys(patch) }, 'Asset partially updated');
   res.json(withCdnAssetUrls({ contractId, ...data[contractId] }));
+});
+
+/**
+ * backend/index.js — backward-compatibility shim.
+ *
+ * The application has been split into the src/ directory (issue #122).
+ * This file re-exports the public API so that existing tests and any
+ * external tooling that imports from `index.js` continues to work unchanged.
+ *
+ * New code should import directly from the relevant src/ module.
+ */
+v1.post('/rwa/:contractId/documents', adminAuth, writeLimiter, upload.single('document'), async (req, res) => {
+  const { contractId } = req.params;
+
+  // multer puts the uploaded file on req.file
+  if (!req.file) {
+    return res.status(400).json({ error: 'No file uploaded. Send a multipart/form-data request with field name "document".' });
+  }
+
+  const data = loadData();
+  if (!data[contractId]) {
+    return res.status(404).json({ error: 'Asset metadata not found' });
+  }
+
+  try {
+    // Upload the buffer directly to Pinata — no disk writes
+    const { cid, url, name } = await uploadToIPFS(
+      req.file.buffer,
+      req.file.originalname,
+      data[contractId].title || contractId
+    );
+
+    // Store the document entry in the asset's documents array
+    const docEntry = {
+      cid,
+      url,
+      name,
+      mimeType: req.file.mimetype,
+      size: req.file.size,
+      uploadedAt: new Date().toISOString(),
+    };
+
+    if (!Array.isArray(data[contractId].documents)) {
+      data[contractId].documents = [];
+    }
+    data[contractId].documents.push(docEntry);
+    data[contractId].updatedAt = new Date().toISOString();
+    saveData(data);
+
+    // Bust the cache so the updated asset is returned immediately
+    cacheDel('rwa:all', cacheKey(contractId)).catch(() => {});
+
+    req.log?.info({ contractId, cid }, 'Document uploaded to IPFS');
+    res.json({ contractId, document: docEntry, documents: data[contractId].documents });
+
+  } catch (err) {
+    req.log?.error({ err, contractId }, 'IPFS upload failed');
+    res.status(502).json({ error: `IPFS upload failed: ${err.message}` });
+  }
+});
+
+/**
+ * @openapi
+ * /api/v1/rwa/{contractId}/documents/{cid}:
+ *   get:
+ *     tags: [Assets]
+ *     summary: Retrieve a document from IPFS by CID
+ *     description: Redirects to the IPFS gateway URL for the given CID.
+ *     parameters:
+ *       - in: path
+ *         name: contractId
+ *         required: true
+ *         schema:
+ *           type: string
+ *       - in: path
+ *         name: cid
+ *         required: true
+ *         schema:
+ *           type: string
+ *     responses:
+ *       302:
+ *         description: Redirect to IPFS gateway URL
+ *       404:
+ *         description: Asset or document not found
+ */
+v1.get('/rwa/:contractId/documents/:cid', async (req, res) => {
+  const { contractId, cid } = req.params;
+
+  const data = loadData();
+  const asset = data[contractId];
+  if (!asset) {
+    return res.status(404).json({ error: 'Asset metadata not found' });
+  }
+
+  // Verify this CID actually belongs to this asset before redirecting
+  const doc = asset.documents?.find(d => d.cid === cid);
+  if (!doc) {
+    return res.status(404).json({ error: 'Document not found on this asset' });
+  }
+
+  // Redirect to the IPFS gateway — the file is served from IPFS, not our server
+  const url = getIPFSFileUrl(cid);
+  req.log?.info({ contractId, cid, url }, 'Redirecting to IPFS document');
+  res.redirect(302, url);
 });
 
 /**
@@ -1337,6 +1479,113 @@ v1.delete('/webhooks/:id', adminAuth, writeLimiter, (req, res) => {
   res.json({ message: 'Webhook deleted', id: req.params.id });
 });
 
+// ── WebSocket Event Broadcasting Routes ────────────────────────────────────────
+/**
+ * POST /api/v1/notify/share-purchased
+ * Broadcasts share purchase events to all connected WebSocket clients
+ * Internal use: Called by frontend after successful transaction confirmation
+ */
+v1.post('/notify/share-purchased', (req, res) => {
+  const { contractId, buyerAddress, sharesToBuy, totalCost } = req.body;
+
+  if (!contractId || !buyerAddress || sharesToBuy === undefined || totalCost === undefined) {
+    return res.status(400).json({ error: 'Missing required fields' });
+  }
+
+  wsManager.broadcastSharePurchase(contractId, buyerAddress, sharesToBuy, totalCost);
+
+  req.log?.info(
+    { contractId, buyerAddress, sharesToBuy, totalCost },
+    'Share purchase event broadcasted'
+  );
+
+  res.json({ ok: true, message: 'Event broadcasted' });
+});
+
+/**
+ * POST /api/v1/notify/price-updated
+ * Broadcasts price update events to all connected WebSocket clients
+ * Internal use: Called by admin when updating price
+ */
+v1.post('/notify/price-updated', adminAuth, (req, res) => {
+  const { contractId, newPrice } = req.body;
+
+  if (!contractId || newPrice === undefined) {
+    return res.status(400).json({ error: 'Missing required fields' });
+  }
+
+  wsManager.broadcastPriceUpdate(contractId, newPrice);
+
+  req.log?.info({ contractId, newPrice }, 'Price update event broadcasted');
+
+  res.json({ ok: true, message: 'Event broadcasted' });
+});
+
+/**
+ * POST /api/v1/notify/availability-changed
+ * Broadcasts availability change events to all connected WebSocket clients
+ * Internal use: Called when available shares change
+ */
+v1.post('/notify/availability-changed', adminAuth, (req, res) => {
+  const { contractId, availableShares } = req.body;
+
+  if (!contractId || availableShares === undefined) {
+    return res.status(400).json({ error: 'Missing required fields' });
+  }
+
+  wsManager.broadcastAvailabilityChange(contractId, availableShares);
+
+  req.log?.info({ contractId, availableShares }, 'Availability change event broadcasted');
+
+  res.json({ ok: true, message: 'Event broadcasted' });
+});
+
+/**
+ * POST /api/v1/notify/asset-updated
+ * Broadcasts asset update events to all connected WebSocket clients
+ * Internal use: Called when asset metadata is updated
+ */
+v1.post('/notify/asset-updated', adminAuth, (req, res) => {
+  const { contractId, asset } = req.body;
+
+  if (!contractId || !asset) {
+    return res.status(400).json({ error: 'Missing required fields' });
+  }
+
+  wsManager.broadcastAssetUpdate(contractId, asset);
+
+  req.log?.info({ contractId }, 'Asset update event broadcasted');
+
+  res.json({ ok: true, message: 'Event broadcasted' });
+});
+
+/**
+ * POST /api/v1/notify/marketplace-status
+ * Broadcasts marketplace pause/unpause events to all connected WebSocket clients
+ * Internal use: Called by admin when pausing/unpausing marketplace
+ */
+v1.post('/notify/marketplace-status', adminAuth, (req, res) => {
+  const { isPaused } = req.body;
+
+  if (isPaused === undefined) {
+    return res.status(400).json({ error: 'Missing isPaused field' });
+  }
+
+  wsManager.broadcastMarketplaceStatus(isPaused);
+
+  req.log?.info({ isPaused }, 'Marketplace status event broadcasted');
+
+  res.json({ ok: true, message: 'Event broadcasted' });
+});
+
+/**
+ * GET /api/v1/ws/stats
+ * Returns WebSocket connection statistics
+ */
+v1.get('/ws/stats', (req, res) => {
+  res.json(wsManager.getStats());
+});
+
 // Mount versioned router and backward-compatible aliases
 app.use('/api/v1', v1);
 app.use('/api', v1); // legacy /api/rwa aliased to /api/v1/rwa
@@ -1357,9 +1606,83 @@ app.use((err, req, res, _next) => {
 
 export { app };
 
+/**
+ * Initialize Apollo GraphQL Server
+ * Returns a promise that resolves when the server is ready
+ */
+async function initializeApolloServer(expressApp) {
+  try {
+    // Create data layer object for resolvers
+    const dataLayer = {
+      loadData,
+      saveData,
+      validateContractId,
+      validateRwaBody,
+      scoreSearch,
+      syncSearchIndex,
+    };
+
+    // Create Apollo Server instance
+    const server = new ApolloServer({
+      typeDefs,
+      resolvers: createResolvers(dataLayer),
+      context: ({ req }) => {
+        // Check if request has admin API key
+        const apiKey = req.headers['x-api-key'];
+        const isAdmin = apiKey === process.env.ADMIN_API_KEY;
+        return { isAdmin, apiKey };
+      },
+      formatError: (error) => {
+        logger.error({ error: error.message, extensions: error.extensions }, 'GraphQL error');
+        return {
+          message: error.message,
+          extensions: {
+            code: error.extensions?.code || 'INTERNAL_SERVER_ERROR',
+          },
+        };
+      },
+    });
+
+    await server.start();
+    logger.info('Apollo Server started');
+
+    // Mount GraphQL middleware at /graphql
+    expressApp.use(
+      '/graphql',
+      expressMiddleware(server, {
+        context: async ({ req }) => {
+          const apiKey = req.headers['x-api-key'];
+          const isAdmin = apiKey === process.env.ADMIN_API_KEY;
+          return { isAdmin, apiKey };
+        },
+      })
+    );
+
+    logger.info('GraphQL endpoint available at /graphql');
+    return server;
+  } catch (error) {
+    logger.error({ error: error.message }, 'Failed to initialize Apollo Server');
+    throw error;
+  }
+}
+
 if (process.env.NODE_ENV !== 'test') {
-  import('./cache.js').then(({ initClient }) => initClient());
-  app.listen(PORT, () => {
-    logger.info({ port: PORT }, 'RWA Off-chain Metadata Backend started');
+  import('http').then(({ createServer }) => {
+    const server = createServer(app);
+    
+    // Initialize WebSocket server
+    wsManager.initialize(server);
+    logger.info('WebSocket server initialized');
+    
+    // Initialize Apollo GraphQL Server
+    initializeApolloServer(app).catch(err => {
+      logger.error({ error: err.message }, 'Failed to start Apollo Server');
+    });
+    
+    import('./cache.js').then(({ initClient }) => initClient());
+    
+    server.listen(PORT, () => {
+      logger.info({ port: PORT }, 'RWA Off-chain Metadata Backend started with WebSocket & GraphQL support');
+    });
   });
 }

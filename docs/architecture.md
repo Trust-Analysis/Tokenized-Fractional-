@@ -116,3 +116,31 @@ sequenceDiagram
 | `pause` | Admin | Pauses the marketplace to prevent new purchases. |
 | `unpause` | Admin | Unpauses the marketplace. |
 | `emergency_withdraw` | Admin | Withdraws the accumulated payment tokens from the contract to the admin. |
+| `get_contract_metadata` | Any | Returns the SIP-4 compliant contract metadata (name, version, description). |
+
+## SIP‑4 / SEP‑46 Contract Metadata
+
+The contract implements the [SIP‑4](https://github.com/stellar/stellar-protocol/blob/master/core/sip-0004.md) / [SEP‑46](https://github.com/stellar/stellar-protocol/blob/master/ecosystem/sep-0046.md) metadata standard, providing both compile-time and runtime metadata:
+
+- **Compile-time metadata** — embedded in the Wasm `contractmetav0` custom section via the `contractmeta!()` macro. Off-chain tools (explorers, wallets, indexers) read these entries without executing the contract.
+- **Runtime metadata** — stored in contract instance storage and returned by `get_contract_metadata()`. Accessible on-chain by other contracts.
+
+### Wasm Custom Section Entries
+
+| Key | Value |
+|-----|-------|
+| `name` | `RWA Marketplace` |
+| `version` | `0.2.0` |
+| `description` | `Tokenized Fractional RWA Marketplace` |
+| `sep` | `41` |
+
+### Data Types
+
+```rust
+#[contracttype]
+pub struct ContractMetadata {
+    pub name: soroban_sdk::String,
+    pub version: soroban_sdk::String,
+    pub description: soroban_sdk::String,
+}
+```
