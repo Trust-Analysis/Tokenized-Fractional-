@@ -1065,39 +1065,13 @@ v1.patch('/rwa/:contractId', adminAuth, writeLimiter, async (req, res) => {
 });
 
 /**
- * @openapi
- * /api/v1/rwa/{contractId}/documents:
- *   post:
- *     tags: [Assets]
- *     summary: Upload a document to IPFS for an asset
- *     description: Uploads a file to IPFS via Pinata and stores the CID in asset metadata. Requires admin API key.
- *     security:
- *       - ApiKeyAuth: []
- *     parameters:
- *       - in: path
- *         name: contractId
- *         required: true
- *         schema:
- *           type: string
- *     requestBody:
- *       required: true
- *       content:
- *         multipart/form-data:
- *           schema:
- *             type: object
- *             properties:
- *               document:
- *                 type: string
- *                 format: binary
- *     responses:
- *       200:
- *         description: Document uploaded and CID stored in asset metadata
- *       400:
- *         description: No file uploaded or unsupported file type
- *       404:
- *         description: Asset not found
- *       502:
- *         description: IPFS upload failed
+ * backend/index.js — backward-compatibility shim.
+ *
+ * The application has been split into the src/ directory (issue #122).
+ * This file re-exports the public API so that existing tests and any
+ * external tooling that imports from `index.js` continues to work unchanged.
+ *
+ * New code should import directly from the relevant src/ module.
  */
 v1.post('/rwa/:contractId/documents', adminAuth, writeLimiter, upload.single('document'), async (req, res) => {
   const { contractId } = req.params;

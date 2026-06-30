@@ -552,6 +552,14 @@ function App() {
           currentPrice={pricePerShare}
         />
       )}
+
+      {/* ── Investment Calculator (Issue #189) ───────────────────────────── */}
+      <InvestmentCalculator
+        pricePerShare={pricePerShare}
+        assetTitle={assetMeta?.title || 'Asset'}
+        totalShares={totalShares}
+        availableShares={availableShares}
+      />
         </>
       )}
 
