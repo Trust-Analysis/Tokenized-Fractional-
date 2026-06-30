@@ -2,10 +2,12 @@
  * GraphQL Schema and Resolvers for RWA Marketplace
  * 
  * Provides full CRUD access to real-world assets with queries and mutations.
+ * Includes real-time subscriptions for marketplace events.
  * Integrates with the existing REST API data layer.
  */
 
-import { gql } from '@apollo/server';
+import { gql } from 'graphql-tag';
+import { pubsub, SUBSCRIPTION_EVENTS } from './pubsub.js';
 
 /**
  * GraphQL Type Definitions
@@ -141,6 +143,132 @@ export const typeDefs = gql`
     
     # Unpause asset trading
     unpauseAsset(contractId: String!): RWA!
+  }
+
+  # Real-time subscription event
+  type SubscriptionEvent {
+    # Event type
+    event: String!
+    
+    # Event timestamp
+    timestamp: String!
+    
+    # Event payload data
+    data: String!
+  }
+
+  # Share purchase event
+  type SharePurchasedEvent {
+    # The asset being purchased
+    contractId: String!
+    
+    # Buyer address
+    buyer: String!
+    
+    # Number of shares purchased
+    shareCount: Int!
+    
+    # Purchase price
+    totalPrice: Int!
+    
+    # Remaining available shares
+    remainingShares: Int!
+    
+    # Transaction timestamp
+    timestamp: String!
+  }
+
+  # Price update event
+  type PriceUpdatedEvent {
+    # The asset with updated price
+    contractId: String!
+    
+    # New price per share
+    newPrice: Int!
+    
+    # Old price per share
+    oldPrice: Int!
+    
+    # Update timestamp
+    timestamp: String!
+  }
+
+  # Asset availability change event
+  type AvailabilityChangedEvent {
+    # The asset with changed availability
+    contractId: String!
+    
+    # New available share count
+    availableShares: Int!
+    
+    # Previous available share count
+    previousAvailable: Int!
+    
+    # Change timestamp
+    timestamp: String!
+  }
+
+  # Asset marketplace status change event
+  type MarketplaceStatusEvent {
+    # The affected asset
+    contractId: String!
+    
+    # Is the marketplace paused
+    isPaused: Boolean!
+    
+    # Status change reason
+    reason: String
+    
+    # Change timestamp
+    timestamp: String!
+  }
+
+  # Transaction completion event
+  type TransactionCompletedEvent {
+    # Transaction identifier
+    transactionId: String!
+    
+    # Affected asset
+    contractId: String!
+    
+    # Transaction type
+    type: String!
+    
+    # Transaction status
+    status: String!
+    
+    # Transaction metadata
+    metadata: String
+    
+    # Completion timestamp
+    timestamp: String!
+  }
+
+  # Root Subscription type
+  type Subscription {
+    # Subscribe to share purchase events
+    onSharePurchased(contractId: String): SharePurchasedEvent!
+    
+    # Subscribe to price updates
+    onPriceUpdated(contractId: String): PriceUpdatedEvent!
+    
+    # Subscribe to asset listing events
+    onAssetListed: RWA!
+    
+    # Subscribe to asset update events
+    onAssetUpdated(contractId: String): RWA!
+    
+    # Subscribe to availability changes
+    onAvailabilityChanged(contractId: String): AvailabilityChangedEvent!
+    
+    # Subscribe to marketplace paused events
+    onMarketplacePaused: MarketplaceStatusEvent!
+    
+    # Subscribe to marketplace unpaused events
+    onMarketplaceUnpaused: MarketplaceStatusEvent!
+    
+    # Subscribe to transaction completion events
+    onTransactionCompleted(contractId: String): TransactionCompletedEvent!
   }
 `;
 
@@ -459,6 +587,142 @@ export function createResolvers(dataLayer) {
           ...asset,
           isPaused: false,
         };
+      },
+    },
+
+    Subscription: {
+      /**
+       * Subscribe to share purchase events
+       * Optionally filter by contractId
+       */
+      onSharePurchased: {
+        subscribe: (_parent, args) => {
+          const { contractId } = args;
+          const topic = contractId 
+            ? `${SUBSCRIPTION_EVENTS.SHARE_PURCHASED}:${contractId}`
+            : SUBSCRIPTION_EVENTS.SHARE_PURCHASED;
+
+          return pubsub.subscribe(topic, (payload) => {
+            // Return only events for this contract if filtered
+            if (contractId && payload.data.contractId !== contractId) {
+              return null;
+            }
+            return payload.data;
+          });
+        },
+      },
+
+      /**
+       * Subscribe to price update events
+       * Optionally filter by contractId
+       */
+      onPriceUpdated: {
+        subscribe: (_parent, args) => {
+          const { contractId } = args;
+          const topic = contractId
+            ? `${SUBSCRIPTION_EVENTS.PRICE_UPDATED}:${contractId}`
+            : SUBSCRIPTION_EVENTS.PRICE_UPDATED;
+
+          return pubsub.subscribe(topic, (payload) => {
+            if (contractId && payload.data.contractId !== contractId) {
+              return null;
+            }
+            return payload.data;
+          });
+        },
+      },
+
+      /**
+       * Subscribe to new asset listings
+       */
+      onAssetListed: {
+        subscribe: () => {
+          return pubsub.subscribe(SUBSCRIPTION_EVENTS.ASSET_LISTED, (payload) => {
+            return payload.data;
+          });
+        },
+      },
+
+      /**
+       * Subscribe to asset updates
+       * Optionally filter by contractId
+       */
+      onAssetUpdated: {
+        subscribe: (_parent, args) => {
+          const { contractId } = args;
+          const topic = contractId
+            ? `${SUBSCRIPTION_EVENTS.ASSET_UPDATED}:${contractId}`
+            : SUBSCRIPTION_EVENTS.ASSET_UPDATED;
+
+          return pubsub.subscribe(topic, (payload) => {
+            if (contractId && payload.data.contractId !== contractId) {
+              return null;
+            }
+            return payload.data;
+          });
+        },
+      },
+
+      /**
+       * Subscribe to availability changes
+       * Optionally filter by contractId
+       */
+      onAvailabilityChanged: {
+        subscribe: (_parent, args) => {
+          const { contractId } = args;
+          const topic = contractId
+            ? `${SUBSCRIPTION_EVENTS.AVAILABILITY_CHANGED}:${contractId}`
+            : SUBSCRIPTION_EVENTS.AVAILABILITY_CHANGED;
+
+          return pubsub.subscribe(topic, (payload) => {
+            if (contractId && payload.data.contractId !== contractId) {
+              return null;
+            }
+            return payload.data;
+          });
+        },
+      },
+
+      /**
+       * Subscribe to marketplace paused events
+       */
+      onMarketplacePaused: {
+        subscribe: () => {
+          return pubsub.subscribe(SUBSCRIPTION_EVENTS.MARKETPLACE_PAUSED, (payload) => {
+            return payload.data;
+          });
+        },
+      },
+
+      /**
+       * Subscribe to marketplace unpaused events
+       */
+      onMarketplaceUnpaused: {
+        subscribe: () => {
+          return pubsub.subscribe(SUBSCRIPTION_EVENTS.MARKETPLACE_UNPAUSED, (payload) => {
+            return payload.data;
+          });
+        },
+      },
+
+      /**
+       * Subscribe to transaction completion events
+       * Optionally filter by contractId
+       */
+      onTransactionCompleted: {
+        subscribe: (_parent, args) => {
+          const { contractId } = args;
+          const topic = contractId
+            ? `${SUBSCRIPTION_EVENTS.TRANSACTION_COMPLETED}:${contractId}`
+            : SUBSCRIPTION_EVENTS.TRANSACTION_COMPLETED;
+
+          return pubsub.subscribe(topic, (payload) => {
+            if (contractId && payload.data.contractId !== contractId) {
+              return null;
+            }
+            return payload.data;
+          });
+        },
       },
     },
   };
