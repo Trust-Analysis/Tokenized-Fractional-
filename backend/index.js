@@ -22,6 +22,10 @@ import { swaggerSpec } from './docs.js';
 import { cacheGet, cacheSet, cacheDel } from './cache.js';
 import multer from 'multer';
 import { uploadToIPFS, getIPFSFileUrl, unpinFromIPFS } from './ipfs.js';
+import { wsManager } from './websocket.js';
+import { ApolloServer } from '@apollo/server';
+import { expressMiddleware } from '@apollo/server/express4';
+import { typeDefs, createResolvers } from './graphql.js';
 
 const __dirname = dirname(fileURLToPath(import.meta.url));
 // multer memoryStorage keeps the file in memory as a Buffer (req.file.buffer).
@@ -1501,6 +1505,113 @@ v1.delete('/webhooks/:id', adminAuth, writeLimiter, (req, res) => {
   res.json({ message: 'Webhook deleted', id: req.params.id });
 });
 
+// ── WebSocket Event Broadcasting Routes ────────────────────────────────────────
+/**
+ * POST /api/v1/notify/share-purchased
+ * Broadcasts share purchase events to all connected WebSocket clients
+ * Internal use: Called by frontend after successful transaction confirmation
+ */
+v1.post('/notify/share-purchased', (req, res) => {
+  const { contractId, buyerAddress, sharesToBuy, totalCost } = req.body;
+
+  if (!contractId || !buyerAddress || sharesToBuy === undefined || totalCost === undefined) {
+    return res.status(400).json({ error: 'Missing required fields' });
+  }
+
+  wsManager.broadcastSharePurchase(contractId, buyerAddress, sharesToBuy, totalCost);
+
+  req.log?.info(
+    { contractId, buyerAddress, sharesToBuy, totalCost },
+    'Share purchase event broadcasted'
+  );
+
+  res.json({ ok: true, message: 'Event broadcasted' });
+});
+
+/**
+ * POST /api/v1/notify/price-updated
+ * Broadcasts price update events to all connected WebSocket clients
+ * Internal use: Called by admin when updating price
+ */
+v1.post('/notify/price-updated', adminAuth, (req, res) => {
+  const { contractId, newPrice } = req.body;
+
+  if (!contractId || newPrice === undefined) {
+    return res.status(400).json({ error: 'Missing required fields' });
+  }
+
+  wsManager.broadcastPriceUpdate(contractId, newPrice);
+
+  req.log?.info({ contractId, newPrice }, 'Price update event broadcasted');
+
+  res.json({ ok: true, message: 'Event broadcasted' });
+});
+
+/**
+ * POST /api/v1/notify/availability-changed
+ * Broadcasts availability change events to all connected WebSocket clients
+ * Internal use: Called when available shares change
+ */
+v1.post('/notify/availability-changed', adminAuth, (req, res) => {
+  const { contractId, availableShares } = req.body;
+
+  if (!contractId || availableShares === undefined) {
+    return res.status(400).json({ error: 'Missing required fields' });
+  }
+
+  wsManager.broadcastAvailabilityChange(contractId, availableShares);
+
+  req.log?.info({ contractId, availableShares }, 'Availability change event broadcasted');
+
+  res.json({ ok: true, message: 'Event broadcasted' });
+});
+
+/**
+ * POST /api/v1/notify/asset-updated
+ * Broadcasts asset update events to all connected WebSocket clients
+ * Internal use: Called when asset metadata is updated
+ */
+v1.post('/notify/asset-updated', adminAuth, (req, res) => {
+  const { contractId, asset } = req.body;
+
+  if (!contractId || !asset) {
+    return res.status(400).json({ error: 'Missing required fields' });
+  }
+
+  wsManager.broadcastAssetUpdate(contractId, asset);
+
+  req.log?.info({ contractId }, 'Asset update event broadcasted');
+
+  res.json({ ok: true, message: 'Event broadcasted' });
+});
+
+/**
+ * POST /api/v1/notify/marketplace-status
+ * Broadcasts marketplace pause/unpause events to all connected WebSocket clients
+ * Internal use: Called by admin when pausing/unpausing marketplace
+ */
+v1.post('/notify/marketplace-status', adminAuth, (req, res) => {
+  const { isPaused } = req.body;
+
+  if (isPaused === undefined) {
+    return res.status(400).json({ error: 'Missing isPaused field' });
+  }
+
+  wsManager.broadcastMarketplaceStatus(isPaused);
+
+  req.log?.info({ isPaused }, 'Marketplace status event broadcasted');
+
+  res.json({ ok: true, message: 'Event broadcasted' });
+});
+
+/**
+ * GET /api/v1/ws/stats
+ * Returns WebSocket connection statistics
+ */
+v1.get('/ws/stats', (req, res) => {
+  res.json(wsManager.getStats());
+});
+
 // Mount versioned router and backward-compatible aliases
 app.use('/api/v1', v1);
 app.use('/api', v1); // legacy /api/rwa aliased to /api/v1/rwa
@@ -1521,9 +1632,83 @@ app.use((err, req, res, _next) => {
 
 export { app };
 
+/**
+ * Initialize Apollo GraphQL Server
+ * Returns a promise that resolves when the server is ready
+ */
+async function initializeApolloServer(expressApp) {
+  try {
+    // Create data layer object for resolvers
+    const dataLayer = {
+      loadData,
+      saveData,
+      validateContractId,
+      validateRwaBody,
+      scoreSearch,
+      syncSearchIndex,
+    };
+
+    // Create Apollo Server instance
+    const server = new ApolloServer({
+      typeDefs,
+      resolvers: createResolvers(dataLayer),
+      context: ({ req }) => {
+        // Check if request has admin API key
+        const apiKey = req.headers['x-api-key'];
+        const isAdmin = apiKey === process.env.ADMIN_API_KEY;
+        return { isAdmin, apiKey };
+      },
+      formatError: (error) => {
+        logger.error({ error: error.message, extensions: error.extensions }, 'GraphQL error');
+        return {
+          message: error.message,
+          extensions: {
+            code: error.extensions?.code || 'INTERNAL_SERVER_ERROR',
+          },
+        };
+      },
+    });
+
+    await server.start();
+    logger.info('Apollo Server started');
+
+    // Mount GraphQL middleware at /graphql
+    expressApp.use(
+      '/graphql',
+      expressMiddleware(server, {
+        context: async ({ req }) => {
+          const apiKey = req.headers['x-api-key'];
+          const isAdmin = apiKey === process.env.ADMIN_API_KEY;
+          return { isAdmin, apiKey };
+        },
+      })
+    );
+
+    logger.info('GraphQL endpoint available at /graphql');
+    return server;
+  } catch (error) {
+    logger.error({ error: error.message }, 'Failed to initialize Apollo Server');
+    throw error;
+  }
+}
+
 if (process.env.NODE_ENV !== 'test') {
-  import('./cache.js').then(({ initClient }) => initClient());
-  app.listen(PORT, () => {
-    logger.info({ port: PORT }, 'RWA Off-chain Metadata Backend started');
+  import('http').then(({ createServer }) => {
+    const server = createServer(app);
+    
+    // Initialize WebSocket server
+    wsManager.initialize(server);
+    logger.info('WebSocket server initialized');
+    
+    // Initialize Apollo GraphQL Server
+    initializeApolloServer(app).catch(err => {
+      logger.error({ error: err.message }, 'Failed to start Apollo Server');
+    });
+    
+    import('./cache.js').then(({ initClient }) => initClient());
+    
+    server.listen(PORT, () => {
+      logger.info({ port: PORT }, 'RWA Off-chain Metadata Backend started with WebSocket & GraphQL support');
+    });
   });
 }

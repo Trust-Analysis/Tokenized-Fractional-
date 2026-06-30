@@ -41,6 +41,7 @@ import { useToastStore } from './store/useToastStore';
 import { useSorobanRead, useSorobanWrite } from './hooks/useSoroban';
 import useTransactionStatus from './hooks/useTransactionStatus';
 import { useKeyboardShortcuts } from './hooks/useKeyboardShortcuts';
+import { useMarketplaceWebSocket, WS_EVENT_TYPES } from './hooks/useWebSocket';
 
 const CONTRACT_ID = import.meta.env.VITE_CONTRACT_ID || 'C...';
 const NETWORK_PASSPHRASE = import.meta.env.VITE_NETWORK_PASSPHRASE || Networks.TESTNET;
@@ -154,6 +155,53 @@ function App() {
 
   const [theme, setTheme] = useState(() => localStorage.getItem('theme') || 'dark');
 
+  // ── WebSocket for real-time updates ────────────────────────────────────────
+  const wsUrl = `ws://${new URL(API_URL).host}/ws`;
+  const { connected: wsConnected } = useMarketplaceWebSocket(wsUrl, (message) => {
+    // Handle WebSocket events
+    if (!message.type || !message.data) return;
+
+    switch (message.type) {
+      case WS_EVENT_TYPES.SHARE_PURCHASED:
+        // Notify about share purchase - could show a notification or update UI
+        if (publicKey && message.data.buyerAddress !== publicKey) {
+          // Someone else bought shares - refresh availability
+          console.log('Share purchase detected:', message.data);
+        }
+        break;
+
+      case WS_EVENT_TYPES.PRICE_UPDATED:
+        // Price updated - could trigger a refresh of prices
+        console.log('Price updated:', message.data);
+        break;
+
+      case WS_EVENT_TYPES.AVAILABILITY_CHANGED:
+        // Available shares changed
+        console.log('Availability changed:', message.data);
+        break;
+
+      case WS_EVENT_TYPES.ASSET_UPDATED:
+        // Asset metadata updated
+        console.log('Asset updated:', message.data);
+        break;
+
+      case WS_EVENT_TYPES.MARKETPLACE_PAUSED:
+        addToast({ message: 'Marketplace has been paused', type: 'warning' });
+        break;
+
+      case WS_EVENT_TYPES.MARKETPLACE_UNPAUSED:
+        addToast({ message: 'Marketplace is now available', type: 'success' });
+        break;
+
+      default:
+        console.log('Unknown WebSocket event:', message.type);
+    }
+  }, {
+    enabled: process.env.NODE_ENV !== 'test',
+    reconnectAttempts: 5,
+    reconnectDelay: 3000,
+  });
+
   // ── Keyboard shortcuts (Issue #194) ─────────────────────────────────────────
   const [view, setView] = useState('marketplace');
   const [shortcutHelpOpen, setShortcutHelpOpen] = useState(false);
@@ -180,6 +228,9 @@ function App() {
 
   const toggleTheme = () => setTheme((prev) => (prev === 'dark' ? 'light' : 'dark'));
 
+  // Track purchase details for WebSocket broadcast
+  const lastPurchaseRef = useRef({ amount: null, timestamp: null });
+
   useEffect(() => {
     if (!lastTxHash || notifiedRef.current[lastTxHash]) return;
     if (txStatus === 'confirmed') {
@@ -187,6 +238,22 @@ function App() {
       if (pendingToastRef.current) { removeToast(pendingToastRef.current); pendingToastRef.current = null; }
       addToast({ message: TX_CONFIRMED, type: 'success', txHash: lastTxHash });
       setTxResult(null);
+      
+      // Broadcast share purchase event to WebSocket subscribers
+      if (publicKey && lastPurchaseRef.current.amount && pricePerShare) {
+        const totalCost = lastPurchaseRef.current.amount * pricePerShare;
+        fetch(`${API_URL}/api/v1/notify/share-purchased`, {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({
+            contractId: CONTRACT_ID,
+            buyerAddress: publicKey,
+            sharesToBuy: lastPurchaseRef.current.amount,
+            totalCost,
+          }),
+        }).catch(err => console.error('Failed to broadcast share purchase:', err));
+      }
+      
       fetchShares();
     } else if (txStatus === 'failed') {
       notifiedRef.current[lastTxHash] = true;
@@ -194,7 +261,7 @@ function App() {
       addToast({ message: TX_FAILED, type: 'error', txHash: lastTxHash });
       setTxError(null);
     }
-  }, [lastTxHash, txStatus]);
+  }, [lastTxHash, txStatus, publicKey, pricePerShare]);
 
   useEffect(() => { checkConnection(); }, [checkConnection]);
 
@@ -275,6 +342,10 @@ function App() {
       const scValBuyer = nativeToScVal(publicKey, { type: 'address' });
       const scValShares = nativeToScVal(buyAmount, { type: 'u32' });
       const scValToken = nativeToScVal(paymentToken, { type: 'address' });
+      
+      // Store purchase details for WebSocket broadcast on confirmation
+      lastPurchaseRef.current = { amount: buyAmount, timestamp: Date.now() };
+      
       const submitRes = await buySharesTx.execute([scValBuyer, scValShares, scValToken]);
       setConfirmPending(false);
       const hash = submitRes.hash;
