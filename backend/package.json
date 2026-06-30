@@ -12,7 +12,11 @@
     "migrate": "knex migrate:latest",
     "migrate:rollback": "knex migrate:rollback",
     "migrate:make": "knex migrate:make",
-    "migrate:status": "knex migrate:list"
+    "migrate:status": "knex migrate:list",
+    "backup": "node backup.js",
+    "backup:list": "node backup.js --list",
+    "backup:verify": "node backup.js --verify-latest",
+    "restore": "node restore.js"
   },
   "jest": {
     "testEnvironment": "node",

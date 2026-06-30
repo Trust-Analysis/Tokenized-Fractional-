@@ -1523,6 +1523,16 @@ export { app };
 
 if (process.env.NODE_ENV !== 'test') {
   import('./cache.js').then(({ initClient }) => initClient());
+  // Optional in-process backup scheduler (no-op unless BACKUP_ENABLED=true).
+  import('./backup.js').then(({ startBackupScheduler }) =>
+    startBackupScheduler({
+      log: {
+        info: (m) => logger.info(m),
+        warn: (m) => logger.warn(m),
+        error: (m) => logger.error(m),
+      },
+    })
+  );
   app.listen(PORT, () => {
     logger.info({ port: PORT }, 'RWA Off-chain Metadata Backend started');
   });

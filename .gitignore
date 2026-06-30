@@ -11,6 +11,12 @@ webhooks.json
 test-data.json
 .blue-green-state.json
 
+# Database files and backups
+*.db
+backups/
+restore-database.sql
+*.pre-restore
+
 # Playwright
 test-results/
 playwright-report/

@@ -101,6 +101,7 @@ graph TB
 - [Troubleshooting Guide](docs/troubleshooting.md) — Common issues and solutions
 - [Multi-Region Deployment](docs/multi-region-deployment.md) — Deployment strategy and failover
 - [Kubernetes Deployment](docs/kubernetes-deployment.md) — Kubernetes manifests, scaling, and self-healing
+- [Database Backup & Restore](docs/backups.md) — Automated backups, S3 offsite storage, retention, and disaster recovery
 - [NFT Certificates](docs/NFT_CERTIFICATES.md)
 - [NFT Quickstart](docs/NFT_QUICKSTART.md)
 - [FAQ](docs/FAQ.md)
