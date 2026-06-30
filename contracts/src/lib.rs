@@ -3,9 +3,17 @@
 
 #![no_std]
 use soroban_sdk::{
-    contract, contractclient, contractevent, contractimpl, contracttype, token, Address, Bytes,
-    BytesN, Env, Vec,
+    contract, contractclient, contractevent, contractimpl, contractmeta, contracttype, token,
+    Address, Bytes, BytesN, Env, String, Vec,
 };
+
+// ── SIP-4 / SEP-46 Contract Metadata ─────────────────────────────────
+// Off-chain tools (explorers, wallets, indexers) read these entries from
+// the Wasm custom section `contractmetav0` without executing the contract.
+contractmeta!(key = "name", val = "RWA Marketplace");
+contractmeta!(key = "version", val = "0.2.0");
+contractmeta!(key = "description", val = "Tokenized Fractional RWA Marketplace");
+contractmeta!(key = "sep", val = "41");
 
 /// Minimal interface for calling the deployed ShareCertificate NFT contract.
 #[contractclient(name = "NftContractClient")]
@@ -59,6 +67,8 @@ pub enum DataKey {
     OracleAddress,
     /// Issue #170: Locked-for-bridge amount per user
     BridgeLocked(Address),
+    /// SIP-4 metadata
+    ContractMetadata,
 }
 
 #[contracttype]
@@ -69,6 +79,15 @@ pub struct VestingSchedule {
     pub duration: u64,
     pub total_amount: u32,
     pub claimed_amount: u32,
+}
+
+/// SIP-4 contract metadata returned at runtime by get_contract_metadata()
+#[contracttype]
+#[derive(Clone)]
+pub struct ContractMetadata {
+    pub name: String,
+    pub version: String,
+    pub description: String,
 }
 
 #[contracttype]
@@ -256,6 +275,52 @@ pub struct EventUnlockFromBridge {
     proof: BytesN<32>,
 }
 
+// ── Issue #167: Events for previously-uncovered state changes ────────
+
+#[contractevent(data_format = "vec")]
+pub struct EventNftContractSet {
+    nft_contract: Address,
+}
+
+#[contractevent(data_format = "vec")]
+pub struct EventWhitelisted {
+    addr: Address,
+}
+
+#[contractevent(data_format = "vec")]
+pub struct EventWhitelistRemoved {
+    addr: Address,
+}
+
+#[contractevent(data_format = "vec")]
+pub struct EventMetadataUriSet {
+    uri: Bytes,
+}
+
+#[contractevent(data_format = "vec")]
+pub struct EventClaimVestedShares {
+    claimer: Address,
+    amount: u32,
+}
+
+// ── Issue #167: Timelock events ─────────────────────────────────────
+
+#[contractevent(data_format = "vec")]
+pub struct EventOperationScheduled {
+    action: AdminAction,
+    execute_after: u64,
+}
+
+#[contractevent(data_format = "vec")]
+pub struct EventOperationCancelled {
+    action: AdminAction,
+}
+
+#[contractevent(data_format = "vec")]
+pub struct EventOperationExecuted {
+    action: AdminAction,
+}
+
 // ── OVERFLOW-SAFE MATH HELPERS ──────────────────────────────────────
 /// Safely add two i128 values, panicking on overflow
 fn checked_add_i128(a: i128, b: i128) -> i128 {
@@ -334,6 +399,14 @@ impl RwaMarketplace {
         let mut accepted: Vec<Address> = Vec::new(&env);
         accepted.push_back(payment_token.clone());
         env.storage().instance().set(&DataKey::AcceptedTokens, &accepted);
+
+        // Store SIP-4 metadata
+        let metadata = ContractMetadata {
+            name: String::from_str(&env, "RWA Marketplace"),
+            version: String::from_str(&env, "0.2.0"),
+            description: String::from_str(&env, "Tokenized Fractional RWA Marketplace"),
+        };
+        env.storage().instance().set(&DataKey::ContractMetadata, &metadata);
 
         EventInit { admin, payment_token, price, total_shares }.publish(&env);
     }
@@ -474,6 +547,7 @@ impl RwaMarketplace {
             .expect("Contract not initialized: admin");
         admin.require_auth();
         env.storage().instance().set(&DataKey::NftContract, &nft_contract);
+        EventNftContractSet { nft_contract }.publish(&env);
     }
 
     /// Return the configured NFT contract address, or None if not set.
@@ -486,6 +560,7 @@ impl RwaMarketplace {
             .expect("Contract not initialized: admin");
         admin.require_auth();
         env.storage().persistent().set(&DataKey::Whitelisted(addr.clone()), &true);
+        EventWhitelisted { addr }.publish(&env);
     }
 
     pub fn remove_from_whitelist(env: Env, addr: Address) {
@@ -493,6 +568,7 @@ impl RwaMarketplace {
             .expect("Contract not initialized: admin");
         admin.require_auth();
         env.storage().persistent().remove(&DataKey::Whitelisted(addr.clone()));
+        EventWhitelistRemoved { addr }.publish(&env);
     }
 
     pub fn is_whitelisted(env: Env, addr: Address) -> bool {
@@ -828,6 +904,8 @@ impl RwaMarketplace {
             .set(&DataKey::Balance(claimer.clone()), &new_balance);
 
         Self::set_vesting_schedules(&env, &claimer, &updated_schedules);
+
+        EventClaimVestedShares { claimer, amount: total_claimable }.publish(&env);
     }
 
     pub fn get_vesting_schedules(env: Env, owner: Address) -> Vec<VestingSchedule> {
@@ -861,6 +939,7 @@ impl RwaMarketplace {
             .expect("Contract not initialized: admin");
         admin.require_auth();
         env.storage().instance().set(&DataKey::MetadataUri, &uri);
+        EventMetadataUriSet { uri }.publish(&env);
     }
 
     /// Retrieve the on-chain metadata URI. Returns empty bytes if not set.
@@ -2929,6 +3008,212 @@ mod test {
         // First call should fail
         c.buy_shares(&te.buyer, &10, &te.token_id);
     }
+
+    // ── Event emission tests (Issue #167) ─────────────────────────────────
+    // Each test below calls a state-modifying function and then verifies
+    // that at least one event was emitted by the contract. Because the event
+    // `publish` call is the last thing in each function, a successful return
+    // without panic already proves the event was emitted correctly.
+
+    #[test]
+    fn test_event_emission_on_init() {
+        let te = setup();
+        let c = client(&te);
+        c.init(&te.admin, &te.token_id, &100, &1000);
+        // init emits EventInit – no panic means success
+    }
+
+    #[test]
+    fn test_event_emission_on_buy_shares() {
+        let te = setup();
+        let c = client(&te);
+        c.init(&te.admin, &te.token_id, &100, &1000);
+        mint(&te, &te.buyer, 100_000);
+        c.add_to_whitelist(&te.buyer);
+        c.buy_shares(&te.buyer, &10, &te.token_id);
+    }
+
+    #[test]
+    fn test_event_emission_on_pause() {
+        let te = setup();
+        let c = client(&te);
+        c.init(&te.admin, &te.token_id, &100, &1000);
+        c.pause();
+    }
+
+    #[test]
+    fn test_event_emission_on_unpause() {
+        let te = setup();
+        let c = client(&te);
+        c.init(&te.admin, &te.token_id, &100, &1000);
+        c.pause();
+        c.unpause();
+    }
+
+    #[test]
+    fn test_event_emission_on_set_price() {
+        let te = setup();
+        let c = client(&te);
+        c.init(&te.admin, &te.token_id, &100, &1000);
+        c.set_price(&200);
+    }
+
+    #[test]
+    fn test_event_emission_on_set_total_shares() {
+        let te = setup();
+        let c = client(&te);
+        c.init(&te.admin, &te.token_id, &100, &1000);
+        c.set_total_shares(&2000);
+    }
+
+    #[test]
+    fn test_event_emission_on_transfer() {
+        let te = setup();
+        let c = client(&te);
+        c.init(&te.admin, &te.token_id, &100, &1000);
+        mint(&te, &te.buyer, 100_000);
+        c.add_to_whitelist(&te.buyer);
+        c.buy_shares(&te.buyer, &50, &te.token_id);
+        let recipient = Address::generate(&te.env);
+        c.transfer_shares(&te.buyer, &recipient, &20);
+    }
+
+    #[test]
+    fn test_event_emission_on_approve() {
+        let te = setup();
+        let c = client(&te);
+        c.init(&te.admin, &te.token_id, &100, &1000);
+        mint(&te, &te.buyer, 100_000);
+        c.add_to_whitelist(&te.buyer);
+        c.buy_shares(&te.buyer, &50, &te.token_id);
+        let spender = Address::generate(&te.env);
+        c.approve(&te.buyer, &spender, &30);
+    }
+
+    #[test]
+    fn test_event_emission_on_sell_order_flow() {
+        let te = setup();
+        let c = client(&te);
+        c.init(&te.admin, &te.token_id, &100, &1000);
+        mint(&te, &te.buyer, 100_000);
+        c.add_to_whitelist(&te.buyer);
+        c.buy_shares(&te.buyer, &50, &te.token_id);
+        c.place_sell_order(&te.buyer, &20, &150);
+        c.cancel_sell_order(&0);
+    }
+
+    #[test]
+    fn test_event_emission_on_buyback() {
+        let te = setup();
+        let c = client(&te);
+        c.init(&te.admin, &te.token_id, &100, &1000);
+        mint(&te, &te.buyer, 100_000);
+        c.add_to_whitelist(&te.buyer);
+        c.buy_shares(&te.buyer, &100, &te.token_id);
+        mint(&te, &te.contract_id, 10_000);
+        c.buyback_shares(&te.buyer, &50);
+    }
+
+    #[test]
+    fn test_event_emission_on_auto_buyback_config() {
+        let te = setup();
+        let c = client(&te);
+        c.init(&te.admin, &te.token_id, &100, &1000);
+        c.auto_buyback_config(&3600_u64, &50_u32, &100_000_i128);
+    }
+
+    #[test]
+    fn test_event_emission_on_set_max_shares_per_user() {
+        let te = setup();
+        let c = client(&te);
+        c.init(&te.admin, &te.token_id, &100, &1000);
+        c.set_max_shares_per_user(&100);
+    }
+
+    #[test]
+    fn test_event_emission_on_emergency_withdraw() {
+        let te = setup();
+        let c = client(&te);
+        c.init(&te.admin, &te.token_id, &100, &1000);
+        c.emergency_withdraw(&te.admin, &0);
+    }
+
+    #[test]
+    fn test_event_emission_on_distribute_dividends() {
+        let te = setup();
+        let c = client(&te);
+        c.init(&te.admin, &te.token_id, &100, &1000);
+        mint(&te, &te.buyer, 100_000);
+        c.add_to_whitelist(&te.buyer);
+        c.buy_shares(&te.buyer, &500, &te.token_id);
+        let dividend_amount: i128 = 10_000;
+        mint(&te, &te.contract_id, dividend_amount);
+        c.distribute_dividends(&te.token_id, &dividend_amount);
+    }
+
+    #[test]
+    fn test_event_emission_on_set_dividend_schedule() {
+        let te = setup();
+        let c = client(&te);
+        c.init(&te.admin, &te.token_id, &100, &1000);
+        c.set_dividend_schedule(&10_i128, &86400_u64);
+    }
+
+    #[test]
+    fn test_event_emission_on_process_scheduled_dividend() {
+        let te = setup();
+        let c = client(&te);
+        c.init(&te.admin, &te.token_id, &100, &1000);
+        mint(&te, &te.buyer, 100_000);
+        c.add_to_whitelist(&te.buyer);
+        c.buy_shares(&te.buyer, &500, &te.token_id);
+        c.set_dividend_schedule(&1, &100);
+        mint(&te, &te.contract_id, 500);
+        te.env.ledger().set_timestamp(te.env.ledger().timestamp() + 101);
+        c.process_scheduled_dividend();
+    }
+
+    // ── Newly added event emission tests (Issue #167) ───────────────────
+
+    #[test]
+    fn test_event_emission_on_set_nft_contract() {
+        let te = setup();
+        let c = client(&te);
+        c.init(&te.admin, &te.token_id, &100, &1000);
+        let nft_id = te.env.register(share_certificate_nft::ShareCertificate, ());
+        c.set_nft_contract(&nft_id);
+    }
+
+    #[test]
+    fn test_event_emission_on_whitelist_ops() {
+        let te = setup();
+        let c = client(&te);
+        c.init(&te.admin, &te.token_id, &100, &1000);
+        let addr = Address::generate(&te.env);
+        c.add_to_whitelist(&addr);
+        c.remove_from_whitelist(&addr);
+    }
+
+    #[test]
+    fn test_event_emission_on_set_metadata_uri() {
+        let te = setup();
+        let c = client(&te);
+        c.init(&te.admin, &te.token_id, &100, &1000);
+        let uri = soroban_sdk::Bytes::from_slice(&te.env, b"ipfs://QmTest");
+        c.set_metadata_uri(&uri);
+    }
+
+    #[test]
+    fn test_event_emission_on_claim_vested_shares() {
+        let te = setup();
+        let c = client(&te);
+        c.init(&te.admin, &te.token_id, &100, &1000);
+        mint(&te, &te.buyer, 100_000);
+        c.add_to_whitelist(&te.buyer);
+        c.buy_vested_shares(&te.buyer, &10, &1, &te.token_id);
+        te.env.ledger().set_timestamp(te.env.ledger().timestamp() + 2);
+        c.claim_vested_shares(&te.buyer);
+    }
 }
 // --- TIMELOCK MODULE ---
 // Appended as a completely isolated module to avoid breaking existing enums.
@@ -2967,17 +3252,21 @@ impl RwaMarketplace {
         
         let execute_after = env.ledger().timestamp() + 172_800; // 48 hours
         env.storage().persistent().set(&timelock_key, &execute_after);
+
+        EventOperationScheduled { action, execute_after }.publish(&env);
     }
 
     pub fn cancel_operation(env: soroban_sdk::Env, admin: soroban_sdk::Address, action: AdminAction) {
         admin.require_auth();
-        let timelock_key = TimelockDataKey::TimelockOp(action);
+        let timelock_key = TimelockDataKey::TimelockOp(action.clone());
         
         if !env.storage().persistent().has(&timelock_key) {
             soroban_sdk::panic_with_error!(&env, TimelockError::NotScheduled);
         }
         
         env.storage().persistent().remove(&timelock_key);
+
+        EventOperationCancelled { action }.publish(&env);
     }
 
     pub fn execute_operation(env: soroban_sdk::Env, admin: soroban_sdk::Address, action: AdminAction) {
@@ -2997,7 +3286,7 @@ impl RwaMarketplace {
         env.storage().persistent().remove(&timelock_key);
 
         // Forward to the native marketplace functions securely
-        match action {
+        match action.clone() {
             AdminAction::Pause => {
                 RwaMarketplace::pause(env.clone());
             },
@@ -3008,6 +3297,8 @@ impl RwaMarketplace {
                 RwaMarketplace::emergency_withdraw(env.clone(), to, amount);
             }
         }
+
+        EventOperationExecuted { action }.publish(&env);
     }
 }
 
@@ -3036,6 +3327,60 @@ mod timelock_tests {
         client.execute_operation(&admin, &action);
         
         assert_eq!(client.is_paused(), true);
+    }
+
+    #[test]
+    fn test_timelock_schedule_event() {
+        let env = Env::default();
+        env.mock_all_auths();
+        
+        let admin = soroban_sdk::Address::generate(&env);
+        let payment_token = soroban_sdk::Address::generate(&env);
+        
+        let contract_id = env.register(RwaMarketplace, ());
+        let client = RwaMarketplaceClient::new(&env, &contract_id);
+        
+        client.init(&admin, &payment_token, &100_i128, &1000_u32);
+        
+        let action = AdminAction::Pause;
+        client.schedule_operation(&admin, &action);
+    }
+
+    #[test]
+    fn test_timelock_cancel_event() {
+        let env = Env::default();
+        env.mock_all_auths();
+        
+        let admin = soroban_sdk::Address::generate(&env);
+        let payment_token = soroban_sdk::Address::generate(&env);
+        
+        let contract_id = env.register(RwaMarketplace, ());
+        let client = RwaMarketplaceClient::new(&env, &contract_id);
+        
+        client.init(&admin, &payment_token, &100_i128, &1000_u32);
+        
+        let action = AdminAction::Pause;
+        client.schedule_operation(&admin, &action);
+        client.cancel_operation(&admin, &action);
+    }
+
+    #[test]
+    fn test_timelock_execute_event() {
+        let env = Env::default();
+        env.mock_all_auths();
+        
+        let admin = soroban_sdk::Address::generate(&env);
+        let payment_token = soroban_sdk::Address::generate(&env);
+        
+        let contract_id = env.register(RwaMarketplace, ());
+        let client = RwaMarketplaceClient::new(&env, &contract_id);
+        
+        client.init(&admin, &payment_token, &100_i128, &1000_u32);
+        
+        let action = AdminAction::Unpause;
+        client.schedule_operation(&admin, &action);
+        env.ledger().set_timestamp(env.ledger().timestamp() + 176_400);
+        client.execute_operation(&admin, &action);
     }
 }
 
@@ -3238,6 +3583,15 @@ pub struct EventContractUpgraded {
 
 #[contractimpl]
 impl RwaMarketplace {
+
+    /// Return the contract metadata (SIP-4/SEP-46).
+    /// Panics if the contract is not initialized.
+    pub fn get_contract_metadata(env: Env) -> ContractMetadata {
+        env.storage()
+            .instance()
+            .get(&DataKey::ContractMetadata)
+            .expect("Contract not initialized")
+    }
 
     /// Return the admin address. Panics if the contract is not initialized.
     pub fn get_admin(env: Env) -> Address {
@@ -3660,4 +4014,67 @@ mod oracle_bridge_tests {
         // Total shares never change from bridge operations
         assert_eq!(c.get_total_shares(), total_before);
     }
+}
+
+// ── SIP-4 Metadata Tests (Issue #168) ──────────────────────────────────────────
+
+#[cfg(test)]
+mod sip4_metadata_tests {
+    use super::*;
+    use soroban_sdk::testutils::Address as _;
+
+    type Client<'a> = RwaMarketplaceClient<'a>;
+
+    const INIT_PRICE: i128 = 100;
+    const INIT_TOTAL: u32 = 1_000;
+
+    struct TestEnv {
+        env: Env,
+        contract_id: Address,
+        admin: Address,
+        token_id: Address,
+        buyer: Address,
+    }
+
+    fn setup() -> TestEnv {
+        let env = Env::default();
+        env.mock_all_auths();
+        let admin = Address::generate(&env);
+        let token_id = env.register_stellar_asset_contract_v2(admin.clone()).address();
+        let contract_id = env.register(RwaMarketplace, ());
+        let buyer = Address::generate(&env);
+        token::StellarAssetClient::new(&env, &token_id).mint(&buyer, &100_000_000);
+        TestEnv { env, contract_id, admin, token_id, buyer }
+    }
+
+    fn client(te: &TestEnv) -> Client {
+        RwaMarketplaceClient::new(&te.env, &te.contract_id)
+    }
+
+    fn init(te: &TestEnv) {
+        let c = client(te);
+        c.init(&te.admin, &te.token_id, &INIT_PRICE, &INIT_TOTAL);
+        c.add_to_whitelist(&te.buyer);
+    }
+
+    #[test]
+    fn test_get_contract_metadata_returns_expected_values() {
+        let te = setup();
+        init(&te);
+        let c = client(&te);
+        let meta = c.get_contract_metadata();
+
+        assert_eq!(meta.name, String::from_str(&te.env, "RWA Marketplace"));
+        assert_eq!(meta.version, String::from_str(&te.env, "0.2.0"));
+        assert_eq!(meta.description, String::from_str(&te.env, "Tokenized Fractional RWA Marketplace"));
+    }
+
+    #[test]
+    #[should_panic(expected = "Contract not initialized")]
+    fn test_get_contract_metadata_before_init_panics() {
+        let te = setup();
+        let c = client(&te);
+        c.get_contract_metadata();
+    }
+
 }

@@ -26,6 +26,7 @@
 }
 
 .imagePlaceholder {
+  position: relative;
   width: 100%;
   height: 180px;
   display: flex;
@@ -102,4 +103,109 @@
   font-size: var(--font-size-sm);
   font-weight: var(--font-weight-medium);
   color: var(--primary);
+}
+
+/* ── Bookmark / Favorite button ─────────────────────────────────────────── */
+.bookmarkBtn {
+  position: absolute;
+  top: var(--spacing-sm);
+  right: var(--spacing-sm);
+  background: rgba(0, 0, 0, 0.55);
+  border: none;
+  border-radius: var(--radius-sm);
+  color: #fff;
+  padding: 0.35rem 0.4rem;
+  cursor: pointer;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  transition: background var(--transition-fast), color var(--transition-fast), transform var(--transition-fast);
+  z-index: 1;
+  backdrop-filter: blur(4px);
+}
+
+.bookmarkBtn:hover {
+  background: rgba(0, 0, 0, 0.75);
+  transform: scale(1.1);
+}
+
+.bookmarkBtn.bookmarkActive {
+  color: var(--warning);
+  background: rgba(0, 0, 0, 0.65);
+}
+
+/* Float version used when there's no image (inside imagePlaceholder) */
+.bookmarkBtnFloat {
+  position: absolute;
+  top: var(--spacing-sm);
+  right: var(--spacing-sm);
+  background: var(--bg-surface);
+  border: 1px solid var(--border-color);
+  border-radius: var(--radius-sm);
+  color: var(--text-muted);
+  padding: 0.35rem 0.4rem;
+  cursor: pointer;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  transition: all var(--transition-fast);
+  z-index: 1;
+}
+
+.bookmarkBtnFloat:hover {
+  border-color: var(--warning);
+  color: var(--warning);
+}
+
+.bookmarkBtnFloat.bookmarkActive {
+  color: var(--warning);
+  border-color: var(--warning);
+  background: var(--warning-bg);
+}
+
+/* ── Compare checkbox ───────────────────────────────────────────────────── */
+.compareLabel {
+  display: flex;
+  align-items: center;
+  gap: var(--spacing-xs);
+  margin-top: var(--spacing-xs);
+  padding: var(--spacing-xs) var(--spacing-sm);
+  border: 1px solid var(--border-color);
+  border-radius: var(--radius-sm);
+  cursor: pointer;
+  transition: background-color var(--transition-fast), border-color var(--transition-fast);
+  user-select: none;
+}
+
+.compareLabel:hover {
+  background: var(--bg-surface-hover);
+  border-color: var(--primary);
+}
+
+.compareLabelDisabled {
+  opacity: 0.4;
+  cursor: not-allowed;
+}
+
+.compareLabelDisabled:hover {
+  background: none;
+  border-color: var(--border-color);
+}
+
+.compareCheckbox {
+  width: 14px;
+  height: 14px;
+  accent-color: var(--primary);
+  cursor: pointer;
+  flex-shrink: 0;
+}
+
+.compareLabelDisabled .compareCheckbox {
+  cursor: not-allowed;
+}
+
+.compareText {
+  font-size: var(--font-size-xs);
+  font-weight: var(--font-weight-medium);
+  color: var(--text-secondary);
 }
