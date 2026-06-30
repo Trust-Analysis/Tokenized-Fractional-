@@ -24,6 +24,7 @@ import { CORS_ORIGINS, SENTRY_DSN, SENTRY_TRACES_SAMPLE_RATE, SENTRY_PROFILES_SA
 import { logger } from './services/logger.js';
 import { apiLimiter } from './middleware/rateLimiter.js';
 import { createAdminAuth, adminAuth as legacyAdminAuth } from './middleware/auth.js';
+import { createTieredRateLimiter, initializeRedisLimiter, closeRedisLimiter, extractWalletMiddleware } from './middleware/tieredRateLimiter.js';
 import { v1 } from './routes/rwa.js';
 import { swaggerSpec } from '../docs.js';
 import { initDatabase, getDatabase } from './services/database.js';
@@ -32,6 +33,7 @@ import { createApiKeysRouter } from './routes/apiKeys.js';
 import { createTransactionService } from './services/transactionService.js';
 import { createAnalyticsRoutes } from './routes/analytics.js';
 import { createPurchaseRoutes } from './routes/purchases.js';
+import { createRateLimitingRoutes } from './routes/rateLimiting.js';
 
 // ── Sentry init ───────────────────────────────────────────────────────────────
 if (SENTRY_DSN && process.env.NODE_ENV !== 'test') {
@@ -68,6 +70,7 @@ let apiKeysRouter = null;
 let transactionService = null;
 let analyticsRoutes = null;
 let purchasesRoutes = null;
+let rateLimitingRoutes = null;
 
 /**
  * Initialize the app with database services.
@@ -75,6 +78,14 @@ let purchasesRoutes = null;
  */
 export async function initializeApp() {
   try {
+    // Initialize Redis for distributed rate limiting
+    const redisInitialized = await initializeRedisLimiter();
+    if (redisInitialized) {
+      logger.info('Redis rate limiter initialized');
+    } else if (REDIS_URL) {
+      logger.warn('Redis configured but not available, using memory-based rate limiting');
+    }
+
     // Initialize database
     const db = await initDatabase(NODE_ENV);
     logger.info('Database initialized');
@@ -96,6 +107,9 @@ export async function initializeApp() {
     // Setup analytics and purchases routes
     analyticsRoutes = createAnalyticsRoutes(transactionService, logger, adminAuth);
     purchasesRoutes = createPurchaseRoutes(transactionService, logger);
+
+    // Setup rate limiting routes
+    rateLimitingRoutes = createRateLimitingRoutes(logger, adminAuth);
 
     return { db, apiKeyService, transactionService };
   } catch (error) {
@@ -133,8 +147,20 @@ app.use(pinoHttp({
   genReqId: req => req.requestId,
 }));
 
-// Rate limiting for all /api/* routes
-app.use('/api/', apiLimiter);
+// Extract wallet address for authentication detection
+app.use(extractWalletMiddleware);
+
+// Tiered rate limiting for all /api/* routes
+// Different limits for anonymous, authenticated, and admin users
+app.use('/api/', createTieredRateLimiter('read'));
+
+// For write operations, apply stricter rate limiting
+app.use('/api/', (req, res, next) => {
+  if (['POST', 'PATCH', 'DELETE'].includes(req.method)) {
+    return createTieredRateLimiter('write')(req, res, next);
+  }
+  next();
+});
 
 // Prometheus metrics
 app.use(metricsMiddleware);
@@ -251,6 +277,27 @@ app.use('/api/purchases', (req, res, next) => {
   purchasesRoutes(req, res, next);
 });
 
+// Mount rate limiting management routes (admin only)
+app.use('/api/v1/rate-limiting', (req, res, next) => {
+  if (!rateLimitingRoutes) {
+    return res.status(503).json({
+      error: 'Rate limiting service not initialized',
+      code: 'SERVICE_UNAVAILABLE',
+    });
+  }
+  rateLimitingRoutes(req, res, next);
+});
+
+app.use('/api/rate-limiting', (req, res, next) => {
+  if (!rateLimitingRoutes) {
+    return res.status(503).json({
+      error: 'Rate limiting service not initialized',
+      code: 'SERVICE_UNAVAILABLE',
+    });
+  }
+  rateLimitingRoutes(req, res, next);
+});
+
 // 404 handler
 app.use((_req, res) => {
   res.status(404).json({ error: 'Not found', requestId: _req.requestId });
@@ -266,3 +313,10 @@ app.use((err, req, res, _next) => {
   req.log?.error({ err }, 'Unhandled error');
   res.status(500).json({ error: 'Internal server error', requestId: req.requestId });
 });
+
+/**
+ * Cleanup function to close resources
+ */
+export async function closeApp() {
+  await closeRedisLimiter();
+}
