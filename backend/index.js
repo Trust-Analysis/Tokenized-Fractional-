@@ -23,6 +23,9 @@ import { cacheGet, cacheSet, cacheDel } from './cache.js';
 import multer from 'multer';
 import { uploadToIPFS, getIPFSFileUrl, unpinFromIPFS } from './ipfs.js';
 import { wsManager } from './websocket.js';
+import { ApolloServer } from '@apollo/server';
+import { expressMiddleware } from '@apollo/server/express4';
+import { typeDefs, createResolvers } from './graphql.js';
 
 const __dirname = dirname(fileURLToPath(import.meta.url));
 // multer memoryStorage keeps the file in memory as a Buffer (req.file.buffer).
@@ -1629,6 +1632,66 @@ app.use((err, req, res, _next) => {
 
 export { app };
 
+/**
+ * Initialize Apollo GraphQL Server
+ * Returns a promise that resolves when the server is ready
+ */
+async function initializeApolloServer(expressApp) {
+  try {
+    // Create data layer object for resolvers
+    const dataLayer = {
+      loadData,
+      saveData,
+      validateContractId,
+      validateRwaBody,
+      scoreSearch,
+      syncSearchIndex,
+    };
+
+    // Create Apollo Server instance
+    const server = new ApolloServer({
+      typeDefs,
+      resolvers: createResolvers(dataLayer),
+      context: ({ req }) => {
+        // Check if request has admin API key
+        const apiKey = req.headers['x-api-key'];
+        const isAdmin = apiKey === process.env.ADMIN_API_KEY;
+        return { isAdmin, apiKey };
+      },
+      formatError: (error) => {
+        logger.error({ error: error.message, extensions: error.extensions }, 'GraphQL error');
+        return {
+          message: error.message,
+          extensions: {
+            code: error.extensions?.code || 'INTERNAL_SERVER_ERROR',
+          },
+        };
+      },
+    });
+
+    await server.start();
+    logger.info('Apollo Server started');
+
+    // Mount GraphQL middleware at /graphql
+    expressApp.use(
+      '/graphql',
+      expressMiddleware(server, {
+        context: async ({ req }) => {
+          const apiKey = req.headers['x-api-key'];
+          const isAdmin = apiKey === process.env.ADMIN_API_KEY;
+          return { isAdmin, apiKey };
+        },
+      })
+    );
+
+    logger.info('GraphQL endpoint available at /graphql');
+    return server;
+  } catch (error) {
+    logger.error({ error: error.message }, 'Failed to initialize Apollo Server');
+    throw error;
+  }
+}
+
 if (process.env.NODE_ENV !== 'test') {
   import('http').then(({ createServer }) => {
     const server = createServer(app);
@@ -1637,10 +1700,15 @@ if (process.env.NODE_ENV !== 'test') {
     wsManager.initialize(server);
     logger.info('WebSocket server initialized');
     
+    // Initialize Apollo GraphQL Server
+    initializeApolloServer(app).catch(err => {
+      logger.error({ error: err.message }, 'Failed to start Apollo Server');
+    });
+    
     import('./cache.js').then(({ initClient }) => initClient());
     
     server.listen(PORT, () => {
-      logger.info({ port: PORT }, 'RWA Off-chain Metadata Backend started with WebSocket support');
+      logger.info({ port: PORT }, 'RWA Off-chain Metadata Backend started with WebSocket & GraphQL support');
     });
   });
 }
