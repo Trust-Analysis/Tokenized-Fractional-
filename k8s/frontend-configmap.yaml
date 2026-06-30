@@ -1,0 +1,12 @@
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: rwa-frontend-config
+  namespace: rwa-marketplace
+  labels:
+    app: rwa-frontend
+    component: config
+data:
+  VITE_RPC_URL: "https://soroban-testnet.stellar.org:443"
+  VITE_NETWORK_PASSPHRASE: "Test SDF Network ; September 2015"
+  VITE_API_URL: "http://rwa-backend-svc:3001"
