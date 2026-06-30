@@ -58,5 +58,5 @@ export default defineConfig({
         "frame-ancestors 'none'",
       ].join('; '),
     },
-  };
+  },
 });

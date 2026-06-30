@@ -26,6 +26,7 @@ import { wsManager } from './websocket.js';
 import { ApolloServer } from '@apollo/server';
 import { expressMiddleware } from '@apollo/server/express4';
 import { typeDefs, createResolvers } from './graphql.js';
+import { initializeGraphQLSubscriptions } from './graphql-ws-adapter.js';
 
 const __dirname = dirname(fileURLToPath(import.meta.url));
 // multer memoryStorage keeps the file in memory as a Buffer (req.file.buffer).
@@ -1610,7 +1611,7 @@ export { app };
  * Initialize Apollo GraphQL Server
  * Returns a promise that resolves when the server is ready
  */
-async function initializeApolloServer(expressApp) {
+async function initializeApolloServer(expressApp, httpServer) {
   try {
     // Create data layer object for resolvers
     const dataLayer = {
@@ -1659,6 +1660,13 @@ async function initializeApolloServer(expressApp) {
     );
 
     logger.info('GraphQL endpoint available at /graphql');
+
+    // Initialize WebSocket subscriptions if httpServer is provided
+    if (httpServer) {
+      initializeGraphQLSubscriptions(httpServer, server);
+      logger.info('GraphQL subscriptions initialized at /graphql/subscriptions');
+    }
+
     return server;
   } catch (error) {
     logger.error({ error: error.message }, 'Failed to initialize Apollo Server');
@@ -1670,19 +1678,19 @@ if (process.env.NODE_ENV !== 'test') {
   import('http').then(({ createServer }) => {
     const server = createServer(app);
     
-    // Initialize WebSocket server
+    // Initialize WebSocket server for REST events
     wsManager.initialize(server);
     logger.info('WebSocket server initialized');
     
-    // Initialize Apollo GraphQL Server
-    initializeApolloServer(app).catch(err => {
+    // Initialize Apollo GraphQL Server with subscriptions
+    initializeApolloServer(app, server).catch(err => {
       logger.error({ error: err.message }, 'Failed to start Apollo Server');
     });
     
     import('./cache.js').then(({ initClient }) => initClient());
     
     server.listen(PORT, () => {
-      logger.info({ port: PORT }, 'RWA Off-chain Metadata Backend started with WebSocket & GraphQL support');
+      logger.info({ port: PORT }, 'RWA Off-chain Metadata Backend started with WebSocket, GraphQL & Subscriptions support');
     });
   });
 }

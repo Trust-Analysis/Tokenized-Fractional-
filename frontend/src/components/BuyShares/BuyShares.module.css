@@ -182,3 +182,35 @@
   color: var(--color-primary, #4a9eff);
   font-variant-numeric: tabular-nums;
 }
+
+/* ── Social Share Section ──────────────────────────────────────────────────── */
+.socialShareSection {
+  margin-top: var(--spacing-md);
+}
+
+.socialShareSection :global(.container) {
+  box-shadow: none;
+  background: var(--bg-surface-alt, #f8f9fa);
+  border: 1px solid var(--border-color);
+  padding: var(--spacing-md);
+}
+
+.socialShareSection :global(.title) {
+  margin-bottom: var(--spacing-md);
+}
+
+.socialShareSection :global(.shareGrid) {
+  margin-bottom: var(--spacing-md);
+}
+
+/* Responsive adjustments for social share within BuyShares */
+@media (max-width: 768px) {
+  .socialShareSection :global(.container) {
+    padding: var(--spacing-sm);
+  }
+
+  .socialShareSection :global(.title) {
+    font-size: 18px;
+    margin-bottom: var(--spacing-sm);
+  }
+}

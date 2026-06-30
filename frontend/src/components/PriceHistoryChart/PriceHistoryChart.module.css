@@ -1,0 +1,345 @@
+.container {
+  background: #ffffff;
+  border: 1px solid #e5e7eb;
+  border-radius: 8px;
+  padding: 24px;
+  box-shadow: 0 1px 3px rgba(0, 0, 0, 0.1);
+}
+
+.header {
+  display: flex;
+  justify-content: space-between;
+  align-items: flex-start;
+  gap: 24px;
+  margin-bottom: 24px;
+  flex-wrap: wrap;
+}
+
+.titleSection {
+  flex: 1;
+  min-width: 300px;
+}
+
+.title {
+  margin: 0 0 12px 0;
+  font-size: 20px;
+  font-weight: 600;
+  color: #111827;
+}
+
+.stats {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(120px, 1fr));
+  gap: 12px;
+}
+
+.statItem {
+  display: flex;
+  flex-direction: column;
+  padding: 10px 12px;
+  background: #f9fafb;
+  border-radius: 6px;
+  border: 1px solid #e5e7eb;
+  transition: all 0.2s ease;
+}
+
+.statItem:hover {
+  background: #f3f4f6;
+  border-color: #d1d5db;
+}
+
+.statItem.positive {
+  background: #ecfdf5;
+  border-color: #a7f3d0;
+}
+
+.statItem.positive .statValue {
+  color: #10b981;
+}
+
+.statItem.negative {
+  background: #fef2f2;
+  border-color: #fecaca;
+}
+
+.statItem.negative .statValue {
+  color: #ef4444;
+}
+
+.statLabel {
+  font-size: 11px;
+  font-weight: 500;
+  color: #6b7280;
+  text-transform: uppercase;
+  letter-spacing: 0.5px;
+  margin-bottom: 4px;
+}
+
+.statValue {
+  font-size: 14px;
+  font-weight: 600;
+  color: #111827;
+}
+
+.controls {
+  display: flex;
+  gap: 12px;
+  align-items: center;
+  flex-wrap: wrap;
+}
+
+.timeRangeButtons {
+  display: flex;
+  gap: 6px;
+  padding: 6px;
+  background: #f3f4f6;
+  border-radius: 6px;
+}
+
+.timeButton {
+  padding: 6px 12px;
+  background: transparent;
+  border: 1px solid transparent;
+  border-radius: 4px;
+  font-size: 12px;
+  font-weight: 500;
+  color: #6b7280;
+  cursor: pointer;
+  transition: all 0.2s ease;
+}
+
+.timeButton:hover {
+  background: #ffffff;
+  border-color: #d1d5db;
+}
+
+.timeButton.active {
+  background: #3b82f6;
+  color: #ffffff;
+  border-color: #3b82f6;
+}
+
+.chartTypeButtons {
+  display: flex;
+  gap: 6px;
+  padding: 6px;
+  background: #f3f4f6;
+  border-radius: 6px;
+}
+
+.chartTypeButton {
+  padding: 6px 12px;
+  background: transparent;
+  border: 1px solid transparent;
+  border-radius: 4px;
+  font-size: 16px;
+  cursor: pointer;
+  transition: all 0.2s ease;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+}
+
+.chartTypeButton:hover {
+  background: #ffffff;
+  border-color: #d1d5db;
+}
+
+.chartTypeButton.active {
+  background: #3b82f6;
+  border-color: #3b82f6;
+}
+
+.chartContainer {
+  width: 100%;
+  margin: 24px 0;
+  background: #fafbfc;
+  border-radius: 6px;
+  border: 1px solid #e5e7eb;
+  padding: 12px;
+}
+
+.footer {
+  text-align: center;
+  padding-top: 16px;
+  border-top: 1px solid #e5e7eb;
+}
+
+.dataInfo {
+  margin: 0;
+  font-size: 12px;
+  color: #6b7280;
+}
+
+/* Loading state */
+.loading {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  min-height: 400px;
+  gap: 12px;
+}
+
+.spinner {
+  width: 40px;
+  height: 40px;
+  border: 3px solid #e5e7eb;
+  border-top-color: #3b82f6;
+  border-radius: 50%;
+  animation: spin 0.8s linear infinite;
+}
+
+@keyframes spin {
+  to {
+    transform: rotate(360deg);
+  }
+}
+
+.loading p {
+  margin: 0;
+  color: #6b7280;
+  font-size: 14px;
+}
+
+/* Error state */
+.error {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  min-height: 300px;
+  gap: 8px;
+  padding: 24px;
+  background: #fef2f2;
+  border: 1px solid #fecaca;
+  border-radius: 8px;
+}
+
+.error p {
+  margin: 0;
+  color: #ef4444;
+  font-size: 14px;
+  font-weight: 500;
+}
+
+.errorMessage {
+  font-size: 12px !important;
+  color: #9ca3af !important;
+  font-weight: 400 !important;
+}
+
+/* No data state */
+.noData {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  min-height: 300px;
+  padding: 24px;
+  background: #f9fafb;
+  border: 2px dashed #d1d5db;
+  border-radius: 8px;
+}
+
+.noData p {
+  margin: 0;
+  color: #9ca3af;
+  font-size: 14px;
+}
+
+/* Tooltip */
+.tooltip {
+  background: rgba(0, 0, 0, 0.85);
+  border: 1px solid rgba(255, 255, 255, 0.1);
+  border-radius: 6px;
+  padding: 10px 12px;
+  box-shadow: 0 4px 12px rgba(0, 0, 0, 0.15);
+  z-index: 1000;
+}
+
+.tooltipDate {
+  margin: 0 0 6px 0;
+  font-size: 12px;
+  color: #d1d5db;
+  font-weight: 500;
+}
+
+.tooltipPrice {
+  margin: 0 0 4px 0;
+  font-size: 13px;
+  color: #ffffff;
+  font-weight: 600;
+}
+
+.tooltipVolume {
+  margin: 0 0 4px 0;
+  font-size: 12px;
+  color: #d1d5db;
+}
+
+.tooltipChange {
+  margin: 0;
+  font-size: 12px;
+  font-weight: 600;
+}
+
+.tooltipChange.positive {
+  color: #10b981;
+}
+
+.tooltipChange.negative {
+  color: #ef4444;
+}
+
+/* Responsive design */
+@media (max-width: 768px) {
+  .container {
+    padding: 16px;
+  }
+
+  .header {
+    flex-direction: column;
+    gap: 16px;
+  }
+
+  .stats {
+    grid-template-columns: repeat(auto-fit, minmax(100px, 1fr));
+    gap: 8px;
+  }
+
+  .controls {
+    width: 100%;
+    flex-direction: column;
+  }
+
+  .timeRangeButtons,
+  .chartTypeButtons {
+    width: 100%;
+  }
+
+  .timeButton {
+    flex: 1;
+  }
+}
+
+@media (max-width: 480px) {
+  .title {
+    font-size: 16px;
+  }
+
+  .stats {
+    grid-template-columns: repeat(2, 1fr);
+  }
+
+  .statLabel {
+    font-size: 10px;
+  }
+
+  .statValue {
+    font-size: 12px;
+  }
+
+  .timeRangeButtons {
+    overflow-x: auto;
+  }
+}
