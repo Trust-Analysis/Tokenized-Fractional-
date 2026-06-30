@@ -209,3 +209,95 @@
   font-weight: var(--font-weight-medium);
   color: var(--text-secondary);
 }
+
+/* ── Price History Chart Button ─────────────────────────────────────────── */
+.chartBtn {
+  position: absolute;
+  top: var(--spacing-sm);
+  right: 2.8rem;
+  background: rgba(0, 0, 0, 0.55);
+  border: none;
+  border-radius: var(--radius-sm);
+  color: #fff;
+  padding: 0.35rem 0.4rem;
+  cursor: pointer;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  transition: background var(--transition-fast), color var(--transition-fast), transform var(--transition-fast);
+  z-index: 1;
+  backdrop-filter: blur(4px);
+}
+
+.chartBtn:hover {
+  background: rgba(0, 0, 0, 0.75);
+  transform: scale(1.1);
+  color: #10b981;
+}
+
+/* ── Actions Section ────────────────────────────────────────────────────── */
+.actionsSection {
+  display: flex;
+  flex-direction: column;
+  gap: var(--spacing-xs);
+  margin-top: var(--spacing-sm);
+}
+
+.actionButton {
+  padding: var(--spacing-xs) var(--spacing-sm);
+  background: var(--primary-light, #dbeafe);
+  border: 1px solid var(--primary-border, #3b82f6);
+  border-radius: var(--radius-sm);
+  color: var(--primary);
+  font-size: var(--font-size-sm);
+  font-weight: var(--font-weight-medium);
+  cursor: pointer;
+  transition: all var(--transition-fast);
+  user-select: none;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: 6px;
+}
+
+.actionButton:hover {
+  background: var(--primary);
+  color: white;
+  transform: translateY(-1px);
+  box-shadow: 0 2px 4px rgba(59, 130, 246, 0.2);
+}
+
+.actionButton:active {
+  transform: translateY(0);
+}
+
+@media (max-width: 768px) {
+  .assetCard {
+    padding: 0;
+  }
+
+  .imageWrapper {
+    height: 150px;
+  }
+
+  .imagePlaceholder {
+    height: 150px;
+  }
+
+  .body {
+    padding: var(--spacing-md);
+  }
+
+  .title {
+    font-size: var(--font-size-sm);
+  }
+
+  .compareLabel {
+    font-size: var(--font-size-xs);
+  }
+
+  .actionButton {
+    font-size: var(--font-size-xs);
+    padding: var(--spacing-xs);
+  }
+}

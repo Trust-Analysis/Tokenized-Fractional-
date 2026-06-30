@@ -1,3 +1,9 @@
+1. Check the current branch
+2. Create and switch to a new branch Add price history chart
+3. Stage all changes
+4. Commit with a proper message
+5. Push the branch to origin
+6. in the description add a summary of what was commited
 # GraphQL Subscriptions Implementation Summary
 
 ## Overview
