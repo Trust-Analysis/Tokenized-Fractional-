@@ -11,7 +11,9 @@ export default {
   },
 };
 
-const Template = (args) => <Alert {...args}>This is an alert message.</Alert>;
+function Template(args) {
+  return <Alert {...args}>This is an alert message.</Alert>;
+}
 
 export const Error = Template.bind({});
 Error.args = {

@@ -16,12 +16,7 @@ export default function Input({
           {label}
         </label>
       )}
-      <input
-        id={id}
-        type={type}
-        className={`${styles.input} ${className}`}
-        {...rest}
-      />
+      <input id={id} type={type} className={`${styles.input} ${className}`} {...rest} />
     </div>
   );
 }

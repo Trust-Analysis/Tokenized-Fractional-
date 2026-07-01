@@ -7,7 +7,8 @@ import styles from './PaymentTokenManager.module.css';
 
 const CONTRACT_ID = import.meta.env.VITE_CONTRACT_ID || 'C...';
 const RPC_URL = import.meta.env.VITE_RPC_URL || 'https://soroban-testnet.stellar.org:443';
-const NETWORK_PASSPHRASE = import.meta.env.VITE_NETWORK_PASSPHRASE || 'Test SDF Network ; September 2015';
+const NETWORK_PASSPHRASE =
+  import.meta.env.VITE_NETWORK_PASSPHRASE || 'Test SDF Network ; September 2015';
 
 export default function PaymentTokenManager({ publicKey }) {
   const [tokens, setTokens] = useState([]);
@@ -23,11 +24,15 @@ export default function PaymentTokenManager({ publicKey }) {
   const fetchTokens = async () => {
     setLoadingTokens(true);
     try {
-      const { rpc, Contract, TransactionBuilder, Address, xdr } = await import('@stellar/stellar-sdk');
+      const { rpc, Contract, TransactionBuilder, Address, xdr } =
+        await import('@stellar/stellar-sdk');
       const server = new rpc.Server(RPC_URL);
       const contract = new Contract(CONTRACT_ID);
       const account = await server.getAccount(publicKey);
-      const tx = new TransactionBuilder(account, { fee: '100', networkPassphrase: NETWORK_PASSPHRASE })
+      const tx = new TransactionBuilder(account, {
+        fee: '100',
+        networkPassphrase: NETWORK_PASSPHRASE,
+      })
         .addOperation(contract.call('get_accepted_tokens'))
         .setTimeout(30)
         .build();
@@ -49,14 +54,19 @@ export default function PaymentTokenManager({ publicKey }) {
     const server = new rpc.Server(RPC_URL);
     const contract = new Contract(CONTRACT_ID);
     const account = await server.getAccount(publicKey);
-    let tx = new TransactionBuilder(account, { fee: '10000', networkPassphrase: NETWORK_PASSPHRASE })
+    let tx = new TransactionBuilder(account, {
+      fee: '10000',
+      networkPassphrase: NETWORK_PASSPHRASE,
+    })
       .addOperation(contract.call(fnName, ...args))
       .setTimeout(30)
       .build();
     const simulation = await server.simulateTransaction(tx);
     if (simulation.error) throw new Error(simulation.error);
     tx = rpc.assembleTransaction(tx, simulation).build();
-    const { signedTxXdr, error: signError } = await signTransaction(tx.toXDR(), { networkPassphrase: NETWORK_PASSPHRASE });
+    const { signedTxXdr, error: signError } = await signTransaction(tx.toXDR(), {
+      networkPassphrase: NETWORK_PASSPHRASE,
+    });
     if (signError || !signedTxXdr) throw new Error(signError?.message || 'Signing failed');
     const { TransactionBuilder: TB } = await import('@stellar/stellar-sdk');
     return server.sendTransaction(TB.fromXDR(signedTxXdr, NETWORK_PASSPHRASE));
@@ -105,7 +115,9 @@ export default function PaymentTokenManager({ publicKey }) {
           {tokens.length === 0 && <li className={styles.empty}>No tokens configured.</li>}
           {tokens.map((t) => (
             <li key={t} className={styles.tokenItem}>
-              <span className={styles.tokenAddress} title={t}>{t}</span>
+              <span className={styles.tokenAddress} title={t}>
+                {t}
+              </span>
               <Button
                 variant="danger"
                 size="sm"
@@ -128,7 +140,12 @@ export default function PaymentTokenManager({ publicKey }) {
           disabled={submitting}
           className={styles.tokenInput}
         />
-        <Button variant="primary" onClick={handleAdd} loading={submitting} disabled={!newToken.trim()}>
+        <Button
+          variant="primary"
+          onClick={handleAdd}
+          loading={submitting}
+          disabled={!newToken.trim()}
+        >
           Add Token
         </Button>
       </div>

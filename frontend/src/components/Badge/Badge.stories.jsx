@@ -11,7 +11,9 @@ export default {
   },
 };
 
-const Template = (args) => <Badge {...args}>Badge</Badge>;
+function Template(args) {
+  return <Badge {...args}>Badge</Badge>;
+}
 
 export const Success = Template.bind({});
 Success.args = {

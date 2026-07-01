@@ -1,18 +1,18 @@
 import { validateContractId, validateRwaBody } from '../index.js';
 
 describe('validateContractId', () => {
-  const validId = 'C' + 'A'.repeat(55); // 56 chars, starts with C
+  const validId = `C${'A'.repeat(55)}`; // 56 chars, starts with C
 
   test('accepts valid contract ID', () => {
     expect(validateContractId(validId)).toBe(true);
   });
 
   test('rejects ID not starting with C', () => {
-    expect(validateContractId('A' + 'A'.repeat(55))).toBe(false);
+    expect(validateContractId(`A${'A'.repeat(55)}`)).toBe(false);
   });
 
   test('rejects ID shorter than 50 chars', () => {
-    expect(validateContractId('C' + 'A'.repeat(48))).toBe(false);
+    expect(validateContractId(`C${'A'.repeat(48)}`)).toBe(false);
   });
 
   test('rejects non-string', () => {
@@ -22,7 +22,12 @@ describe('validateContractId', () => {
 });
 
 describe('validateRwaBody', () => {
-  const valid = { title: 'T', location: 'L', description: 'D', assetType: 'Real Estate' };
+  const valid = {
+    title: 'T',
+    location: 'L',
+    description: 'D',
+    assetType: 'Real Estate',
+  };
 
   test('returns null for valid body', () => {
     expect(validateRwaBody(valid)).toBeNull();

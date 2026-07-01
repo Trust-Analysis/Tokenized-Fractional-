@@ -6,10 +6,10 @@ import styles from './ConfirmPurchase.module.css';
 // Contract price is stored in stroops (1 stroop = 10^-7 XLM)
 function formatPrice(stroops) {
   if (stroops == null) return '—';
-  return (Number(stroops) / 1e7).toLocaleString(undefined, {
+  return `${(Number(stroops) / 1e7).toLocaleString(undefined, {
     minimumFractionDigits: 2,
     maximumFractionDigits: 7,
-  }) + ' XLM';
+  })} XLM`;
 }
 
 export default function ConfirmPurchase({ shares, pricePerShare, onConfirm, onCancel, loading }) {

@@ -18,12 +18,8 @@ const MOCK_ASSETS = [
 
 // Intercept backend API calls so tests work without a running backend
 async function mockApi(page) {
-  await page.route('**/api/v1/rwa', (route) =>
-    route.fulfill({ json: { data: MOCK_ASSETS } })
-  );
-  await page.route('**/api/v1/rwa/**', (route) =>
-    route.fulfill({ json: MOCK_ASSETS[0] })
-  );
+  await page.route('**/api/v1/rwa', (route) => route.fulfill({ json: { data: MOCK_ASSETS } }));
+  await page.route('**/api/v1/rwa/**', (route) => route.fulfill({ json: MOCK_ASSETS[0] }));
   // Intercept Soroban RPC calls — not needed in mock-wallet mode but prevents network errors
   await page.route('**/soroban-testnet.stellar.org/**', (route) => route.abort());
 }
@@ -92,7 +88,9 @@ test.describe('RWA Marketplace — critical user flows', () => {
     await confirmBtn.click();
 
     // Toast with "submitted" message should appear
-    await expect(page.getByText(/transaction submitted/i)).toBeVisible({ timeout: 8_000 });
+    await expect(page.getByText(/transaction submitted/i)).toBeVisible({
+      timeout: 8_000,
+    });
   });
 
   // ── 4. Disconnecting wallet ──────────────────────────────────────────────

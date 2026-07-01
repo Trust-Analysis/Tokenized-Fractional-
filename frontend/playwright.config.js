@@ -13,9 +13,7 @@ export default defineConfig({
     video: 'retain-on-failure',
   },
 
-  projects: [
-    { name: 'chromium', use: { ...devices['Desktop Chrome'] } },
-  ],
+  projects: [{ name: 'chromium', use: { ...devices['Desktop Chrome'] } }],
 
   webServer: {
     // Build first, then serve the static output — starts in <1s and

@@ -122,7 +122,9 @@ export default function AssetForm({ apiKey, onAssetChange }) {
       <form onSubmit={handleSubmit} className={styles.form}>
         <div className={styles.row}>
           <div className={styles.field}>
-            <label className={styles.label} htmlFor="af-contractId">Contract ID *</label>
+            <label className={styles.label} htmlFor="af-contractId">
+              Contract ID *
+            </label>
             <Input
               id="af-contractId"
               placeholder="C… (56+ chars)"
@@ -131,7 +133,9 @@ export default function AssetForm({ apiKey, onAssetChange }) {
             />
           </div>
           <div className={styles.field}>
-            <label className={styles.label} htmlFor="af-assetType">Asset Type *</label>
+            <label className={styles.label} htmlFor="af-assetType">
+              Asset Type *
+            </label>
             <Input
               id="af-assetType"
               placeholder="Real Estate, Agriculture…"
@@ -142,7 +146,9 @@ export default function AssetForm({ apiKey, onAssetChange }) {
         </div>
 
         <div className={styles.field}>
-          <label className={styles.label} htmlFor="af-title">Title *</label>
+          <label className={styles.label} htmlFor="af-title">
+            Title *
+          </label>
           <Input
             id="af-title"
             placeholder="Asset name"
@@ -152,7 +158,9 @@ export default function AssetForm({ apiKey, onAssetChange }) {
         </div>
 
         <div className={styles.field}>
-          <label className={styles.label} htmlFor="af-location">Location *</label>
+          <label className={styles.label} htmlFor="af-location">
+            Location *
+          </label>
           <Input
             id="af-location"
             placeholder="City, Country"
@@ -162,7 +170,9 @@ export default function AssetForm({ apiKey, onAssetChange }) {
         </div>
 
         <div className={styles.field}>
-          <label className={styles.label} htmlFor="af-description">Description *</label>
+          <label className={styles.label} htmlFor="af-description">
+            Description *
+          </label>
           <Input
             id="af-description"
             placeholder="Describe the asset"
@@ -173,7 +183,9 @@ export default function AssetForm({ apiKey, onAssetChange }) {
 
         <div className={styles.row}>
           <div className={styles.field}>
-            <label className={styles.label} htmlFor="af-imageUrl">Image URL</label>
+            <label className={styles.label} htmlFor="af-imageUrl">
+              Image URL
+            </label>
             <Input
               id="af-imageUrl"
               placeholder="https://…"
@@ -182,7 +194,9 @@ export default function AssetForm({ apiKey, onAssetChange }) {
             />
           </div>
           <div className={styles.field}>
-            <label className={styles.label} htmlFor="af-valuation">Total Valuation</label>
+            <label className={styles.label} htmlFor="af-valuation">
+              Total Valuation
+            </label>
             <Input
               id="af-valuation"
               placeholder="$1,000,000"

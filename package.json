@@ -2,10 +2,13 @@
   "name": "tokenized-fractional",
   "version": "1.0.0",
   "type": "module",
-  "description": "Tokenized Fractional Asset Platform \u2013 monorepo root",
+  "description": "Tokenized Fractional Asset Platform – monorepo root",
   "private": true,
   "scripts": {
     "prepare": "husky",
+    "lint": "npm --prefix backend run lint && npm --prefix frontend run lint",
+    "lint:ci": "npm --prefix backend run lint:ci && npm --prefix frontend run lint:ci",
+    "lint:fix": "npm --prefix backend run lint:fix && npm --prefix frontend run lint:fix",
     "lint:backend": "cd backend && npm run lint --if-present",
     "test:backend": "cd backend && npm test",
     "test:frontend": "cd frontend && npm run test:e2e --if-present"
