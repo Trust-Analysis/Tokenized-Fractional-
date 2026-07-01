@@ -2,7 +2,7 @@
   "name": "tokenized-fractional",
   "version": "1.0.0",
   "type": "module",
-  "description": "Tokenized Fractional Asset Platform \u2013 monorepo root",
+  "description": "Tokenized Fractional Asset Platform – monorepo root",
   "private": true,
   "scripts": {
     "prepare": "husky",
