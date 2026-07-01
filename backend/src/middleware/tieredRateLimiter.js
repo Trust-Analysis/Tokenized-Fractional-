@@ -161,10 +161,7 @@ async function getRateLimitInfo(key, windowMs) {
 
       return { count, ttl };
     } catch (error) {
-      logger.warn(
-        { error: error.message, key },
-        'Redis rate limit check failed, falling back to memory',
-      );
+      logger.warn({ error: error.message, key }, 'Redis rate limit check failed, falling back to memory');
       redisConnected = false;
       // Fall through to memory store
     }
@@ -249,17 +246,18 @@ export function createTieredRateLimiter(type = 'read') {
         const error = {
           error: 'Too many requests',
           code: 'RATE_LIMIT_EXCEEDED',
-          tier,
+          tier: tier,
           retryAfter: ttl,
           message: `Rate limit exceeded for ${tier} users. Try again in ${ttl}s.`,
         };
 
         req.log?.warn(
           { tier, type, ip: identifier, count, limit: limits.max },
-          'Rate limit exceeded',
+          'Rate limit exceeded'
         );
 
-        return res.status(429).json(error).set('Retry-After', ttl);
+        return res.status(429).json(error)
+          .set('Retry-After', ttl);
       }
 
       next();
@@ -284,7 +282,11 @@ export function createTierLimiter(tier = 'authenticated', type = 'read') {
  */
 export function extractWalletMiddleware(req, res, next) {
   // Check for wallet in various possible locations
-  const wallet = req.body?.wallet || req.query?.wallet || req.headers['x-wallet-address'] || null;
+  const wallet =
+    req.body?.wallet ||
+    req.query?.wallet ||
+    req.headers['x-wallet-address'] ||
+    null;
 
   if (wallet) {
     req.wallet = wallet;
@@ -360,9 +362,7 @@ export async function getRateLimitStats() {
       backend: 'redis',
       connected: true,
       totalKeys: keys.length,
-      memoryUsage: info
-        ? info.split('\n').find((line) => line.includes('used_memory_human'))
-        : null,
+      memoryUsage: info ? info.split('\n').find(line => line.includes('used_memory_human')) : null,
     };
   } catch (error) {
     logger.error({ error: error.message }, 'Failed to get rate limit stats');

@@ -1,20 +1,20 @@
 // Set env vars before importing the app (module-level constants are read at load time)
+process.env.NODE_ENV = 'test';
+process.env.ADMIN_API_KEY = 'test-key-for-jest';
+process.env.DATA_FILE = 'test-data.json';
+
 import request from 'supertest';
 import { unlinkSync, existsSync } from 'fs';
 import crypto from 'crypto';
 import { app, tokenize, buildSearchIndex, scoreSearch } from '../index.js';
 import { setClient } from '../cache.js';
 
-process.env.NODE_ENV = 'test';
-process.env.ADMIN_API_KEY = 'test-key-for-jest';
-process.env.DATA_FILE = 'test-data.json';
-
 // Ensure Redis is disabled (null = graceful fallback) for these tests
 beforeAll(() => setClient(null));
 afterAll(() => setClient(null));
 
 const API_KEY = 'test-key-for-jest';
-const VALID_ID = `C${'A'.repeat(55)}`;
+const VALID_ID = 'C' + 'A'.repeat(55);
 const VALID_BODY = {
   contractId: VALID_ID,
   title: 'Test Property',
@@ -29,8 +29,13 @@ afterAll(() => {
 
 // Helper: create an asset and approve it for use in public GET tests
 async function createAndApproveAsset(body) {
-  const createRes = await request(app).post('/api/rwa').set('x-api-key', API_KEY).send(body);
-  await request(app).post(`/api/rwa/${body.contractId}/approve`).set('x-api-key', API_KEY);
+  const createRes = await request(app)
+    .post('/api/rwa')
+    .set('x-api-key', API_KEY)
+    .send(body);
+  await request(app)
+    .post(`/api/rwa/${body.contractId}/approve`)
+    .set('x-api-key', API_KEY);
   return createRes;
 }
 
@@ -39,7 +44,7 @@ describe('X-Request-ID', () => {
   test('response includes X-Request-ID header (auto-generated)', async () => {
     const res = await request(app).get('/health');
     expect(res.headers['x-request-id']).toMatch(
-      /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/,
+      /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/
     );
   });
 
@@ -94,24 +99,12 @@ describe('404 handler', () => {
 
 // ── GET /api/rwa ──────────────────────────────────────────────────────────────
 describe('GET /api/rwa', () => {
-  const ID_A = `C${'A'.repeat(55)}`;
-  const ID_B = `C${'B'.repeat(55)}`;
+  const ID_A = 'C' + 'A'.repeat(55);
+  const ID_B = 'C' + 'B'.repeat(55);
 
   beforeAll(async () => {
-    await createAndApproveAsset({
-      contractId: ID_A,
-      title: 'Coffee Farm',
-      location: 'Ethiopia',
-      description: 'Premium coffee plantation',
-      assetType: 'Agriculture',
-    });
-    await createAndApproveAsset({
-      contractId: ID_B,
-      title: 'Downtown Office',
-      location: 'NYC',
-      description: 'Manhattan office building',
-      assetType: 'Real Estate',
-    });
+    await createAndApproveAsset({ contractId: ID_A, title: 'Coffee Farm', location: 'Ethiopia', description: 'Premium coffee plantation', assetType: 'Agriculture' });
+    await createAndApproveAsset({ contractId: ID_B, title: 'Downtown Office', location: 'NYC', description: 'Manhattan office building', assetType: 'Real Estate' });
   });
 
   test('returns paginated response shape', async () => {
@@ -128,7 +121,7 @@ describe('GET /api/rwa', () => {
   test('returns relative image and document paths through configured CDN', async () => {
     const previousAssetCdnUrl = process.env.ASSET_CDN_URL;
     process.env.ASSET_CDN_URL = 'https://assets.example.com';
-    const contractId = `C${'D'.repeat(55)}`;
+    const contractId = 'C' + 'D'.repeat(55);
 
     try {
       await createAndApproveAsset({
@@ -154,19 +147,19 @@ describe('GET /api/rwa', () => {
   test('filters by assetType', async () => {
     const res = await request(app).get('/api/rwa?assetType=agriculture');
     expect(res.status).toBe(200);
-    expect(res.body.data.every((a) => a.assetType.toLowerCase() === 'agriculture')).toBe(true);
+    expect(res.body.data.every(a => a.assetType.toLowerCase() === 'agriculture')).toBe(true);
   });
 
   test('filters by search on title', async () => {
     const res = await request(app).get('/api/rwa?search=coffee');
     expect(res.status).toBe(200);
-    expect(res.body.data.some((a) => a.title.toLowerCase().includes('coffee'))).toBe(true);
+    expect(res.body.data.some(a => a.title.toLowerCase().includes('coffee'))).toBe(true);
   });
 
   test('filters by search on description', async () => {
     const res = await request(app).get('/api/rwa?search=manhattan');
     expect(res.status).toBe(200);
-    expect(res.body.data.some((a) => a.description.toLowerCase().includes('manhattan'))).toBe(true);
+    expect(res.body.data.some(a => a.description.toLowerCase().includes('manhattan'))).toBe(true);
   });
 
   test('paginates with limit=1', async () => {
@@ -187,7 +180,10 @@ describe('GET /api/rwa', () => {
 // ── POST /api/rwa ─────────────────────────────────────────────────────────────
 describe('POST /api/rwa', () => {
   test('creates asset with valid key and body', async () => {
-    const res = await request(app).post('/api/rwa').set('x-api-key', API_KEY).send(VALID_BODY);
+    const res = await request(app)
+      .post('/api/rwa')
+      .set('x-api-key', API_KEY)
+      .send(VALID_BODY);
     expect(res.status).toBe(201);
     expect(res.body.contractId).toBe(VALID_ID);
     expect(res.body.title).toBe('Test Property');
@@ -199,7 +195,10 @@ describe('POST /api/rwa', () => {
   });
 
   test('rejects invalid API key', async () => {
-    const res = await request(app).post('/api/rwa').set('x-api-key', 'wrong-key').send(VALID_BODY);
+    const res = await request(app)
+      .post('/api/rwa')
+      .set('x-api-key', 'wrong-key')
+      .send(VALID_BODY);
     expect(res.status).toBe(401);
     expect(res.body.error).toMatch(/Unauthorized/);
   });
@@ -237,21 +236,16 @@ describe('GET /api/rwa/:contractId', () => {
   });
 
   test('returns 404 for unknown contract ID', async () => {
-    const unknown = `C${'Z'.repeat(55)}`;
+    const unknown = 'C' + 'Z'.repeat(55);
     const res = await request(app).get(`/api/rwa/${unknown}`);
     expect(res.status).toBe(404);
     expect(res.body.error).toMatch(/not found/i);
   });
 
   test('returns 404 for pending asset', async () => {
-    const pendingId = `C${'P'.repeat(55)}`;
-    await request(app).post('/api/rwa').set('x-api-key', API_KEY).send({
-      contractId: pendingId,
-      title: 'Pending Asset',
-      location: 'Test',
-      description: 'Not yet approved',
-      assetType: 'Test',
-    });
+    const pendingId = 'C' + 'P'.repeat(55);
+    await request(app).post('/api/rwa').set('x-api-key', API_KEY)
+      .send({ contractId: pendingId, title: 'Pending Asset', location: 'Test', description: 'Not yet approved', assetType: 'Test' });
     const res = await request(app).get(`/api/rwa/${pendingId}`);
     expect(res.status).toBe(404);
   });
@@ -265,29 +259,28 @@ describe('DELETE /api/rwa/:contractId', () => {
   });
 
   test('deletes existing asset', async () => {
-    const res = await request(app).delete(`/api/rwa/${VALID_ID}`).set('x-api-key', API_KEY);
+    const res = await request(app)
+      .delete(`/api/rwa/${VALID_ID}`)
+      .set('x-api-key', API_KEY);
     expect(res.status).toBe(200);
     expect(res.body.contractId).toBe(VALID_ID);
   });
 
   test('returns 404 when already deleted', async () => {
-    const res = await request(app).delete(`/api/rwa/${VALID_ID}`).set('x-api-key', API_KEY);
+    const res = await request(app)
+      .delete(`/api/rwa/${VALID_ID}`)
+      .set('x-api-key', API_KEY);
     expect(res.status).toBe(404);
   });
 });
 
 // ── PATCH /api/rwa/:contractId ────────────────────────────────────────────────
 describe('PATCH /api/rwa/:contractId', () => {
-  const ID = `C${'P'.repeat(55)}`;
+  const ID = 'C' + 'P'.repeat(55);
 
   beforeAll(async () => {
-    await request(app).post('/api/rwa').set('x-api-key', API_KEY).send({
-      contractId: ID,
-      title: 'Original Title',
-      location: 'Original Location',
-      description: 'Original description',
-      assetType: 'Real Estate',
-    });
+    await request(app).post('/api/rwa').set('x-api-key', API_KEY)
+      .send({ contractId: ID, title: 'Original Title', location: 'Original Location', description: 'Original description', assetType: 'Real Estate' });
   });
 
   test('rejects without API key', async () => {
@@ -317,13 +310,16 @@ describe('PATCH /api/rwa/:contractId', () => {
   });
 
   test('rejects empty request body', async () => {
-    const res = await request(app).patch(`/api/rwa/${ID}`).set('x-api-key', API_KEY).send({});
+    const res = await request(app)
+      .patch(`/api/rwa/${ID}`)
+      .set('x-api-key', API_KEY)
+      .send({});
     expect(res.status).toBe(400);
     expect(res.body.error).toMatch(/at least one field/i);
   });
 
   test('returns 404 for non-existent asset', async () => {
-    const unknown = `C${'Z'.repeat(55)}`;
+    const unknown = 'C' + 'Z'.repeat(55);
     const res = await request(app)
       .patch(`/api/rwa/${unknown}`)
       .set('x-api-key', API_KEY)
@@ -339,9 +335,7 @@ describe('PATCH /api/rwa/:contractId', () => {
       .send({ description: 'Updated description' });
     const after = new Date().toISOString();
     expect(res.status).toBe(200);
-    expect(new Date(res.body.updatedAt).getTime()).toBeGreaterThanOrEqual(
-      new Date(before).getTime(),
-    );
+    expect(new Date(res.body.updatedAt).getTime()).toBeGreaterThanOrEqual(new Date(before).getTime());
     expect(new Date(res.body.updatedAt).getTime()).toBeLessThanOrEqual(new Date(after).getTime());
   });
 
@@ -358,24 +352,12 @@ describe('PATCH /api/rwa/:contractId', () => {
 
 // ── Versioned routes: GET /api/v1/rwa ─────────────────────────────────────────
 describe('GET /api/v1/rwa', () => {
-  const ID_A = `C${'A'.repeat(55)}`;
-  const ID_B = `C${'B'.repeat(55)}`;
+  const ID_A = 'C' + 'A'.repeat(55);
+  const ID_B = 'C' + 'B'.repeat(55);
 
   beforeAll(async () => {
-    await createAndApproveAsset({
-      contractId: ID_A,
-      title: 'Coffee Farm',
-      location: 'Ethiopia',
-      description: 'Premium coffee plantation',
-      assetType: 'Agriculture',
-    });
-    await createAndApproveAsset({
-      contractId: ID_B,
-      title: 'Downtown Office',
-      location: 'NYC',
-      description: 'Manhattan office building',
-      assetType: 'Real Estate',
-    });
+    await createAndApproveAsset({ contractId: ID_A, title: 'Coffee Farm', location: 'Ethiopia', description: 'Premium coffee plantation', assetType: 'Agriculture' });
+    await createAndApproveAsset({ contractId: ID_B, title: 'Downtown Office', location: 'NYC', description: 'Manhattan office building', assetType: 'Real Estate' });
   });
 
   test('returns paginated response shape', async () => {
@@ -388,13 +370,13 @@ describe('GET /api/v1/rwa', () => {
   test('filters by assetType', async () => {
     const res = await request(app).get('/api/v1/rwa?assetType=agriculture');
     expect(res.status).toBe(200);
-    expect(res.body.data.every((a) => a.assetType.toLowerCase() === 'agriculture')).toBe(true);
+    expect(res.body.data.every(a => a.assetType.toLowerCase() === 'agriculture')).toBe(true);
   });
 
   test('filters by search on title', async () => {
     const res = await request(app).get('/api/v1/rwa?search=coffee');
     expect(res.status).toBe(200);
-    expect(res.body.data.some((a) => a.title.toLowerCase().includes('coffee'))).toBe(true);
+    expect(res.body.data.some(a => a.title.toLowerCase().includes('coffee'))).toBe(true);
   });
 
   test('paginates with limit=1', async () => {
@@ -407,7 +389,10 @@ describe('GET /api/v1/rwa', () => {
 // ── Versioned routes: POST /api/v1/rwa ────────────────────────────────────────
 describe('POST /api/v1/rwa', () => {
   test('creates asset with valid key and body', async () => {
-    const res = await request(app).post('/api/v1/rwa').set('x-api-key', API_KEY).send(VALID_BODY);
+    const res = await request(app)
+      .post('/api/v1/rwa')
+      .set('x-api-key', API_KEY)
+      .send(VALID_BODY);
     expect(res.status).toBe(201);
     expect(res.body.contractId).toBe(VALID_ID);
     expect(res.body.title).toBe('Test Property');
@@ -439,16 +424,10 @@ describe('POST /api/v1/rwa', () => {
 
 // ── Versioned routes: GET /api/v1/rwa/:contractId ─────────────────────────────
 describe('GET /api/v1/rwa/:contractId', () => {
-  const V1_GET_ID = `C${'G'.repeat(55)}`;
+  const V1_GET_ID = 'C' + 'G'.repeat(55);
 
   beforeAll(async () => {
-    await createAndApproveAsset({
-      contractId: V1_GET_ID,
-      title: 'V1 Get Asset',
-      location: 'Paris',
-      description: 'For v1 GET test',
-      assetType: 'Real Estate',
-    });
+    await createAndApproveAsset({ contractId: V1_GET_ID, title: 'V1 Get Asset', location: 'Paris', description: 'For v1 GET test', assetType: 'Real Estate' });
   });
 
   test('returns existing asset', async () => {
@@ -458,21 +437,16 @@ describe('GET /api/v1/rwa/:contractId', () => {
   });
 
   test('returns 404 for unknown contract ID', async () => {
-    const unknown = `C${'Z'.repeat(55)}`;
+    const unknown = 'C' + 'Z'.repeat(55);
     const res = await request(app).get(`/api/v1/rwa/${unknown}`);
     expect(res.status).toBe(404);
     expect(res.body.error).toMatch(/not found/i);
   });
 
   test('returns 404 for pending asset', async () => {
-    const pendingId = `C${'V'.repeat(55)}`;
-    await request(app).post('/api/v1/rwa').set('x-api-key', API_KEY).send({
-      contractId: pendingId,
-      title: 'Pending V1',
-      location: 'Test',
-      description: 'Not yet approved',
-      assetType: 'Test',
-    });
+    const pendingId = 'C' + 'V'.repeat(55);
+    await request(app).post('/api/v1/rwa').set('x-api-key', API_KEY)
+      .send({ contractId: pendingId, title: 'Pending V1', location: 'Test', description: 'Not yet approved', assetType: 'Test' });
     const res = await request(app).get(`/api/v1/rwa/${pendingId}`);
     expect(res.status).toBe(404);
   });
@@ -480,16 +454,11 @@ describe('GET /api/v1/rwa/:contractId', () => {
 
 // ── Versioned routes: DELETE /api/v1/rwa/:contractId ─────────────────────────
 describe('DELETE /api/v1/rwa/:contractId', () => {
-  const V1_DELETE_ID = `C${'D'.repeat(55)}`;
+  const V1_DELETE_ID = 'C' + 'D'.repeat(55);
 
   beforeAll(async () => {
-    await request(app).post('/api/v1/rwa').set('x-api-key', API_KEY).send({
-      contractId: V1_DELETE_ID,
-      title: 'To Delete',
-      location: 'Test',
-      description: 'Asset to delete',
-      assetType: 'Test',
-    });
+    await request(app).post('/api/v1/rwa').set('x-api-key', API_KEY)
+      .send({ contractId: V1_DELETE_ID, title: 'To Delete', location: 'Test', description: 'Asset to delete', assetType: 'Test' });
   });
 
   test('rejects without API key', async () => {
@@ -498,13 +467,17 @@ describe('DELETE /api/v1/rwa/:contractId', () => {
   });
 
   test('deletes existing asset', async () => {
-    const res = await request(app).delete(`/api/v1/rwa/${V1_DELETE_ID}`).set('x-api-key', API_KEY);
+    const res = await request(app)
+      .delete(`/api/v1/rwa/${V1_DELETE_ID}`)
+      .set('x-api-key', API_KEY);
     expect(res.status).toBe(200);
     expect(res.body.contractId).toBe(V1_DELETE_ID);
   });
 
   test('returns 404 when already deleted', async () => {
-    const res = await request(app).delete(`/api/v1/rwa/${V1_DELETE_ID}`).set('x-api-key', API_KEY);
+    const res = await request(app)
+      .delete(`/api/v1/rwa/${V1_DELETE_ID}`)
+      .set('x-api-key', API_KEY);
     expect(res.status).toBe(404);
   });
 });
@@ -520,9 +493,7 @@ describe('GET /api/rwa/export', () => {
     const res = await request(app).get('/api/rwa/export').set('x-api-key', API_KEY);
     expect(res.status).toBe(200);
     expect(res.headers['content-type']).toMatch(/application\/json/);
-    expect(res.headers['content-disposition']).toMatch(
-      /attachment; filename="rwa-export-\d+\.json"/,
-    );
+    expect(res.headers['content-disposition']).toMatch(/attachment; filename="rwa-export-\d+\.json"/);
     expect(Array.isArray(res.body)).toBe(true);
   });
 
@@ -537,13 +508,9 @@ describe('GET /api/rwa/export', () => {
     const res = await request(app).get('/api/rwa/export?format=csv').set('x-api-key', API_KEY);
     expect(res.status).toBe(200);
     expect(res.headers['content-type']).toMatch(/text\/csv/);
-    expect(res.headers['content-disposition']).toMatch(
-      /attachment; filename="rwa-export-\d+\.csv"/,
-    );
+    expect(res.headers['content-disposition']).toMatch(/attachment; filename="rwa-export-\d+\.csv"/);
     const lines = res.text.split('\r\n');
-    expect(lines[0]).toBe(
-      'contractId,id,title,location,description,assetType,imageUrl,totalValuation,createdAt,updatedAt',
-    );
+    expect(lines[0]).toBe('contractId,id,title,location,description,assetType,imageUrl,totalValuation,createdAt,updatedAt');
     expect(lines.length).toBeGreaterThan(1);
   });
 
@@ -552,18 +519,8 @@ describe('GET /api/rwa/export', () => {
     const { readFileSync, writeFileSync } = await import('fs');
     const dataPath = 'test-data.json';
     const existing = JSON.parse(existsSync(dataPath) ? readFileSync(dataPath, 'utf-8') : '{}');
-    const ID_QUOTES = `C${'Q'.repeat(55)}`;
-    existing[ID_QUOTES] = {
-      id: ID_QUOTES,
-      title: 'Say "hello"',
-      location: 'L',
-      description: 'D',
-      assetType: 'T',
-      imageUrl: '',
-      totalValuation: '',
-      createdAt: new Date().toISOString(),
-      updatedAt: new Date().toISOString(),
-    };
+    const ID_QUOTES = 'C' + 'Q'.repeat(55);
+    existing[ID_QUOTES] = { id: ID_QUOTES, title: 'Say "hello"', location: 'L', description: 'D', assetType: 'T', imageUrl: '', totalValuation: '', createdAt: new Date().toISOString(), updatedAt: new Date().toISOString() };
     writeFileSync(dataPath, JSON.stringify(existing), 'utf-8');
 
     const res = await request(app).get('/api/rwa/export?format=csv').set('x-api-key', API_KEY);
@@ -618,7 +575,7 @@ describe('GET /api/rwa/export', () => {
 
 // ── Asset Verification Workflow ───────────────────────────────────────────────
 describe('Asset Verification Workflow', () => {
-  const PENDING_ID = `C${'W'.repeat(55)}`;
+  const PENDING_ID = 'C' + 'W'.repeat(55);
   const PENDING_BODY = {
     contractId: PENDING_ID,
     title: 'Pending Warehouse',
@@ -629,7 +586,10 @@ describe('Asset Verification Workflow', () => {
 
   describe('POST /api/rwa (status field)', () => {
     test('creates asset with status pending and submittedAt', async () => {
-      const res = await request(app).post('/api/rwa').set('x-api-key', API_KEY).send(PENDING_BODY);
+      const res = await request(app)
+        .post('/api/rwa')
+        .set('x-api-key', API_KEY)
+        .send(PENDING_BODY);
       expect(res.status).toBe(201);
       expect(res.body.status).toBe('pending');
       expect(res.body.submittedAt).toBeDefined();
@@ -648,20 +608,20 @@ describe('Asset Verification Workflow', () => {
       const res = await request(app).get('/api/rwa/pending').set('x-api-key', API_KEY);
       expect(res.status).toBe(200);
       expect(Array.isArray(res.body)).toBe(true);
-      expect(res.body.some((a) => a.contractId === PENDING_ID)).toBe(true);
-      expect(res.body.every((a) => a.status === 'pending')).toBe(true);
+      expect(res.body.some(a => a.contractId === PENDING_ID)).toBe(true);
+      expect(res.body.every(a => a.status === 'pending')).toBe(true);
     });
 
     test('works on /api/v1/rwa/pending', async () => {
       const res = await request(app).get('/api/v1/rwa/pending').set('x-api-key', API_KEY);
       expect(res.status).toBe(200);
-      expect(res.body.some((a) => a.contractId === PENDING_ID)).toBe(true);
+      expect(res.body.some(a => a.contractId === PENDING_ID)).toBe(true);
     });
 
     test('does not include approved or rejected assets', async () => {
       const res = await request(app).get('/api/rwa/pending').set('x-api-key', API_KEY);
       expect(res.status).toBe(200);
-      expect(res.body.every((a) => a.status === 'pending')).toBe(true);
+      expect(res.body.every(a => a.status === 'pending')).toBe(true);
     });
   });
 
@@ -686,24 +646,21 @@ describe('Asset Verification Workflow', () => {
     test('approved asset appears in public GET list', async () => {
       const res = await request(app).get('/api/rwa');
       expect(res.status).toBe(200);
-      expect(res.body.data.some((a) => a.contractId === PENDING_ID)).toBe(true);
+      expect(res.body.data.some(a => a.contractId === PENDING_ID)).toBe(true);
     });
 
     test('returns 404 for non-existent asset', async () => {
-      const unknown = `C${'Z'.repeat(55)}`;
-      const res = await request(app).post(`/api/rwa/${unknown}/approve`).set('x-api-key', API_KEY);
+      const unknown = 'C' + 'Z'.repeat(55);
+      const res = await request(app)
+        .post(`/api/rwa/${unknown}/approve`)
+        .set('x-api-key', API_KEY);
       expect(res.status).toBe(404);
     });
 
     test('works on /api/v1/rwa/:contractId/approve', async () => {
-      const v1ApproveId = `C${'X'.repeat(55)}`;
-      await request(app).post('/api/v1/rwa').set('x-api-key', API_KEY).send({
-        contractId: v1ApproveId,
-        title: 'V1 Approve',
-        location: 'Test',
-        description: 'Test',
-        assetType: 'Test',
-      });
+      const v1ApproveId = 'C' + 'X'.repeat(55);
+      await request(app).post('/api/v1/rwa').set('x-api-key', API_KEY)
+        .send({ contractId: v1ApproveId, title: 'V1 Approve', location: 'Test', description: 'Test', assetType: 'Test' });
       const res = await request(app)
         .post(`/api/v1/rwa/${v1ApproveId}/approve`)
         .set('x-api-key', API_KEY);
@@ -713,7 +670,7 @@ describe('Asset Verification Workflow', () => {
   });
 
   describe('POST /api/rwa/:contractId/reject', () => {
-    const REJECT_ID = `C${'Y'.repeat(55)}`;
+    const REJECT_ID = 'C' + 'Y'.repeat(55);
     const REJECT_BODY = {
       contractId: REJECT_ID,
       title: 'Rejected Property',
@@ -745,24 +702,21 @@ describe('Asset Verification Workflow', () => {
     test('rejected asset does not appear in public GET list', async () => {
       const res = await request(app).get('/api/rwa');
       expect(res.status).toBe(200);
-      expect(res.body.data.some((a) => a.contractId === REJECT_ID)).toBe(false);
+      expect(res.body.data.some(a => a.contractId === REJECT_ID)).toBe(false);
     });
 
     test('returns 404 for non-existent asset', async () => {
-      const unknown = `C${'Z'.repeat(55)}`;
-      const res = await request(app).post(`/api/rwa/${unknown}/reject`).set('x-api-key', API_KEY);
+      const unknown = 'C' + 'Z'.repeat(55);
+      const res = await request(app)
+        .post(`/api/rwa/${unknown}/reject`)
+        .set('x-api-key', API_KEY);
       expect(res.status).toBe(404);
     });
 
     test('works on /api/v1/rwa/:contractId/reject', async () => {
-      const v1RejectId = `C${'Z'.repeat(55)}`;
-      await request(app).post('/api/v1/rwa').set('x-api-key', API_KEY).send({
-        contractId: v1RejectId,
-        title: 'V1 Reject',
-        location: 'Test',
-        description: 'Test',
-        assetType: 'Test',
-      });
+      const v1RejectId = 'C' + 'Z'.repeat(55);
+      await request(app).post('/api/v1/rwa').set('x-api-key', API_KEY)
+        .send({ contractId: v1RejectId, title: 'V1 Reject', location: 'Test', description: 'Test', assetType: 'Test' });
       const res = await request(app)
         .post(`/api/v1/rwa/${v1RejectId}/reject`)
         .set('x-api-key', API_KEY);
@@ -789,11 +743,7 @@ describe('Webhook Management', () => {
       const res = await request(app)
         .post('/api/webhooks')
         .set('x-api-key', API_KEY)
-        .send({
-          url: WEBHOOK_URL,
-          events: ['asset.created', 'asset.updated'],
-          secret: 'whsec_test',
-        });
+        .send({ url: WEBHOOK_URL, events: ['asset.created', 'asset.updated'], secret: 'whsec_test' });
       expect(res.status).toBe(201);
       expect(res.body.id).toMatch(/^wh_/);
       expect(res.body.url).toBe(WEBHOOK_URL);
@@ -869,7 +819,7 @@ describe('Webhook Management', () => {
       const res = await request(app).get('/api/webhooks').set('x-api-key', API_KEY);
       expect(res.status).toBe(200);
       expect(Array.isArray(res.body)).toBe(true);
-      expect(res.body.some((w) => w.id === webhookId)).toBe(true);
+      expect(res.body.some(w => w.id === webhookId)).toBe(true);
     });
 
     test('works on /api/v1/webhooks', async () => {
@@ -940,13 +890,17 @@ describe('Webhook Management', () => {
     });
 
     test('deletes a webhook', async () => {
-      const res = await request(app).delete(`/api/webhooks/${deleteId}`).set('x-api-key', API_KEY);
+      const res = await request(app)
+        .delete(`/api/webhooks/${deleteId}`)
+        .set('x-api-key', API_KEY);
       expect(res.status).toBe(200);
       expect(res.body.message).toMatch(/deleted/i);
     });
 
     test('returns 404 when already deleted', async () => {
-      const res = await request(app).delete(`/api/webhooks/${deleteId}`).set('x-api-key', API_KEY);
+      const res = await request(app)
+        .delete(`/api/webhooks/${deleteId}`)
+        .set('x-api-key', API_KEY);
       expect(res.status).toBe(404);
     });
 
@@ -968,20 +922,16 @@ describe('Webhook Management', () => {
       const http = await import('http');
       testServer = http.createServer((req, res) => {
         let body = '';
-        req.on('data', (chunk) => {
-          body += chunk;
-        });
+        req.on('data', chunk => { body += chunk; });
         req.on('end', () => {
           try {
             receivedPayloads.push(JSON.parse(body));
-          } catch {
-            /* ignore malformed */
-          }
+          } catch { /* ignore malformed */ }
           res.writeHead(200, { 'Content-Type': 'application/json' });
           res.end(JSON.stringify({ ok: true }));
         });
       });
-      await new Promise((resolve) => testServer.listen(0, '127.0.0.1', resolve));
+      await new Promise(resolve => testServer.listen(0, '127.0.0.1', resolve));
       const addr = testServer.address();
       testServerUrl = `http://127.0.0.1:${addr.port}/hooks`;
 
@@ -989,33 +939,20 @@ describe('Webhook Management', () => {
       const whRes = await request(app)
         .post('/api/webhooks')
         .set('x-api-key', API_KEY)
-        .send({
-          url: testServerUrl,
-          events: [
-            'asset.created',
-            'asset.updated',
-            'asset.deleted',
-            'asset.approved',
-            'asset.rejected',
-          ],
-          active: true,
-        });
+        .send({ url: testServerUrl, events: ['asset.created', 'asset.updated', 'asset.deleted', 'asset.approved', 'asset.rejected'], active: true });
       whDeliveryId = whRes.body.id;
     });
 
     afterAll(async () => {
       if (whDeliveryId) {
-        await request(app)
-          .delete(`/api/webhooks/${whDeliveryId}`)
-          .set('x-api-key', API_KEY)
-          .catch(() => {});
+        await request(app).delete(`/api/webhooks/${whDeliveryId}`).set('x-api-key', API_KEY).catch(() => {});
       }
-      if (testServer) await new Promise((resolve) => testServer.close(resolve));
+      if (testServer) await new Promise(resolve => testServer.close(resolve));
     });
 
     // Helper: create asset, approve it, and return IDs
     async function createAsset(title) {
-      const id = `C${crypto.randomUUID().replace(/-/g, '').repeat(2).slice(0, 55)}`;
+      const id = 'C' + crypto.randomUUID().replace(/-/g, '').repeat(2).slice(0, 55);
       const res = await request(app)
         .post('/api/rwa')
         .set('x-api-key', API_KEY)
@@ -1026,13 +963,11 @@ describe('Webhook Management', () => {
     async function waitForEvent(event, timeout = 5000) {
       const deadline = Date.now() + timeout;
       while (Date.now() < deadline) {
-        const found = receivedPayloads.find((p) => p.event === event);
+        const found = receivedPayloads.find(p => p.event === event);
         if (found) return found;
-        await new Promise((r) => setTimeout(r, 50));
+        await new Promise(r => setTimeout(r, 50));
       }
-      throw new Error(
-        `Timed out waiting for ${event}. Received: ${JSON.stringify(receivedPayloads)}`,
-      );
+      throw new Error(`Timed out waiting for ${event}. Received: ${JSON.stringify(receivedPayloads)}`);
     }
 
     test('fires asset.created on POST', async () => {
@@ -1046,7 +981,9 @@ describe('Webhook Management', () => {
       const { id } = await createAsset('To Approve');
       receivedPayloads = [];
 
-      await request(app).post(`/api/rwa/${id}/approve`).set('x-api-key', API_KEY);
+      await request(app)
+        .post(`/api/rwa/${id}/approve`)
+        .set('x-api-key', API_KEY);
 
       const payload = await waitForEvent('asset.approved');
       expect(payload.data.contractId).toBe(id);
@@ -1069,7 +1006,9 @@ describe('Webhook Management', () => {
       const { id } = await createAsset('To Delete');
       receivedPayloads = [];
 
-      await request(app).delete(`/api/rwa/${id}`).set('x-api-key', API_KEY);
+      await request(app)
+        .delete(`/api/rwa/${id}`)
+        .set('x-api-key', API_KEY);
 
       const payload = await waitForEvent('asset.deleted');
       expect(payload.data.contractId).toBe(id);
@@ -1083,8 +1022,8 @@ describe('Webhook Management', () => {
         res.writeHead(500);
         res.end();
       });
-      await new Promise((resolve) => failServer.listen(0, '127.0.0.1', resolve));
-      const { port } = failServer.address();
+      await new Promise(resolve => failServer.listen(0, '127.0.0.1', resolve));
+      const port = failServer.address().port;
 
       await request(app)
         .post('/api/webhooks')
@@ -1093,10 +1032,10 @@ describe('Webhook Management', () => {
 
       await createAsset('Fail Test');
 
-      await new Promise((resolve) => setTimeout(resolve, 6000));
+      await new Promise(resolve => setTimeout(resolve, 6000));
       expect(failCount).toBeGreaterThanOrEqual(3);
 
-      await new Promise((resolve) => failServer.close(resolve));
+      await new Promise(resolve => failServer.close(resolve));
     }, 15000);
   });
 });
@@ -1104,7 +1043,9 @@ describe('Webhook Management', () => {
 // ── Rate limiting ─────────────────────────────────────────────────────────────
 describe('Rate limiting', () => {
   test('write requests succeed within test-mode limit (max: 1000)', async () => {
-    const ids = Array.from({ length: 25 }, (_, i) => `C${String(i).padStart(55, '0')}`);
+    const ids = Array.from({ length: 25 }, (_, i) =>
+      'C' + String(i).padStart(55, '0')
+    );
     const statuses = [];
     for (const id of ids) {
       const res = await request(app)
@@ -1114,7 +1055,7 @@ describe('Rate limiting', () => {
       statuses.push(res.status);
     }
     // In test mode the write limit is 1000, so all 25 should succeed
-    expect(statuses.every((s) => s === 201)).toBe(true);
+    expect(statuses.every(s => s === 201)).toBe(true);
     expect(statuses.length).toBe(25);
   });
 });
@@ -1143,24 +1084,9 @@ describe('tokenize()', () => {
 
 describe('buildSearchIndex() and scoreSearch()', () => {
   const mockData = {
-    CAAA: {
-      title: 'Coffee Farm',
-      location: 'Ethiopia',
-      description: 'Premium coffee',
-      assetType: 'Agriculture',
-    },
-    CBBB: {
-      title: 'Downtown Office',
-      location: 'New York',
-      description: 'Manhattan building',
-      assetType: 'Real Estate',
-    },
-    CCCC: {
-      title: 'Solar Plant',
-      location: 'Arizona',
-      description: 'Renewable energy',
-      assetType: 'Energy',
-    },
+    'CAAA': { title: 'Coffee Farm', location: 'Ethiopia', description: 'Premium coffee', assetType: 'Agriculture' },
+    'CBBB': { title: 'Downtown Office', location: 'New York', description: 'Manhattan building', assetType: 'Real Estate' },
+    'CCCC': { title: 'Solar Plant', location: 'Arizona', description: 'Renewable energy', assetType: 'Energy' },
   };
 
   test('builds a non-empty index', () => {
@@ -1181,7 +1107,7 @@ describe('buildSearchIndex() and scoreSearch()', () => {
   test('manhattan matches CBBB', () => {
     buildSearchIndex(mockData);
     const results = scoreSearch('manhattan', mockData);
-    expect(results.some((r) => r.contractId === 'CBBB')).toBe(true);
+    expect(results.some(r => r.contractId === 'CBBB')).toBe(true);
   });
 
   test('unknown term returns empty results', () => {
@@ -1194,14 +1120,14 @@ describe('buildSearchIndex() and scoreSearch()', () => {
     buildSearchIndex(mockData);
     const results = scoreSearch('', mockData);
     expect(results.length).toBe(Object.keys(mockData).length);
-    expect(results.every((r) => r.score === 1)).toBe(true);
+    expect(results.every(r => r.score === 1)).toBe(true);
   });
 });
 
 describe('GET /api/v1/rwa/search', () => {
-  const SEARCH_ID_A = `C${'S'.repeat(55)}`;
-  const SEARCH_ID_B = `C${'T'.repeat(55)}`;
-  const SEARCH_ID_C = `C${'U'.repeat(55)}`;
+  const SEARCH_ID_A = 'C' + 'S'.repeat(55);
+  const SEARCH_ID_B = 'C' + 'T'.repeat(55);
+  const SEARCH_ID_C = 'C' + 'U'.repeat(55);
 
   beforeAll(async () => {
     await createAndApproveAsset({
@@ -1259,7 +1185,7 @@ describe('GET /api/v1/rwa/search', () => {
   test('results include _score for relevance', async () => {
     const res = await request(app).get('/api/v1/rwa/search?q=farm');
     expect(res.status).toBe(200);
-    res.body.data.forEach((asset) => {
+    res.body.data.forEach(asset => {
       expect(typeof asset._score).toBe('number');
       expect(asset._score).toBeGreaterThan(0);
     });
@@ -1268,7 +1194,7 @@ describe('GET /api/v1/rwa/search', () => {
   test('searches across title, description, and location', async () => {
     const res = await request(app).get('/api/v1/rwa/search?q=Ghana');
     expect(res.status).toBe(200);
-    const ids = res.body.data.map((a) => a.contractId);
+    const ids = res.body.data.map(a => a.contractId);
     expect(ids).toContain(SEARCH_ID_A);
     expect(ids).toContain(SEARCH_ID_C);
   });
@@ -1276,15 +1202,13 @@ describe('GET /api/v1/rwa/search', () => {
   test('faceted filter by assetType narrows results', async () => {
     const res = await request(app).get('/api/v1/rwa/search?q=farm&assetType=Energy');
     expect(res.status).toBe(200);
-    expect(res.body.data.every((a) => a.assetType === 'Energy')).toBe(true);
+    expect(res.body.data.every(a => a.assetType === 'Energy')).toBe(true);
   });
 
   test('faceted filter by location narrows results', async () => {
     const res = await request(app).get('/api/v1/rwa/search?q=farm&location=Ghana');
     expect(res.status).toBe(200);
-    expect(
-      res.body.data.every((a) => a.location && a.location.toLowerCase().includes('ghana')),
-    ).toBe(true);
+    expect(res.body.data.every(a => a.location && a.location.toLowerCase().includes('ghana'))).toBe(true);
   });
 
   test('pagination works on search results', async () => {
@@ -1302,7 +1226,7 @@ describe('GET /api/v1/rwa/search', () => {
   });
 
   test('index syncs after asset creation (new asset appears in search)', async () => {
-    const newId = `C${'N'.repeat(55)}`;
+    const newId = 'C' + 'N'.repeat(55);
     await createAndApproveAsset({
       contractId: newId,
       title: 'Pineapple Plantation',
@@ -1313,12 +1237,12 @@ describe('GET /api/v1/rwa/search', () => {
 
     const res = await request(app).get('/api/v1/rwa/search?q=pineapple');
     expect(res.status).toBe(200);
-    const ids = res.body.data.map((a) => a.contractId);
+    const ids = res.body.data.map(a => a.contractId);
     expect(ids).toContain(newId);
   });
 
   test('index syncs after asset deletion (removed asset disappears from search)', async () => {
-    const delId = `C${'M'.repeat(55)}`;
+    const delId = 'C' + 'M'.repeat(55);
     await createAndApproveAsset({
       contractId: delId,
       title: 'Papaya Grove',
@@ -1329,11 +1253,11 @@ describe('GET /api/v1/rwa/search', () => {
 
     // Confirm it appears first
     const before = await request(app).get('/api/v1/rwa/search?q=papaya');
-    expect(before.body.data.some((a) => a.contractId === delId)).toBe(true);
+    expect(before.body.data.some(a => a.contractId === delId)).toBe(true);
 
     // Delete and confirm it disappears
     await request(app).delete(`/api/rwa/${delId}`).set('x-api-key', API_KEY);
     const after = await request(app).get('/api/v1/rwa/search?q=papaya');
-    expect(after.body.data.some((a) => a.contractId === delId)).toBe(false);
+    expect(after.body.data.some(a => a.contractId === delId)).toBe(false);
   });
 });

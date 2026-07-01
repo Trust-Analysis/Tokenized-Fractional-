@@ -18,7 +18,7 @@ export function createAdminAuth(apiKeyService) {
    */
   return async (req, res, next) => {
     const apiKey = req.headers['x-api-key'];
-
+    
     if (!apiKey) {
       req.log?.warn('Missing API key header');
       return res.status(401).json({
@@ -30,11 +30,11 @@ export function createAdminAuth(apiKeyService) {
 
     try {
       const validation = await apiKeyService.validate(apiKey);
-
+      
       if (!validation.valid) {
         req.log?.warn({ keyId: validation.id, reason: validation.reason }, 'Invalid API key');
         return res.status(401).json({
-          error: `Unauthorized: ${validation.reason}`,
+          error: 'Unauthorized: ' + validation.reason,
           code: 'INVALID_API_KEY',
           requestId: req.requestId,
         });
@@ -63,6 +63,6 @@ export function createAdminAuth(apiKeyService) {
  * This will be initialized in app.js with the actual service.
  * @deprecated Use createAdminAuth(apiKeyService) instead
  */
-export const adminAuth = (_req, res, _next) => {
+export let adminAuth = (_req, res, _next) => {
   res.status(500).json({ error: 'adminAuth middleware not initialized' });
 };

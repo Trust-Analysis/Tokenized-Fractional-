@@ -61,7 +61,8 @@ export default function BuyShares({
 
   const totalCost = pricePerShare != null ? pricePerShare * buyAmount : null;
 
-  const shortAddress = (addr) => (addr ? `${addr.slice(0, 6)}…${addr.slice(-4)}` : '');
+  const shortAddress = (addr) =>
+    addr ? `${addr.slice(0, 6)}…${addr.slice(-4)}` : '';
 
   return (
     <Card>

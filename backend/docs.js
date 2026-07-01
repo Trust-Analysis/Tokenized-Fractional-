@@ -12,7 +12,9 @@ const options = {
         '- **`/api/v1/rwa`** — versioned path (preferred, use in new integrations)\n' +
         '- **`/api/rwa`** — legacy path (backward-compatible alias, defaults to v1)',
     },
-    servers: [{ url: 'http://localhost:3001', description: 'Development' }],
+    servers: [
+      { url: 'http://localhost:3001', description: 'Development' },
+    ],
     components: {
       securitySchemes: {
         ApiKeyAuth: {
@@ -26,39 +28,17 @@ const options = {
         Asset: {
           type: 'object',
           properties: {
-            contractId: {
-              type: 'string',
-              description: 'Soroban contract ID (starts with C)',
-            },
+            contractId: { type: 'string', description: 'Soroban contract ID (starts with C)' },
             title: { type: 'string', example: 'Luxury Apartment Complex' },
             location: { type: 'string', example: 'New York, USA' },
-            description: {
-              type: 'string',
-              example: 'A premium residential property in downtown Manhattan.',
-            },
+            description: { type: 'string', example: 'A premium residential property in downtown Manhattan.' },
             assetType: { type: 'string', example: 'real_estate' },
-            imageUrl: {
-              type: 'string',
-              format: 'uri',
-              example: 'https://example.com/image.jpg',
-            },
+            imageUrl: { type: 'string', format: 'uri', example: 'https://example.com/image.jpg' },
             totalValuation: { type: 'string', example: '$5,000,000' },
             documents: { type: 'array', items: { type: 'string' } },
-            status: {
-              type: 'string',
-              enum: ['pending', 'approved', 'rejected'],
-              description: 'Verification status',
-            },
-            submittedAt: {
-              type: 'string',
-              format: 'date-time',
-              description: 'When the asset was submitted for review',
-            },
-            reviewedAt: {
-              type: 'string',
-              format: 'date-time',
-              description: 'When the asset was reviewed by an admin',
-            },
+            status: { type: 'string', enum: ['pending', 'approved', 'rejected'], description: 'Verification status' },
+            submittedAt: { type: 'string', format: 'date-time', description: 'When the asset was submitted for review' },
+            reviewedAt: { type: 'string', format: 'date-time', description: 'When the asset was reviewed by an admin' },
             reviewedBy: { type: 'string', description: 'Admin who reviewed the asset' },
             createdAt: { type: 'string', format: 'date-time' },
             updatedAt: { type: 'string', format: 'date-time' },
@@ -89,14 +69,8 @@ const options = {
             dependencies: {
               type: 'object',
               properties: {
-                storage: {
-                  type: 'object',
-                  properties: { status: { type: 'string' } },
-                },
-                redis: {
-                  type: 'object',
-                  properties: { status: { type: 'string' } },
-                },
+                storage: { type: 'object', properties: { status: { type: 'string' } } },
+                redis: { type: 'object', properties: { status: { type: 'string' } } },
               },
             },
           },
@@ -104,10 +78,7 @@ const options = {
         PaginatedAssets: {
           type: 'object',
           properties: {
-            data: {
-              type: 'array',
-              items: { $ref: '#/components/schemas/Asset' },
-            },
+            data: { type: 'array', items: { $ref: '#/components/schemas/Asset' } },
             pagination: {
               type: 'object',
               properties: {
@@ -122,26 +93,9 @@ const options = {
         Webhook: {
           type: 'object',
           properties: {
-            id: {
-              type: 'string',
-              description: 'Unique webhook ID (wh_...)',
-              example: 'wh_abc123def456',
-            },
+            id: { type: 'string', description: 'Unique webhook ID (wh_...)', example: 'wh_abc123def456' },
             url: { type: 'string', format: 'uri', description: 'URL to call on events' },
-            events: {
-              type: 'array',
-              items: {
-                type: 'string',
-                enum: [
-                  'asset.created',
-                  'asset.updated',
-                  'asset.deleted',
-                  'asset.approved',
-                  'asset.rejected',
-                ],
-              },
-              description: 'Events to subscribe to',
-            },
+            events: { type: 'array', items: { type: 'string', enum: ['asset.created', 'asset.updated', 'asset.deleted', 'asset.approved', 'asset.rejected'] }, description: 'Events to subscribe to' },
             secret: { type: 'string', description: 'Optional secret for HMAC signing' },
             active: { type: 'boolean', description: 'Whether the webhook is active' },
             createdAt: { type: 'string', format: 'date-time' },
@@ -156,25 +110,9 @@ const options = {
           required: ['url', 'events'],
           properties: {
             url: { type: 'string', format: 'uri', description: 'URL to call on events' },
-            events: {
-              type: 'array',
-              items: {
-                type: 'string',
-                enum: [
-                  'asset.created',
-                  'asset.updated',
-                  'asset.deleted',
-                  'asset.approved',
-                  'asset.rejected',
-                ],
-              },
-              description: 'Events to subscribe to',
-            },
+            events: { type: 'array', items: { type: 'string', enum: ['asset.created', 'asset.updated', 'asset.deleted', 'asset.approved', 'asset.rejected'] }, description: 'Events to subscribe to' },
             secret: { type: 'string', description: 'Optional secret for HMAC signing' },
-            active: {
-              type: 'boolean',
-              description: 'Whether the webhook is active (default true)',
-            },
+            active: { type: 'boolean', description: 'Whether the webhook is active (default true)' },
           },
         },
       },
@@ -186,21 +124,13 @@ const options = {
           summary: 'Health check',
           description: 'Returns the server status and dependency health.',
           responses: {
-            200: {
+            '200': {
               description: 'Server is healthy',
-              content: {
-                'application/json': {
-                  schema: { $ref: '#/components/schemas/HealthResponse' },
-                },
-              },
+              content: { 'application/json': { schema: { $ref: '#/components/schemas/HealthResponse' } } },
             },
-            503: {
+            '503': {
               description: 'Dependency degraded (e.g. Redis unreachable)',
-              content: {
-                'application/json': {
-                  schema: { $ref: '#/components/schemas/HealthResponse' },
-                },
-              },
+              content: { 'application/json': { schema: { $ref: '#/components/schemas/HealthResponse' } } },
             },
           },
         },
@@ -212,39 +142,15 @@ const options = {
           summary: 'List all asset metadata',
           description: 'Returns a paginated, filterable list of all RWA assets.',
           parameters: [
-            {
-              in: 'query',
-              name: 'page',
-              schema: { type: 'integer', default: 1 },
-              description: 'Page number',
-            },
-            {
-              in: 'query',
-              name: 'limit',
-              schema: { type: 'integer', default: 20 },
-              description: 'Items per page (max 100)',
-            },
-            {
-              in: 'query',
-              name: 'assetType',
-              schema: { type: 'string' },
-              description: 'Filter by asset type (case-insensitive)',
-            },
-            {
-              in: 'query',
-              name: 'search',
-              schema: { type: 'string' },
-              description: 'Full-text search on title and description',
-            },
+            { in: 'query', name: 'page', schema: { type: 'integer', default: 1 }, description: 'Page number' },
+            { in: 'query', name: 'limit', schema: { type: 'integer', default: 20 }, description: 'Items per page (max 100)' },
+            { in: 'query', name: 'assetType', schema: { type: 'string' }, description: 'Filter by asset type (case-insensitive)' },
+            { in: 'query', name: 'search', schema: { type: 'string' }, description: 'Full-text search on title and description' },
           ],
           responses: {
-            200: {
+            '200': {
               description: 'Paginated list of assets',
-              content: {
-                'application/json': {
-                  schema: { $ref: '#/components/schemas/PaginatedAssets' },
-                },
-              },
+              content: { 'application/json': { schema: { $ref: '#/components/schemas/PaginatedAssets' } } },
             },
           },
         },
@@ -255,37 +161,15 @@ const options = {
           security: [{ ApiKeyAuth: [] }],
           requestBody: {
             required: true,
-            content: {
-              'application/json': {
-                schema: { $ref: '#/components/schemas/AssetInput' },
-              },
-            },
+            content: { 'application/json': { schema: { $ref: '#/components/schemas/AssetInput' } } },
           },
           responses: {
-            201: {
+            '201': {
               description: 'Asset created or updated',
-              content: {
-                'application/json': {
-                  schema: { $ref: '#/components/schemas/Asset' },
-                },
-              },
+              content: { 'application/json': { schema: { $ref: '#/components/schemas/Asset' } } },
             },
-            400: {
-              description: 'Validation error',
-              content: {
-                'application/json': {
-                  schema: { $ref: '#/components/schemas/Error' },
-                },
-              },
-            },
-            401: {
-              description: 'Unauthorized',
-              content: {
-                'application/json': {
-                  schema: { $ref: '#/components/schemas/Error' },
-                },
-              },
-            },
+            '400': { description: 'Validation error', content: { 'application/json': { schema: { $ref: '#/components/schemas/Error' } } } },
+            '401': { description: 'Unauthorized', content: { 'application/json': { schema: { $ref: '#/components/schemas/Error' } } } },
           },
         },
       },
@@ -294,31 +178,11 @@ const options = {
           tags: ['Assets — v1 (versioned)'],
           summary: 'Get asset metadata by contract ID',
           parameters: [
-            {
-              in: 'path',
-              name: 'contractId',
-              required: true,
-              schema: { type: 'string' },
-              description: 'Soroban contract ID',
-            },
+            { in: 'path', name: 'contractId', required: true, schema: { type: 'string' }, description: 'Soroban contract ID' },
           ],
           responses: {
-            200: {
-              description: 'Asset metadata',
-              content: {
-                'application/json': {
-                  schema: { $ref: '#/components/schemas/Asset' },
-                },
-              },
-            },
-            404: {
-              description: 'Asset not found',
-              content: {
-                'application/json': {
-                  schema: { $ref: '#/components/schemas/Error' },
-                },
-              },
-            },
+            '200': { description: 'Asset metadata', content: { 'application/json': { schema: { $ref: '#/components/schemas/Asset' } } } },
+            '404': { description: 'Asset not found', content: { 'application/json': { schema: { $ref: '#/components/schemas/Error' } } } },
           },
         },
         delete: {
@@ -327,45 +191,19 @@ const options = {
           description: 'Requires admin API key via `x-api-key` header.',
           security: [{ ApiKeyAuth: [] }],
           parameters: [
-            {
-              in: 'path',
-              name: 'contractId',
-              required: true,
-              schema: { type: 'string' },
-              description: 'Soroban contract ID',
-            },
+            { in: 'path', name: 'contractId', required: true, schema: { type: 'string' }, description: 'Soroban contract ID' },
           ],
           responses: {
-            200: {
+            '200': {
               description: 'Asset deleted',
               content: {
                 'application/json': {
-                  schema: {
-                    type: 'object',
-                    properties: {
-                      message: { type: 'string' },
-                      contractId: { type: 'string' },
-                    },
-                  },
+                  schema: { type: 'object', properties: { message: { type: 'string' }, contractId: { type: 'string' } } },
                 },
               },
             },
-            401: {
-              description: 'Unauthorized',
-              content: {
-                'application/json': {
-                  schema: { $ref: '#/components/schemas/Error' },
-                },
-              },
-            },
-            404: {
-              description: 'Asset not found',
-              content: {
-                'application/json': {
-                  schema: { $ref: '#/components/schemas/Error' },
-                },
-              },
-            },
+            '401': { description: 'Unauthorized', content: { 'application/json': { schema: { $ref: '#/components/schemas/Error' } } } },
+            '404': { description: 'Asset not found', content: { 'application/json': { schema: { $ref: '#/components/schemas/Error' } } } },
           },
         },
       },
@@ -374,84 +212,33 @@ const options = {
         get: {
           tags: ['Assets — legacy (backward-compatible)'],
           summary: 'List all asset metadata (legacy path)',
-          description:
-            '**Deprecated path.** Alias for `GET /api/v1/rwa`. Use `/api/v1/rwa` for new integrations.',
+          description: '**Deprecated path.** Alias for `GET /api/v1/rwa`. Use `/api/v1/rwa` for new integrations.',
           parameters: [
-            {
-              in: 'query',
-              name: 'page',
-              schema: { type: 'integer', default: 1 },
-              description: 'Page number',
-            },
-            {
-              in: 'query',
-              name: 'limit',
-              schema: { type: 'integer', default: 20 },
-              description: 'Items per page (max 100)',
-            },
-            {
-              in: 'query',
-              name: 'assetType',
-              schema: { type: 'string' },
-              description: 'Filter by asset type (case-insensitive)',
-            },
-            {
-              in: 'query',
-              name: 'search',
-              schema: { type: 'string' },
-              description: 'Full-text search on title and description',
-            },
+            { in: 'query', name: 'page', schema: { type: 'integer', default: 1 }, description: 'Page number' },
+            { in: 'query', name: 'limit', schema: { type: 'integer', default: 20 }, description: 'Items per page (max 100)' },
+            { in: 'query', name: 'assetType', schema: { type: 'string' }, description: 'Filter by asset type (case-insensitive)' },
+            { in: 'query', name: 'search', schema: { type: 'string' }, description: 'Full-text search on title and description' },
           ],
           responses: {
-            200: {
+            '200': {
               description: 'Paginated list of assets',
-              content: {
-                'application/json': {
-                  schema: { $ref: '#/components/schemas/PaginatedAssets' },
-                },
-              },
+              content: { 'application/json': { schema: { $ref: '#/components/schemas/PaginatedAssets' } } },
             },
           },
         },
         post: {
           tags: ['Assets — legacy (backward-compatible)'],
           summary: 'Create or update asset metadata (legacy path)',
-          description:
-            '**Deprecated path.** Alias for `POST /api/v1/rwa`. Use `/api/v1/rwa` for new integrations.',
+          description: '**Deprecated path.** Alias for `POST /api/v1/rwa`. Use `/api/v1/rwa` for new integrations.',
           security: [{ ApiKeyAuth: [] }],
           requestBody: {
             required: true,
-            content: {
-              'application/json': {
-                schema: { $ref: '#/components/schemas/AssetInput' },
-              },
-            },
+            content: { 'application/json': { schema: { $ref: '#/components/schemas/AssetInput' } } },
           },
           responses: {
-            201: {
-              description: 'Asset created or updated',
-              content: {
-                'application/json': {
-                  schema: { $ref: '#/components/schemas/Asset' },
-                },
-              },
-            },
-            400: {
-              description: 'Validation error',
-              content: {
-                'application/json': {
-                  schema: { $ref: '#/components/schemas/Error' },
-                },
-              },
-            },
-            401: {
-              description: 'Unauthorized',
-              content: {
-                'application/json': {
-                  schema: { $ref: '#/components/schemas/Error' },
-                },
-              },
-            },
+            '201': { description: 'Asset created or updated', content: { 'application/json': { schema: { $ref: '#/components/schemas/Asset' } } } },
+            '400': { description: 'Validation error', content: { 'application/json': { schema: { $ref: '#/components/schemas/Error' } } } },
+            '401': { description: 'Unauthorized', content: { 'application/json': { schema: { $ref: '#/components/schemas/Error' } } } },
           },
         },
       },
@@ -462,18 +249,11 @@ const options = {
           description: '**Deprecated path.** Alias for `GET /api/v1/rwa/pending`.',
           security: [{ ApiKeyAuth: [] }],
           responses: {
-            200: {
+            '200': {
               description: 'List of pending assets',
-              content: {
-                'application/json': {
-                  schema: { type: 'array', items: { $ref: '#/components/schemas/Asset' } },
-                },
-              },
+              content: { 'application/json': { schema: { type: 'array', items: { $ref: '#/components/schemas/Asset' } } } },
             },
-            401: {
-              description: 'Unauthorized',
-              content: { 'application/json': { schema: { $ref: '#/components/schemas/Error' } } },
-            },
+            '401': { description: 'Unauthorized', content: { 'application/json': { schema: { $ref: '#/components/schemas/Error' } } } },
           },
         },
       },
@@ -481,82 +261,34 @@ const options = {
         get: {
           tags: ['Assets — legacy (backward-compatible)'],
           summary: 'Get asset metadata by contract ID (legacy path)',
-          description:
-            '**Deprecated path.** Alias for `GET /api/v1/rwa/{contractId}`. Use `/api/v1/rwa/{contractId}` for new integrations.',
+          description: '**Deprecated path.** Alias for `GET /api/v1/rwa/{contractId}`. Use `/api/v1/rwa/{contractId}` for new integrations.',
           parameters: [
-            {
-              in: 'path',
-              name: 'contractId',
-              required: true,
-              schema: { type: 'string' },
-              description: 'Soroban contract ID',
-            },
+            { in: 'path', name: 'contractId', required: true, schema: { type: 'string' }, description: 'Soroban contract ID' },
           ],
           responses: {
-            200: {
-              description: 'Asset metadata',
-              content: {
-                'application/json': {
-                  schema: { $ref: '#/components/schemas/Asset' },
-                },
-              },
-            },
-            404: {
-              description: 'Asset not found',
-              content: {
-                'application/json': {
-                  schema: { $ref: '#/components/schemas/Error' },
-                },
-              },
-            },
+            '200': { description: 'Asset metadata', content: { 'application/json': { schema: { $ref: '#/components/schemas/Asset' } } } },
+            '404': { description: 'Asset not found', content: { 'application/json': { schema: { $ref: '#/components/schemas/Error' } } } },
           },
         },
         delete: {
           tags: ['Assets — legacy (backward-compatible)'],
           summary: 'Delete asset metadata (legacy path)',
-          description:
-            '**Deprecated path.** Alias for `DELETE /api/v1/rwa/{contractId}`. Use `/api/v1/rwa/{contractId}` for new integrations.',
+          description: '**Deprecated path.** Alias for `DELETE /api/v1/rwa/{contractId}`. Use `/api/v1/rwa/{contractId}` for new integrations.',
           security: [{ ApiKeyAuth: [] }],
           parameters: [
-            {
-              in: 'path',
-              name: 'contractId',
-              required: true,
-              schema: { type: 'string' },
-              description: 'Soroban contract ID',
-            },
+            { in: 'path', name: 'contractId', required: true, schema: { type: 'string' }, description: 'Soroban contract ID' },
           ],
           responses: {
-            200: {
+            '200': {
               description: 'Asset deleted',
               content: {
                 'application/json': {
-                  schema: {
-                    type: 'object',
-                    properties: {
-                      message: { type: 'string' },
-                      contractId: { type: 'string' },
-                    },
-                  },
+                  schema: { type: 'object', properties: { message: { type: 'string' }, contractId: { type: 'string' } } },
                 },
               },
             },
-            401: {
-              description: 'Unauthorized',
-              content: {
-                'application/json': {
-                  schema: { $ref: '#/components/schemas/Error' },
-                },
-              },
-            },
-            404: {
-              description: 'Asset not found',
-              content: {
-                'application/json': {
-                  schema: { $ref: '#/components/schemas/Error' },
-                },
-              },
-            },
+            '401': { description: 'Unauthorized', content: { 'application/json': { schema: { $ref: '#/components/schemas/Error' } } } },
+            '404': { description: 'Asset not found', content: { 'application/json': { schema: { $ref: '#/components/schemas/Error' } } } },
           },
         },
       },
@@ -567,18 +299,11 @@ const options = {
           description: 'Returns all assets with status "pending" that await admin review.',
           security: [{ ApiKeyAuth: [] }],
           responses: {
-            200: {
+            '200': {
               description: 'List of pending assets',
-              content: {
-                'application/json': {
-                  schema: { type: 'array', items: { $ref: '#/components/schemas/Asset' } },
-                },
-              },
+              content: { 'application/json': { schema: { type: 'array', items: { $ref: '#/components/schemas/Asset' } } } },
             },
-            401: {
-              description: 'Unauthorized',
-              content: { 'application/json': { schema: { $ref: '#/components/schemas/Error' } } },
-            },
+            '401': { description: 'Unauthorized', content: { 'application/json': { schema: { $ref: '#/components/schemas/Error' } } } },
           },
         },
       },
@@ -589,27 +314,12 @@ const options = {
           description: 'Sets asset status to "approved". Requires admin API key.',
           security: [{ ApiKeyAuth: [] }],
           parameters: [
-            {
-              in: 'path',
-              name: 'contractId',
-              required: true,
-              schema: { type: 'string' },
-              description: 'Soroban contract ID',
-            },
+            { in: 'path', name: 'contractId', required: true, schema: { type: 'string' }, description: 'Soroban contract ID' },
           ],
           responses: {
-            200: {
-              description: 'Asset approved',
-              content: { 'application/json': { schema: { $ref: '#/components/schemas/Asset' } } },
-            },
-            401: {
-              description: 'Unauthorized',
-              content: { 'application/json': { schema: { $ref: '#/components/schemas/Error' } } },
-            },
-            404: {
-              description: 'Asset not found',
-              content: { 'application/json': { schema: { $ref: '#/components/schemas/Error' } } },
-            },
+            '200': { description: 'Asset approved', content: { 'application/json': { schema: { $ref: '#/components/schemas/Asset' } } } },
+            '401': { description: 'Unauthorized', content: { 'application/json': { schema: { $ref: '#/components/schemas/Error' } } } },
+            '404': { description: 'Asset not found', content: { 'application/json': { schema: { $ref: '#/components/schemas/Error' } } } },
           },
         },
       },
@@ -620,27 +330,12 @@ const options = {
           description: 'Sets asset status to "rejected". Requires admin API key.',
           security: [{ ApiKeyAuth: [] }],
           parameters: [
-            {
-              in: 'path',
-              name: 'contractId',
-              required: true,
-              schema: { type: 'string' },
-              description: 'Soroban contract ID',
-            },
+            { in: 'path', name: 'contractId', required: true, schema: { type: 'string' }, description: 'Soroban contract ID' },
           ],
           responses: {
-            200: {
-              description: 'Asset rejected',
-              content: { 'application/json': { schema: { $ref: '#/components/schemas/Asset' } } },
-            },
-            401: {
-              description: 'Unauthorized',
-              content: { 'application/json': { schema: { $ref: '#/components/schemas/Error' } } },
-            },
-            404: {
-              description: 'Asset not found',
-              content: { 'application/json': { schema: { $ref: '#/components/schemas/Error' } } },
-            },
+            '200': { description: 'Asset rejected', content: { 'application/json': { schema: { $ref: '#/components/schemas/Asset' } } } },
+            '401': { description: 'Unauthorized', content: { 'application/json': { schema: { $ref: '#/components/schemas/Error' } } } },
+            '404': { description: 'Asset not found', content: { 'application/json': { schema: { $ref: '#/components/schemas/Error' } } } },
           },
         },
       },
@@ -650,18 +345,11 @@ const options = {
           summary: 'List all webhooks (admin only)',
           security: [{ ApiKeyAuth: [] }],
           responses: {
-            200: {
+            '200': {
               description: 'List of registered webhooks',
-              content: {
-                'application/json': {
-                  schema: { type: 'array', items: { $ref: '#/components/schemas/Webhook' } },
-                },
-              },
+              content: { 'application/json': { schema: { type: 'array', items: { $ref: '#/components/schemas/Webhook' } } } },
             },
-            401: {
-              description: 'Unauthorized',
-              content: { 'application/json': { schema: { $ref: '#/components/schemas/Error' } } },
-            },
+            '401': { description: 'Unauthorized', content: { 'application/json': { schema: { $ref: '#/components/schemas/Error' } } } },
           },
         },
         post: {
@@ -670,23 +358,12 @@ const options = {
           security: [{ ApiKeyAuth: [] }],
           requestBody: {
             required: true,
-            content: {
-              'application/json': { schema: { $ref: '#/components/schemas/WebhookInput' } },
-            },
+            content: { 'application/json': { schema: { $ref: '#/components/schemas/WebhookInput' } } },
           },
           responses: {
-            201: {
-              description: 'Webhook created',
-              content: { 'application/json': { schema: { $ref: '#/components/schemas/Webhook' } } },
-            },
-            400: {
-              description: 'Validation error',
-              content: { 'application/json': { schema: { $ref: '#/components/schemas/Error' } } },
-            },
-            401: {
-              description: 'Unauthorized',
-              content: { 'application/json': { schema: { $ref: '#/components/schemas/Error' } } },
-            },
+            '201': { description: 'Webhook created', content: { 'application/json': { schema: { $ref: '#/components/schemas/Webhook' } } } },
+            '400': { description: 'Validation error', content: { 'application/json': { schema: { $ref: '#/components/schemas/Error' } } } },
+            '401': { description: 'Unauthorized', content: { 'application/json': { schema: { $ref: '#/components/schemas/Error' } } } },
           },
         },
       },
@@ -696,27 +373,12 @@ const options = {
           summary: 'Get a webhook by ID (admin only)',
           security: [{ ApiKeyAuth: [] }],
           parameters: [
-            {
-              in: 'path',
-              name: 'id',
-              required: true,
-              schema: { type: 'string' },
-              description: 'Webhook ID',
-            },
+            { in: 'path', name: 'id', required: true, schema: { type: 'string' }, description: 'Webhook ID' },
           ],
           responses: {
-            200: {
-              description: 'Webhook details',
-              content: { 'application/json': { schema: { $ref: '#/components/schemas/Webhook' } } },
-            },
-            401: {
-              description: 'Unauthorized',
-              content: { 'application/json': { schema: { $ref: '#/components/schemas/Error' } } },
-            },
-            404: {
-              description: 'Webhook not found',
-              content: { 'application/json': { schema: { $ref: '#/components/schemas/Error' } } },
-            },
+            '200': { description: 'Webhook details', content: { 'application/json': { schema: { $ref: '#/components/schemas/Webhook' } } } },
+            '401': { description: 'Unauthorized', content: { 'application/json': { schema: { $ref: '#/components/schemas/Error' } } } },
+            '404': { description: 'Webhook not found', content: { 'application/json': { schema: { $ref: '#/components/schemas/Error' } } } },
           },
         },
         patch: {
@@ -724,37 +386,17 @@ const options = {
           summary: 'Update a webhook (admin only)',
           security: [{ ApiKeyAuth: [] }],
           parameters: [
-            {
-              in: 'path',
-              name: 'id',
-              required: true,
-              schema: { type: 'string' },
-              description: 'Webhook ID',
-            },
+            { in: 'path', name: 'id', required: true, schema: { type: 'string' }, description: 'Webhook ID' },
           ],
           requestBody: {
             required: true,
-            content: {
-              'application/json': { schema: { $ref: '#/components/schemas/WebhookInput' } },
-            },
+            content: { 'application/json': { schema: { $ref: '#/components/schemas/WebhookInput' } } },
           },
           responses: {
-            200: {
-              description: 'Webhook updated',
-              content: { 'application/json': { schema: { $ref: '#/components/schemas/Webhook' } } },
-            },
-            400: {
-              description: 'Validation error',
-              content: { 'application/json': { schema: { $ref: '#/components/schemas/Error' } } },
-            },
-            401: {
-              description: 'Unauthorized',
-              content: { 'application/json': { schema: { $ref: '#/components/schemas/Error' } } },
-            },
-            404: {
-              description: 'Webhook not found',
-              content: { 'application/json': { schema: { $ref: '#/components/schemas/Error' } } },
-            },
+            '200': { description: 'Webhook updated', content: { 'application/json': { schema: { $ref: '#/components/schemas/Webhook' } } } },
+            '400': { description: 'Validation error', content: { 'application/json': { schema: { $ref: '#/components/schemas/Error' } } } },
+            '401': { description: 'Unauthorized', content: { 'application/json': { schema: { $ref: '#/components/schemas/Error' } } } },
+            '404': { description: 'Webhook not found', content: { 'application/json': { schema: { $ref: '#/components/schemas/Error' } } } },
           },
         },
         delete: {
@@ -762,34 +404,12 @@ const options = {
           summary: 'Delete a webhook (admin only)',
           security: [{ ApiKeyAuth: [] }],
           parameters: [
-            {
-              in: 'path',
-              name: 'id',
-              required: true,
-              schema: { type: 'string' },
-              description: 'Webhook ID',
-            },
+            { in: 'path', name: 'id', required: true, schema: { type: 'string' }, description: 'Webhook ID' },
           ],
           responses: {
-            200: {
-              description: 'Webhook deleted',
-              content: {
-                'application/json': {
-                  schema: {
-                    type: 'object',
-                    properties: { message: { type: 'string' }, id: { type: 'string' } },
-                  },
-                },
-              },
-            },
-            401: {
-              description: 'Unauthorized',
-              content: { 'application/json': { schema: { $ref: '#/components/schemas/Error' } } },
-            },
-            404: {
-              description: 'Webhook not found',
-              content: { 'application/json': { schema: { $ref: '#/components/schemas/Error' } } },
-            },
+            '200': { description: 'Webhook deleted', content: { 'application/json': { schema: { type: 'object', properties: { message: { type: 'string' }, id: { type: 'string' } } } } } },
+            '401': { description: 'Unauthorized', content: { 'application/json': { schema: { $ref: '#/components/schemas/Error' } } } },
+            '404': { description: 'Webhook not found', content: { 'application/json': { schema: { $ref: '#/components/schemas/Error' } } } },
           },
         },
       },
@@ -800,24 +420,13 @@ const options = {
           description: 'Checks whether the provided `x-api-key` is valid.',
           security: [{ ApiKeyAuth: [] }],
           responses: {
-            200: {
+            '200': {
               description: 'Key is valid',
-              content: {
-                'application/json': {
-                  schema: {
-                    type: 'object',
-                    properties: { ok: { type: 'boolean' } },
-                  },
-                },
-              },
+              content: { 'application/json': { schema: { type: 'object', properties: { ok: { type: 'boolean' } } } } },
             },
-            401: {
+            '401': {
               description: 'Invalid or missing key',
-              content: {
-                'application/json': {
-                  schema: { $ref: '#/components/schemas/Error' },
-                },
-              },
+              content: { 'application/json': { schema: { $ref: '#/components/schemas/Error' } } },
             },
           },
         },

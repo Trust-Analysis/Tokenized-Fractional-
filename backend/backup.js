@@ -70,9 +70,7 @@ export function loadBackupConfig(env = process.env) {
 
   const dataFiles = (
     env.BACKUP_DATA_FILES
-      ? env.BACKUP_DATA_FILES.split(',')
-          .map((s) => s.trim())
-          .filter(Boolean)
+      ? env.BACKUP_DATA_FILES.split(',').map((s) => s.trim()).filter(Boolean)
       : [env.DATA_FILE || 'data.json', env.WEBHOOK_DATA_FILE || 'webhooks.json']
   ).map((f) => (isAbsolute(f) ? f : join(backendDir, f)));
 
@@ -135,9 +133,7 @@ function pgDump(url, dest, log) {
       stderr += d.toString();
     });
     proc.on('error', (err) =>
-      reject(
-        new Error(`pg_dump failed to start: ${err.message}. Is the PostgreSQL client installed?`),
-      ),
+      reject(new Error(`pg_dump failed to start: ${err.message}. Is the PostgreSQL client installed?`))
     );
     proc.on('close', (code) => {
       if (code === 0) {
@@ -327,7 +323,7 @@ async function loadS3() {
     return await import('@aws-sdk/client-s3');
   } catch {
     throw new Error(
-      'BACKUP_S3_BUCKET is set but @aws-sdk/client-s3 is not installed. Run: npm install @aws-sdk/client-s3',
+      'BACKUP_S3_BUCKET is set but @aws-sdk/client-s3 is not installed. Run: npm install @aws-sdk/client-s3'
     );
   }
 }
@@ -353,11 +349,7 @@ export async function uploadBackupToS3(backupDir, config, log = silentLog) {
   for (const f of readdirSync(backupDir)) {
     const Key = `${config.s3.prefix}/${name}/${f}`;
     await client.send(
-      new PutObjectCommand({
-        Bucket: config.s3.bucket,
-        Key,
-        Body: readFileSync(join(backupDir, f)),
-      }),
+      new PutObjectCommand({ Bucket: config.s3.bucket, Key, Body: readFileSync(join(backupDir, f)) })
     );
     uploaded.push(Key);
     log.info(`uploaded s3://${config.s3.bucket}/${Key}`);
@@ -384,18 +376,14 @@ export async function rotateS3Backups(config, now = new Date(), log = silentLog)
         Bucket: config.s3.bucket,
         Prefix: `${config.s3.prefix}/`,
         ContinuationToken,
-      }),
+      })
     );
     for (const obj of page.Contents || []) {
       const rest = obj.Key.slice(config.s3.prefix.length + 1);
       const backupName = rest.split('/')[0];
       if (!backupName.startsWith('backup-')) continue;
       if (!names.has(backupName)) {
-        names.set(backupName, {
-          name: backupName,
-          createdAt: parseBackupTimestamp(backupName),
-          keys: [],
-        });
+        names.set(backupName, { name: backupName, createdAt: parseBackupTimestamp(backupName), keys: [] });
       }
       names.get(backupName).keys.push(obj.Key);
     }
@@ -418,10 +406,7 @@ export async function rotateS3Backups(config, now = new Date(), log = silentLog)
  * both local and remote copies. Throws if creation or verification fails so a
  * scheduled job / CI step exits non-zero on a bad backup.
  */
-export async function runBackup(
-  config = loadBackupConfig(),
-  { now = new Date(), log = consoleLog } = {},
-) {
+export async function runBackup(config = loadBackupConfig(), { now = new Date(), log = consoleLog } = {}) {
   log.info('starting backup run');
   const { name, dir } = await createBackup(config, { now, log });
   log.info(`created backup: ${name}`);
@@ -461,7 +446,7 @@ export function startBackupScheduler({ log = consoleLog } = {}) {
 
   const tick = () => {
     runBackup(loadBackupConfig(), { log }).catch((err) =>
-      log.error(`scheduled backup failed: ${err.message}`),
+      log.error(`scheduled backup failed: ${err.message}`)
     );
   };
 
@@ -471,7 +456,8 @@ export function startBackupScheduler({ log = consoleLog } = {}) {
 }
 
 // ── CLI ─────────────────────────────────────────────────────────────────────
-const invokedDirectly = process.argv[1] && pathToFileURL(process.argv[1]).href === import.meta.url;
+const invokedDirectly =
+  process.argv[1] && pathToFileURL(process.argv[1]).href === import.meta.url;
 
 if (invokedDirectly) {
   const args = process.argv.slice(2);

@@ -136,7 +136,7 @@ export class AnalyticsService {
         acc[type] = {
           value: vol,
           formatted: `$${vol.toLocaleString('en-US', { maximumFractionDigits: 2 })}`,
-          percentage: totalVolume > 0 ? `${((vol / totalVolume) * 100).toFixed(2)}%` : '0%',
+          percentage: totalVolume > 0 ? ((vol / totalVolume) * 100).toFixed(2) + '%' : '0%',
         };
         return acc;
       }, {}),
@@ -144,7 +144,7 @@ export class AnalyticsService {
         acc[loc] = {
           value: vol,
           formatted: `$${vol.toLocaleString('en-US', { maximumFractionDigits: 2 })}`,
-          percentage: totalVolume > 0 ? `${((vol / totalVolume) * 100).toFixed(2)}%` : '0%',
+          percentage: totalVolume > 0 ? ((vol / totalVolume) * 100).toFixed(2) + '%' : '0%',
         };
         return acc;
       }, {}),
@@ -303,8 +303,7 @@ export class AnalyticsService {
       locationMetrics[location].totalValue += parseFloat(asset.totalValuation) || 0;
 
       const type = asset.assetType || 'Unknown';
-      locationMetrics[location].assetTypes[type] =
-        (locationMetrics[location].assetTypes[type] || 0) + 1;
+      locationMetrics[location].assetTypes[type] = (locationMetrics[location].assetTypes[type] || 0) + 1;
 
       locationMetrics[location].assets.push({
         contractId: id,
@@ -455,10 +454,7 @@ export class AnalyticsService {
       .map(([date, value]) => ({
         date,
         value,
-        valueFormatted:
-          metric === 'value'
-            ? `$${value.toLocaleString('en-US', { maximumFractionDigits: 0 })}`
-            : value,
+        valueFormatted: metric === 'value' ? `$${value.toLocaleString('en-US', { maximumFractionDigits: 0 })}` : value,
       }));
 
     const result = {
@@ -466,10 +462,7 @@ export class AnalyticsService {
       period: `${days} days`,
       timeSeries,
       total: timeSeries.reduce((sum, p) => sum + p.value, 0),
-      average:
-        timeSeries.length > 0
-          ? timeSeries.reduce((sum, p) => sum + p.value, 0) / timeSeries.length
-          : 0,
+      average: timeSeries.length > 0 ? timeSeries.reduce((sum, p) => sum + p.value, 0) / timeSeries.length : 0,
       timestamp: new Date().toISOString(),
     };
 

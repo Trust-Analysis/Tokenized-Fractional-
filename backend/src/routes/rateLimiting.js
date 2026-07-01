@@ -54,13 +54,8 @@ export function createRateLimitingRoutes(logger, adminAuth) {
       logger.info({ requestId: req.requestId }, 'Rate limit config retrieved');
       res.json({ data: config });
     } catch (error) {
-      logger.error(
-        { error: error.message, requestId: req.requestId },
-        'Failed to get rate limit config',
-      );
-      res
-        .status(500)
-        .json({ error: 'Failed to retrieve rate limit configuration', message: error.message });
+      logger.error({ error: error.message, requestId: req.requestId }, 'Failed to get rate limit config');
+      res.status(500).json({ error: 'Failed to retrieve rate limit configuration', message: error.message });
     }
   });
 
@@ -82,13 +77,8 @@ export function createRateLimitingRoutes(logger, adminAuth) {
         },
       });
     } catch (error) {
-      logger.error(
-        { error: error.message, requestId: req.requestId },
-        'Failed to get rate limit stats',
-      );
-      res
-        .status(500)
-        .json({ error: 'Failed to retrieve rate limit statistics', message: error.message });
+      logger.error({ error: error.message, requestId: req.requestId }, 'Failed to get rate limit stats');
+      res.status(500).json({ error: 'Failed to retrieve rate limit statistics', message: error.message });
     }
   });
 
@@ -110,9 +100,7 @@ export function createRateLimitingRoutes(logger, adminAuth) {
       }
 
       if (tier !== 'all' && !['anonymous', 'authenticated', 'admin'].includes(tier)) {
-        return res
-          .status(400)
-          .json({ error: 'Invalid tier. Must be: all, anonymous, authenticated, or admin' });
+        return res.status(400).json({ error: 'Invalid tier. Must be: all, anonymous, authenticated, or admin' });
       }
 
       if (type !== 'all' && !['read', 'write'].includes(type)) {
@@ -133,7 +121,7 @@ export function createRateLimitingRoutes(logger, adminAuth) {
           requestKey: req.apiKey?.id,
           requestId: req.requestId,
         },
-        'Rate limit reset',
+        'Rate limit reset'
       );
 
       res.json({
@@ -143,10 +131,7 @@ export function createRateLimitingRoutes(logger, adminAuth) {
         type,
       });
     } catch (error) {
-      logger.error(
-        { error: error.message, requestId: req.requestId },
-        'Failed to reset rate limits',
-      );
+      logger.error({ error: error.message, requestId: req.requestId }, 'Failed to reset rate limits');
       res.status(500).json({ error: 'Failed to reset rate limits', message: error.message });
     }
   });
@@ -157,7 +142,7 @@ export function createRateLimitingRoutes(logger, adminAuth) {
    */
   router.get('/status', (req, res) => {
     try {
-      const { rateLimit } = req;
+      const rateLimit = req.rateLimit;
 
       if (!rateLimit) {
         return res.json({
@@ -168,10 +153,7 @@ export function createRateLimitingRoutes(logger, adminAuth) {
         });
       }
 
-      logger.info(
-        { tier: rateLimit.tier, requestId: req.requestId },
-        'Rate limit status retrieved',
-      );
+      logger.info({ tier: rateLimit.tier, requestId: req.requestId }, 'Rate limit status retrieved');
       res.json({
         data: {
           tier: rateLimit.tier,
@@ -180,17 +162,12 @@ export function createRateLimitingRoutes(logger, adminAuth) {
           current: rateLimit.current,
           remaining: rateLimit.remaining,
           resetInSeconds: rateLimit.resetIn,
-          percentageUsed: `${((rateLimit.current / rateLimit.limit) * 100).toFixed(2)}%`,
+          percentageUsed: ((rateLimit.current / rateLimit.limit) * 100).toFixed(2) + '%',
         },
       });
     } catch (error) {
-      logger.error(
-        { error: error.message, requestId: req.requestId },
-        'Failed to get rate limit status',
-      );
-      res
-        .status(500)
-        .json({ error: 'Failed to retrieve rate limit status', message: error.message });
+      logger.error({ error: error.message, requestId: req.requestId }, 'Failed to get rate limit status');
+      res.status(500).json({ error: 'Failed to retrieve rate limit status', message: error.message });
     }
   });
 
@@ -210,13 +187,8 @@ export function createRateLimitingRoutes(logger, adminAuth) {
         },
       });
     } catch (error) {
-      logger.error(
-        { error: error.message, requestId: req.requestId },
-        'Failed to check rate limiter health',
-      );
-      res
-        .status(500)
-        .json({ error: 'Failed to check rate limiter health', message: error.message });
+      logger.error({ error: error.message, requestId: req.requestId }, 'Failed to check rate limiter health');
+      res.status(500).json({ error: 'Failed to check rate limiter health', message: error.message });
     }
   });
 

@@ -9,10 +9,10 @@ import { useEffect, useCallback } from 'react';
  * Each entry defines: { key, ctrlKey, description, action }.
  */
 export const SHORTCUT_MAP = [
-  { key: 'k', ctrlKey: true, description: 'Open search', id: 'search' },
-  { key: 'b', ctrlKey: true, description: 'Open portfolio', id: 'portfolio' },
-  { key: 'h', ctrlKey: true, description: 'Go to home', id: 'home' },
-  { key: '/', ctrlKey: true, description: 'Show shortcut help', id: 'help' },
+  { key: 'k', ctrlKey: true,  description: 'Open search',        id: 'search' },
+  { key: 'b', ctrlKey: true,  description: 'Open portfolio',     id: 'portfolio' },
+  { key: 'h', ctrlKey: true,  description: 'Go to home',         id: 'home' },
+  { key: '/', ctrlKey: true,  description: 'Show shortcut help', id: 'help' },
   { key: 'Escape', ctrlKey: false, description: 'Close modal / dismiss', id: 'escape' },
 ];
 
@@ -35,7 +35,7 @@ export function useKeyboardShortcuts(handlers = {}, enabled = true) {
       const isInput = tag === 'INPUT' || tag === 'TEXTAREA' || e.target?.isContentEditable;
 
       for (const shortcut of SHORTCUT_MAP) {
-        const ctrlMatch = shortcut.ctrlKey ? e.ctrlKey || e.metaKey : !e.ctrlKey && !e.metaKey;
+        const ctrlMatch = shortcut.ctrlKey ? (e.ctrlKey || e.metaKey) : (!e.ctrlKey && !e.metaKey);
         const keyMatch = e.key === shortcut.key;
 
         if (ctrlMatch && keyMatch) {

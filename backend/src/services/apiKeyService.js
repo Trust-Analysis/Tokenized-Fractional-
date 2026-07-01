@@ -3,7 +3,7 @@
 
 /**
  * src/services/apiKeyService.js — API key management service
- *
+ * 
  * Provides full lifecycle management for API keys including:
  * - Creating new keys with optional expiration
  * - Validating and tracking usage
@@ -12,7 +12,8 @@
  * - Querying key metadata and usage statistics
  */
 
-import { randomBytes, createHash } from 'crypto';
+import { randomBytes } from 'crypto';
+import { createHash } from 'crypto';
 
 /**
  * Generate a cryptographically secure random API key
@@ -98,7 +99,9 @@ export class ApiKeyService {
 
     const keyHash = hashApiKey(apiKey);
 
-    const row = await this.knex(this.tableName).where('key_hash', keyHash).first();
+    const row = await this.knex(this.tableName)
+      .where('key_hash', keyHash)
+      .first();
 
     if (!row) {
       return { valid: false, reason: 'API key not found' };
@@ -141,7 +144,9 @@ export class ApiKeyService {
    * @returns {Promise<Object|null>}
    */
   async getById(id) {
-    const row = await this.knex(this.tableName).where('id', id).first();
+    const row = await this.knex(this.tableName)
+      .where('id', id)
+      .first();
 
     if (!row) return null;
 
@@ -162,7 +167,7 @@ export class ApiKeyService {
     }
 
     const rows = await query.orderBy('created_at', 'desc');
-    return rows.map((r) => this._formatKeyRow(r));
+    return rows.map(r => this._formatKeyRow(r));
   }
 
   /**
@@ -183,10 +188,12 @@ export class ApiKeyService {
 
     // Revoke the old key
     const now = new Date();
-    await this.knex(this.tableName).where('id', id).update({
-      revoked_at: now,
-      updated_at: now,
-    });
+    await this.knex(this.tableName)
+      .where('id', id)
+      .update({
+        revoked_at: now,
+        updated_at: now,
+      });
 
     // Create new key with same name (and optional new expiration)
     const newKeyData = await this.create({
@@ -219,10 +226,12 @@ export class ApiKeyService {
     }
 
     const now = new Date();
-    await this.knex(this.tableName).where('id', id).update({
-      revoked_at: now,
-      updated_at: now,
-    });
+    await this.knex(this.tableName)
+      .where('id', id)
+      .update({
+        revoked_at: now,
+        updated_at: now,
+      });
 
     this.logger.info({ keyId: id }, 'API key revoked');
 
@@ -235,7 +244,9 @@ export class ApiKeyService {
    * @returns {Promise<Object|null>}
    */
   async getUsageStats(id) {
-    const row = await this.knex(this.tableName).where('id', id).first();
+    const row = await this.knex(this.tableName)
+      .where('id', id)
+      .first();
 
     if (!row) return null;
 
@@ -283,7 +294,7 @@ export class ApiKeyService {
       .whereNull('revoked_at')
       .orderBy('expires_at', 'asc');
 
-    return rows.map((r) => this._formatKeyRow(r));
+    return rows.map(r => this._formatKeyRow(r));
   }
 
   /**

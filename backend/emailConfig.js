@@ -1,6 +1,6 @@
 /**
  * Email Service Configuration
- *
+ * 
  * Configuration for SMTP and email notifications.
  * Load environment variables and validate email settings.
  */

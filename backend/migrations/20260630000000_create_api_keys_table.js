@@ -1,6 +1,6 @@
 /**
  * Migration: create api_keys table for API key management
- *
+ * 
  * Stores hashed API keys with metadata, expiration, revocation status,
  * and usage tracking for the multi-key authentication system.
  *

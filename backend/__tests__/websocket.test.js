@@ -79,7 +79,7 @@ describe('WebSocket Implementation', () => {
         'ERROR',
       ];
 
-      requiredTypes.forEach((type) => {
+      requiredTypes.forEach(type => {
         expect(WS_EVENT_TYPES[type]).toBeDefined();
       });
     });
@@ -173,19 +173,19 @@ describe('WebSocket Implementation', () => {
 
 describe('WebSocket Event Types', () => {
   test('all event types should be strings', () => {
-    Object.values(WS_EVENT_TYPES).forEach((value) => {
+    Object.values(WS_EVENT_TYPES).forEach(value => {
       expect(typeof value).toBe('string');
     });
   });
 
   test('event types should follow snake_case convention', () => {
-    Object.values(WS_EVENT_TYPES).forEach((value) => {
+    Object.values(WS_EVENT_TYPES).forEach(value => {
       expect(value).toMatch(/^[a-z_]+$/);
     });
   });
 
   test('no event types should be empty strings', () => {
-    Object.values(WS_EVENT_TYPES).forEach((value) => {
+    Object.values(WS_EVENT_TYPES).forEach(value => {
       expect(value.length).toBeGreaterThan(0);
     });
   });

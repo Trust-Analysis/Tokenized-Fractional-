@@ -1,6 +1,6 @@
 /**
  * GraphQL Subscriptions Test Suite
- *
+ * 
  * Tests for real-time GraphQL subscriptions covering:
  * - PubSub event broadcasting
  * - WebSocket subscription handling
@@ -9,13 +9,7 @@
  */
 
 import { describe, test, expect, beforeEach, jest } from '@jest/globals';
-import {
-  pubsub,
-  SUBSCRIPTION_EVENTS,
-  publishSharePurchased,
-  publishPriceUpdated,
-  publishAssetListed,
-} from '../pubsub.js';
+import { pubsub, SUBSCRIPTION_EVENTS, publishSharePurchased, publishPriceUpdated, publishAssetListed } from '../pubsub.js';
 
 describe('GraphQL Subscriptions - PubSub Manager', () => {
   beforeEach(() => {
@@ -338,7 +332,7 @@ describe('GraphQL Subscriptions - Concurrency', () => {
     }
 
     // All callbacks should receive all events
-    callbacks.forEach((cb) => {
+    callbacks.forEach(cb => {
       expect(cb).toHaveBeenCalledTimes(10);
     });
   });
@@ -353,17 +347,17 @@ describe('GraphQL Subscriptions - Concurrency', () => {
     });
 
     // Unsubscribe half while publishing
-    unsubscribers.slice(0, 5).forEach((unsub) => unsub());
+    unsubscribers.slice(0, 5).forEach(unsub => unsub());
 
     pubsub.publish('cleanup_test', { data: 'test' });
 
     // Remaining subscribers should get the event
-    callbacks.slice(5).forEach((cb) => {
+    callbacks.slice(5).forEach(cb => {
       expect(cb).toHaveBeenCalledWith({ data: 'test' });
     });
 
     // Unsubscribed should not get it
-    callbacks.slice(0, 5).forEach((cb) => {
+    callbacks.slice(0, 5).forEach(cb => {
       expect(cb).not.toHaveBeenCalled();
     });
   });

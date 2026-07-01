@@ -11,7 +11,7 @@
     "test:watch": "vitest",
     "storybook": "storybook dev -p 6006",
     "build-storybook": "storybook build",
-    "deploy": "npm run build && echo 'Build complete — Render auto-deploys via render.yaml'",
+    "deploy": "npm run build && echo 'Build complete \u2014 Render auto-deploys via render.yaml'",
     "test:e2e": "playwright test",
     "test:e2e:ui": "playwright test --ui",
     "lint": "eslint . --ext .js,.jsx",

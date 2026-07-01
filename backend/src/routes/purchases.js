@@ -52,15 +52,8 @@ export function createPurchaseRoutes(transactionService, logger) {
       } = req.body;
 
       // Validate required fields
-      const required = [
-        'contractId',
-        'buyerAddress',
-        'sharesPurchased',
-        'pricePerShare',
-        'totalAmount',
-        'paymentToken',
-      ];
-      const missing = required.filter((field) => !req.body[field]);
+      const required = ['contractId', 'buyerAddress', 'sharesPurchased', 'pricePerShare', 'totalAmount', 'paymentToken'];
+      const missing = required.filter(field => !req.body[field]);
       if (missing.length > 0) {
         logger.warn({ missing, requestId: req.requestId }, 'Missing required fields');
         return res.status(400).json({
@@ -105,17 +98,14 @@ export function createPurchaseRoutes(transactionService, logger) {
         },
       });
 
-      logger.info(
-        {
-          transactionId: transaction.transaction_id,
-          contractId,
-          buyerAddress: `${buyerAddress.slice(0, 10)}...`,
-          sharesPurchased,
-          totalAmount,
-          requestId: req.requestId,
-        },
-        'Purchase recorded',
-      );
+      logger.info({
+        transactionId: transaction.transaction_id,
+        contractId,
+        buyerAddress: buyerAddress.slice(0, 10) + '...',
+        sharesPurchased,
+        totalAmount,
+        requestId: req.requestId,
+      }, 'Purchase recorded');
 
       res.status(201).json({
         data: {
@@ -193,10 +183,10 @@ export function createPurchaseRoutes(transactionService, logger) {
       const transactions = await transactionService.getContractTransactions(
         contractId,
         limit,
-        offset,
+        offset
       );
 
-      const result = transactions.map((tx) => ({
+      const result = transactions.map(tx => ({
         transactionId: tx.transaction_id,
         buyerAddress: tx.buyer_address,
         sharesPurchased: parseFloat(tx.shares_purchased),
@@ -206,24 +196,18 @@ export function createPurchaseRoutes(transactionService, logger) {
         createdAt: tx.created_at,
       }));
 
-      logger.info(
-        {
-          contractId,
-          count: result.length,
-          requestId: req.requestId,
-        },
-        'Contract purchases retrieved',
-      );
+      logger.info({
+        contractId,
+        count: result.length,
+        requestId: req.requestId,
+      }, 'Contract purchases retrieved');
 
       res.json({
         data: result,
         pagination: { limit, offset, count: result.length },
       });
     } catch (error) {
-      logger.error(
-        { error: error.message, requestId: req.requestId },
-        'Failed to get contract purchases',
-      );
+      logger.error({ error: error.message, requestId: req.requestId }, 'Failed to get contract purchases');
       res.status(500).json({
         error: 'Failed to retrieve contract purchases',
         message: error.message,

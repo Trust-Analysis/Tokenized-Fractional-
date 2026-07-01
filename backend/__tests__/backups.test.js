@@ -41,7 +41,9 @@ describe('Backup Management API', () => {
 
   describe('GET /api/v1/backups', () => {
     test('should list all backups', async () => {
-      const res = await request(app).get('/api/v1/backups').set('x-api-key', testApiKey);
+      const res = await request(app)
+        .get('/api/v1/backups')
+        .set('x-api-key', testApiKey);
 
       expect(res.status).toBe(200);
       expect(res.body).toHaveProperty('data');
@@ -50,13 +52,16 @@ describe('Backup Management API', () => {
     });
 
     test('should require authentication', async () => {
-      const res = await request(app).get('/api/v1/backups');
+      const res = await request(app)
+        .get('/api/v1/backups');
 
       expect(res.status).toBe(401);
     });
 
     test('should reject invalid API key', async () => {
-      const res = await request(app).get('/api/v1/backups').set('x-api-key', 'invalid-key');
+      const res = await request(app)
+        .get('/api/v1/backups')
+        .set('x-api-key', 'invalid-key');
 
       expect(res.status).toBe(401);
     });
@@ -64,7 +69,9 @@ describe('Backup Management API', () => {
 
   describe('GET /api/v1/backups/health', () => {
     test('should return health status', async () => {
-      const res = await request(app).get('/api/v1/backups/health').set('x-api-key', testApiKey);
+      const res = await request(app)
+        .get('/api/v1/backups/health')
+        .set('x-api-key', testApiKey);
 
       expect(res.status).toBeOneOf([200, 503]);
       expect(res.body).toHaveProperty('status');
@@ -74,7 +81,9 @@ describe('Backup Management API', () => {
     });
 
     test('should include metrics', async () => {
-      const res = await request(app).get('/api/v1/backups/health').set('x-api-key', testApiKey);
+      const res = await request(app)
+        .get('/api/v1/backups/health')
+        .set('x-api-key', testApiKey);
 
       expect(res.body.metrics).toHaveProperty('successCount');
       expect(res.body.metrics).toHaveProperty('failureCount');
@@ -82,7 +91,8 @@ describe('Backup Management API', () => {
     });
 
     test('should require authentication', async () => {
-      const res = await request(app).get('/api/v1/backups/health');
+      const res = await request(app)
+        .get('/api/v1/backups/health');
 
       expect(res.status).toBe(401);
     });
@@ -90,7 +100,9 @@ describe('Backup Management API', () => {
 
   describe('GET /api/v1/backups/policy', () => {
     test('should return backup policy', async () => {
-      const res = await request(app).get('/api/v1/backups/policy').set('x-api-key', testApiKey);
+      const res = await request(app)
+        .get('/api/v1/backups/policy')
+        .set('x-api-key', testApiKey);
 
       expect(res.status).toBe(200);
       expect(res.body).toHaveProperty('retention');
@@ -100,7 +112,9 @@ describe('Backup Management API', () => {
     });
 
     test('should show configured destinations', async () => {
-      const res = await request(app).get('/api/v1/backups/policy').set('x-api-key', testApiKey);
+      const res = await request(app)
+        .get('/api/v1/backups/policy')
+        .set('x-api-key', testApiKey);
 
       expect(res.body.destinations).toHaveProperty('local');
       expect(res.body.destinations).toHaveProperty('s3');
@@ -108,7 +122,8 @@ describe('Backup Management API', () => {
     });
 
     test('should require authentication', async () => {
-      const res = await request(app).get('/api/v1/backups/policy');
+      const res = await request(app)
+        .get('/api/v1/backups/policy');
 
       expect(res.status).toBe(401);
     });
@@ -116,7 +131,10 @@ describe('Backup Management API', () => {
 
   describe('POST /api/v1/backups', () => {
     test('should create manual backup', async () => {
-      const res = await request(app).post('/api/v1/backups').set('x-api-key', testApiKey).send({});
+      const res = await request(app)
+        .post('/api/v1/backups')
+        .set('x-api-key', testApiKey)
+        .send({});
 
       if (res.status === 201) {
         expect(res.body).toHaveProperty('name');
@@ -130,7 +148,9 @@ describe('Backup Management API', () => {
     });
 
     test('should require authentication', async () => {
-      const res = await request(app).post('/api/v1/backups').send({});
+      const res = await request(app)
+        .post('/api/v1/backups')
+        .send({});
 
       expect(res.status).toBe(401);
     });
@@ -148,7 +168,9 @@ describe('Backup Management API', () => {
   describe('GET /api/v1/backups/:name/verify', () => {
     test('should verify backup if exists', async () => {
       // First list backups
-      const listRes = await request(app).get('/api/v1/backups').set('x-api-key', testApiKey);
+      const listRes = await request(app)
+        .get('/api/v1/backups')
+        .set('x-api-key', testApiKey);
 
       if (listRes.body.data.length > 0) {
         const backupName = listRes.body.data[0].name;
@@ -173,7 +195,8 @@ describe('Backup Management API', () => {
     });
 
     test('should require authentication', async () => {
-      const res = await request(app).get('/api/v1/backups/backup-test/verify');
+      const res = await request(app)
+        .get('/api/v1/backups/backup-test/verify');
 
       expect(res.status).toBe(401);
     });
@@ -181,7 +204,9 @@ describe('Backup Management API', () => {
 
   describe('POST /api/v1/backups/:name/restore', () => {
     test('should reject restore without authentication', async () => {
-      const res = await request(app).post('/api/v1/backups/backup-test/restore').send({});
+      const res = await request(app)
+        .post('/api/v1/backups/backup-test/restore')
+        .send({});
 
       expect(res.status).toBe(401);
     });
@@ -218,7 +243,8 @@ describe('Backup Management API', () => {
 
   describe('DELETE /api/v1/backups/:name', () => {
     test('should require authentication', async () => {
-      const res = await request(app).delete('/api/v1/backups/backup-test');
+      const res = await request(app)
+        .delete('/api/v1/backups/backup-test');
 
       expect(res.status).toBe(401);
     });
@@ -246,14 +272,18 @@ describe('Backup Management API', () => {
 
   describe('Backward compatibility', () => {
     test('should work with /api/backups (without /v1)', async () => {
-      const res = await request(app).get('/api/backups').set('x-api-key', testApiKey);
+      const res = await request(app)
+        .get('/api/backups')
+        .set('x-api-key', testApiKey);
 
       expect(res.status).toBe(200);
       expect(res.body).toHaveProperty('data');
     });
 
     test('should work with /api/backups/health', async () => {
-      const res = await request(app).get('/api/backups/health').set('x-api-key', testApiKey);
+      const res = await request(app)
+        .get('/api/backups/health')
+        .set('x-api-key', testApiKey);
 
       expect([200, 503]).toContain(res.status);
     });

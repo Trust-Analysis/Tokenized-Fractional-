@@ -1,6 +1,6 @@
 /**
  * Social Sharing Utility Functions
- *
+ * 
  * Helper functions to generate share URLs for different social platforms
  */
 
@@ -91,19 +91,20 @@ export async function copyToClipboard(text) {
     if (navigator.clipboard && window.isSecureContext) {
       await navigator.clipboard.writeText(text);
       return true;
+    } else {
+      // Fallback for insecure contexts or older browsers
+      const textArea = document.createElement('textarea');
+      textArea.value = text;
+      textArea.style.position = 'fixed';
+      textArea.style.left = '-999999px';
+      textArea.style.top = '-999999px';
+      document.body.appendChild(textArea);
+      textArea.focus();
+      textArea.select();
+      const success = document.execCommand('copy');
+      document.body.removeChild(textArea);
+      return success;
     }
-    // Fallback for insecure contexts or older browsers
-    const textArea = document.createElement('textarea');
-    textArea.value = text;
-    textArea.style.position = 'fixed';
-    textArea.style.left = '-999999px';
-    textArea.style.top = '-999999px';
-    document.body.appendChild(textArea);
-    textArea.focus();
-    textArea.select();
-    const success = document.execCommand('copy');
-    document.body.removeChild(textArea);
-    return success;
   } catch (err) {
     console.error('Failed to copy to clipboard:', err);
     return false;
@@ -120,7 +121,7 @@ export async function copyToClipboard(text) {
  */
 export function formatShareMessage(assetTitle, assetLocation, assetType, platform = 'twitter') {
   const baseMessage = `Check out this ${assetType}: "${assetTitle}" in ${assetLocation}`;
-
+  
   switch (platform) {
     case 'twitter':
       return `${baseMessage} on RWA Marketplace! 🏢 #RealWorldAssets #DeFi #Blockchain`;
@@ -148,11 +149,11 @@ export function openShareWindow(url, platform = 'Share') {
   const height = 600;
   const left = window.screenX + (window.outerWidth - width) / 2;
   const top = window.screenY + (window.outerHeight - height) / 2;
-
+  
   return window.open(
     url,
     `Share on ${platform}`,
-    `width=${width},height=${height},left=${left},top=${top},resizable=yes,scrollbars=yes`,
+    `width=${width},height=${height},left=${left},top=${top},resizable=yes,scrollbars=yes`
   );
 }
 

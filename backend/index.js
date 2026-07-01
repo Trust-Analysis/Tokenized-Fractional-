@@ -2,8 +2,11 @@
 // SPDX-License-Identifier: MIT
 
 import 'dotenv/config';
+import { validateEnv } from './env.js';
+validateEnv();
 import { randomUUID } from 'crypto';
-import express, { Router } from 'express';
+import express from 'express';
+import { Router } from 'express';
 import cors from 'cors';
 import helmet from 'helmet';
 import rateLimit from 'express-rate-limit';
@@ -15,21 +18,15 @@ import { join, dirname } from 'path';
 import { fileURLToPath } from 'url';
 import { setTimeout } from 'timers/promises';
 import swaggerUi from 'swagger-ui-express';
-import multer from 'multer';
-import { ApolloServer } from '@apollo/server';
-import { expressMiddleware } from '@apollo/server/express4';
-import prometheus from 'express-prom-bundle';
 import { swaggerSpec } from './docs.js';
 import { cacheGet, cacheSet, cacheDel } from './cache.js';
+import multer from 'multer';
 import { uploadToIPFS, getIPFSFileUrl, unpinFromIPFS } from './ipfs.js';
 import { wsManager } from './websocket.js';
+import { ApolloServer } from '@apollo/server';
+import { expressMiddleware } from '@apollo/server/express4';
 import { typeDefs, createResolvers } from './graphql.js';
 import { initializeGraphQLSubscriptions } from './graphql-ws-adapter.js';
-
-// ── Prometheus Metrics ─────────────────────────────────────────────────────────
-import { validateEnv } from './env.js';
-
-validateEnv();
 
 const __dirname = dirname(fileURLToPath(import.meta.url));
 // multer memoryStorage keeps the file in memory as a Buffer (req.file.buffer).
@@ -50,16 +47,14 @@ const upload = multer({
 });
 const PORT = process.env.PORT || 3001;
 const CORS_ORIGINS = process.env.CORS_ORIGINS
-  ? process.env.CORS_ORIGINS.split(',').map((s) => s.trim())
+  ? process.env.CORS_ORIGINS.split(',').map(s => s.trim())
   : ['http://localhost:5173', 'http://localhost:4173'];
 
 // ── Logger ────────────────────────────────────────────────────────────────────
 const isDev = process.env.NODE_ENV === 'development';
 export const logger = pino({
   level: process.env.LOG_LEVEL || (process.env.NODE_ENV === 'test' ? 'silent' : 'info'),
-  ...(isDev && {
-    transport: { target: 'pino-pretty', options: { colorize: true, ignore: 'pid,hostname' } },
-  }),
+  ...(isDev && { transport: { target: 'pino-pretty', options: { colorize: true, ignore: 'pid,hostname' } } }),
 });
 
 // ── Sentry ────────────────────────────────────────────────────────────────────
@@ -73,7 +68,10 @@ if (process.env.SENTRY_DSN && process.env.NODE_ENV !== 'test') {
     profilesSampleRate: process.env.SENTRY_PROFILES_SAMPLE_RATE
       ? parseFloat(process.env.SENTRY_PROFILES_SAMPLE_RATE)
       : 0.1,
-    integrations: [Sentry.httpIntegration({ breadcrumbs: true }), Sentry.expressIntegration()],
+    integrations: [
+      Sentry.httpIntegration({ breadcrumbs: true }),
+      Sentry.expressIntegration(),
+    ],
   });
   logger.info({ dsnPrefix: process.env.SENTRY_DSN.slice(0, 30) }, 'Sentry initialized');
 }
@@ -104,7 +102,7 @@ export function validateContractId(id) {
 
 export function validateRwaBody(body) {
   const required = ['title', 'location', 'description', 'assetType'];
-  const missing = required.filter((f) => !body[f]);
+  const missing = required.filter(f => !body[f]);
   if (missing.length > 0) return `Missing required fields: ${missing.join(', ')}`;
   return null;
 }
@@ -139,10 +137,10 @@ export function buildSearchIndex(data) {
 
   for (const [contractId, meta] of Object.entries(data)) {
     const fields = [
-      { value: meta.title, weight: 3 },
-      { value: meta.location, weight: 2 },
+      { value: meta.title,       weight: 3 },
+      { value: meta.location,    weight: 2 },
       { value: meta.description, weight: 1 },
-      { value: meta.assetType, weight: 2 },
+      { value: meta.assetType,   weight: 2 },
     ];
 
     const termFreq = {};
@@ -192,7 +190,7 @@ export function syncSearchIndex() {
 export function scoreSearch(query, data) {
   const { index, totalDocs } = getSearchIndex();
   const terms = tokenize(query);
-  if (terms.length === 0) return Object.keys(data).map((id) => ({ contractId: id, score: 1 }));
+  if (terms.length === 0) return Object.keys(data).map(id => ({ contractId: id, score: 1 }));
 
   const scores = {};
   for (const term of terms) {
@@ -216,9 +214,7 @@ function adminAuth(req, res, next) {
   const expected = process.env.ADMIN_API_KEY || 'dev-key-change-in-production';
   if (!apiKey || apiKey !== expected) {
     req.log?.warn({ hasKey: !!apiKey }, 'Unauthorized API key attempt');
-    return res
-      .status(401)
-      .json({ error: 'Unauthorized: invalid or missing API key', requestId: req.requestId });
+    return res.status(401).json({ error: 'Unauthorized: invalid or missing API key', requestId: req.requestId });
   }
   req.log?.info('Admin API key used');
   next();
@@ -274,7 +270,7 @@ function validateWebhookBody(body) {
   if (!Array.isArray(body.events) || body.events.length === 0) {
     return 'events must be a non-empty array';
   }
-  const invalid = body.events.filter((e) => !WEBHOOK_VALID_EVENTS.includes(e));
+  const invalid = body.events.filter(e => !WEBHOOK_VALID_EVENTS.includes(e));
   if (invalid.length > 0) {
     return `Invalid events: ${invalid.join(', ')}. Valid: ${WEBHOOK_VALID_EVENTS.join(', ')}`;
   }
@@ -282,7 +278,7 @@ function validateWebhookBody(body) {
 }
 
 function generateWebhookId() {
-  return `wh_${randomUUID().replace(/-/g, '').slice(0, 16)}`;
+  return 'wh_' + randomUUID().replace(/-/g, '').slice(0, 16);
 }
 
 async function deliverToWebhook(webhook, payload) {
@@ -323,15 +319,12 @@ async function deliverWebhookWithRetry(webhook, payload, maxRetries = 3) {
 
 async function fireWebhooks(event, data) {
   const webhooks = loadWebhooks();
-  const active = Object.values(webhooks).filter((w) => w.active && w.events.includes(event));
+  const active = Object.values(webhooks).filter(w => w.active && w.events.includes(event));
   if (active.length === 0) {
-    logger.info(
-      { event, webhookCount: Object.keys(webhooks).length },
-      'No active webhooks for event',
-    );
+    logger.info({ event, webhookCount: Object.keys(webhooks).length }, 'No active webhooks for event');
     return;
   }
-  logger.info({ event, count: active.length, urls: active.map((w) => w.url) }, 'Firing webhooks');
+  logger.info({ event, count: active.length, urls: active.map(w => w.url) }, 'Firing webhooks');
 
   const payload = {
     event,
@@ -339,7 +332,9 @@ async function fireWebhooks(event, data) {
     data,
   };
 
-  const results = await Promise.allSettled(active.map((w) => deliverWebhookWithRetry(w, payload)));
+  const results = await Promise.allSettled(
+    active.map(w => deliverWebhookWithRetry(w, payload)),
+  );
 
   let changed = false;
   active.forEach((webhook, i) => {
@@ -348,10 +343,7 @@ async function fireWebhooks(event, data) {
       webhook.lastFailureAt = new Date().toISOString();
       if (webhook.failureCount >= 5) {
         webhook.active = false;
-        logger.warn(
-          { webhookId: webhook.id, url: webhook.url },
-          'Webhook auto-disabled after 5 failures',
-        );
+        logger.warn({ webhookId: webhook.id, url: webhook.url }, 'Webhook auto-disabled after 5 failures');
       }
     } else {
       webhook.failureCount = 0;
@@ -376,13 +368,7 @@ if (process.env.SENTRY_DSN) {
 }
 
 app.use(helmet());
-app.use(
-  cors({
-    origin: CORS_ORIGINS,
-    methods: ['GET', 'POST', 'PATCH', 'DELETE'],
-    allowedHeaders: ['Content-Type', 'x-api-key', 'X-Request-ID'],
-  }),
-);
+app.use(cors({ origin: CORS_ORIGINS, methods: ['GET', 'POST', 'PATCH', 'DELETE'], allowedHeaders: ['Content-Type', 'x-api-key', 'X-Request-ID'] }));
 app.use(express.json({ limit: '10kb' }));
 
 // ── Request ID middleware ──────────────────────────────────────────────────────
@@ -394,13 +380,11 @@ app.use((req, res, next) => {
 });
 
 // Request logging middleware (silent in test)
-app.use(
-  pinoHttp({
-    logger,
-    autoLogging: { ignore: (req) => req.url === '/health' },
-    genReqId: (req) => req.requestId,
-  }),
-);
+app.use(pinoHttp({
+  logger,
+  autoLogging: { ignore: req => req.url === '/health' },
+  genReqId: req => req.requestId,
+}));
 
 const apiLimiter = rateLimit({
   windowMs: 15 * 60 * 1000,
@@ -418,6 +402,9 @@ const writeLimiter = rateLimit({
   legacyHeaders: false,
   message: { error: 'Too many write requests, please try again later' },
 });
+
+// ── Prometheus Metrics ─────────────────────────────────────────────────────────
+import prometheus from 'express-prom-bundle';
 
 const metricsMiddleware = prometheus({
   includeMethod: true,
@@ -438,13 +425,9 @@ app.get('/metrics', async (_req, res) => {
 });
 
 // ── API Documentation ──────────────────────────────────────────────────────────
-app.use(
-  '/api-docs',
-  swaggerUi.serve,
-  swaggerUi.setup(swaggerSpec, {
-    customSiteTitle: 'RWA Marketplace API Docs',
-  }),
-);
+app.use('/api-docs', swaggerUi.serve, swaggerUi.setup(swaggerSpec, {
+  customSiteTitle: 'RWA Marketplace API Docs',
+}));
 
 app.get('/api-docs.json', (_req, res) => {
   res.json(swaggerSpec);
@@ -484,9 +467,7 @@ app.get('/health', async (_req, res) => {
       deps.redis = { status: 'ok' };
     } catch {
       deps.redis = { status: 'error', message: 'Redis configured but unreachable' };
-      return res
-        .status(503)
-        .json({ status: 'degraded', timestamp: new Date().toISOString(), dependencies: deps });
+      return res.status(503).json({ status: 'degraded', timestamp: new Date().toISOString(), dependencies: deps });
     }
   }
 
@@ -553,31 +534,18 @@ v1.get('/rwa/export', adminAuth, (req, res) => {
   if (to && isNaN(toDate)) return res.status(400).json({ error: 'Invalid "to" date' });
 
   const data = loadData();
-  let assets = Object.entries(data).map(([contractId, meta]) =>
-    withCdnAssetUrls({ contractId, ...meta }),
-  );
+  let assets = Object.entries(data).map(([contractId, meta]) => withCdnAssetUrls({ contractId, ...meta }));
 
-  if (fromDate) assets = assets.filter((a) => new Date(a.updatedAt || a.createdAt) >= fromDate);
-  if (toDate) assets = assets.filter((a) => new Date(a.updatedAt || a.createdAt) <= toDate);
+  if (fromDate) assets = assets.filter(a => new Date(a.updatedAt || a.createdAt) >= fromDate);
+  if (toDate)   assets = assets.filter(a => new Date(a.updatedAt || a.createdAt) <= toDate);
 
   const filename = `rwa-export-${Date.now()}.${format}`;
   res.setHeader('Content-Disposition', `attachment; filename="${filename}"`);
 
   if (format === 'csv') {
-    const cols = [
-      'contractId',
-      'id',
-      'title',
-      'location',
-      'description',
-      'assetType',
-      'imageUrl',
-      'totalValuation',
-      'createdAt',
-      'updatedAt',
-    ];
-    const escape = (v) => `"${String(v ?? '').replace(/"/g, '""')}"`;
-    const rows = [cols.join(','), ...assets.map((a) => cols.map((c) => escape(a[c])).join(','))];
+    const cols = ['contractId', 'id', 'title', 'location', 'description', 'assetType', 'imageUrl', 'totalValuation', 'createdAt', 'updatedAt'];
+    const escape = v => `"${String(v ?? '').replace(/"/g, '""')}"`;
+    const rows = [cols.join(','), ...assets.map(a => cols.map(c => escape(a[c])).join(','))];
     res.setHeader('Content-Type', 'text/csv; charset=utf-8');
     return res.send(rows.join('\r\n'));
   }
@@ -636,27 +604,29 @@ v1.get('/rwa', (req, res) => {
   const { assetType, location, search, page, limit } = req.query;
   if (assetType) {
     const lower = assetType.toLowerCase();
-    assets = assets.filter((a) => a.assetType?.toLowerCase() === lower);
+    assets = assets.filter(a => a.assetType?.toLowerCase() === lower);
   }
 
   // Filter: location (faceted filter)
   if (location) {
     const lower = location.toLowerCase();
-    assets = assets.filter((a) => a.location?.toLowerCase().includes(lower));
+    assets = assets.filter(a => a.location?.toLowerCase().includes(lower));
   }
 
   // Filter: full-text search with relevance scoring on title, description, location
   if (search) {
-    const approvedData = Object.fromEntries(Object.entries(data).filter(([, m]) => isApproved(m)));
+    const approvedData = Object.fromEntries(
+      Object.entries(data).filter(([, m]) => isApproved(m))
+    );
     // Rebuild index scoped to approved assets for accurate IDF
     buildSearchIndex(approvedData);
     const ranked = scoreSearch(search, approvedData);
-    const rankedIds = new Set(ranked.map((r) => r.contractId));
+    const rankedIds = new Set(ranked.map(r => r.contractId));
     // Preserve relevance order
-    const byId = Object.fromEntries(assets.map((a) => [a.contractId, a]));
+    const byId = Object.fromEntries(assets.map(a => [a.contractId, a]));
     assets = ranked
-      .filter((r) => rankedIds.has(r.contractId) && byId[r.contractId])
-      .map((r) => ({ ...byId[r.contractId], _score: r.score }));
+      .filter(r => rankedIds.has(r.contractId) && byId[r.contractId])
+      .map(r => ({ ...byId[r.contractId], _score: r.score }));
   }
 
   const total = assets.length;
@@ -673,10 +643,7 @@ v1.get('/rwa', (req, res) => {
   });
 
   // Cache the full asset list (fire-and-forget)
-  cacheSet('rwa:all', {
-    data: assets,
-    pagination: { total, page: pageNum, limit: pageSize, totalPages },
-  }).catch(() => {});
+  cacheSet('rwa:all', { data: assets, pagination: { total, page: pageNum, limit: pageSize, totalPages } }).catch(() => {});
 });
 
 /**
@@ -727,7 +694,9 @@ v1.get('/rwa/search', (req, res) => {
 
   const data = loadData();
   // Only search approved assets
-  const approvedData = Object.fromEntries(Object.entries(data).filter(([, m]) => isApproved(m)));
+  const approvedData = Object.fromEntries(
+    Object.entries(data).filter(([, m]) => isApproved(m))
+  );
 
   // Rebuild index from current approved data to stay in sync
   buildSearchIndex(approvedData);
@@ -736,13 +705,11 @@ v1.get('/rwa/search', (req, res) => {
   // Apply faceted filters post-ranking
   if (assetType) {
     const lower = assetType.toLowerCase();
-    ranked = ranked.filter((r) => approvedData[r.contractId]?.assetType?.toLowerCase() === lower);
+    ranked = ranked.filter(r => approvedData[r.contractId]?.assetType?.toLowerCase() === lower);
   }
   if (location) {
     const lower = location.toLowerCase();
-    ranked = ranked.filter((r) =>
-      approvedData[r.contractId]?.location?.toLowerCase().includes(lower),
-    );
+    ranked = ranked.filter(r => approvedData[r.contractId]?.location?.toLowerCase().includes(lower));
   }
 
   const total = ranked.length;
@@ -892,9 +859,7 @@ v1.post('/rwa', adminAuth, writeLimiter, async (req, res) => {
   const { contractId, ...metadata } = req.body;
 
   if (!contractId || !validateContractId(contractId)) {
-    return res
-      .status(400)
-      .json({ error: 'Invalid contract ID. Must start with C and be at least 50 characters.' });
+    return res.status(400).json({ error: 'Invalid contract ID. Must start with C and be at least 50 characters.' });
   }
 
   const validationError = validateRwaBody(metadata);
@@ -979,8 +944,10 @@ v1.delete('/rwa/:contractId', adminAuth, writeLimiter, async (req, res) => {
   // Fire-and-forget — we don't block the response on Pinata's API.
   if (Array.isArray(deleted.documents) && deleted.documents.length > 0) {
     Promise.allSettled(
-      deleted.documents.filter((d) => d.cid).map((d) => unpinFromIPFS(d.cid)),
-    ).then((results) => {
+      deleted.documents
+        .filter(d => d.cid)
+        .map(d => unpinFromIPFS(d.cid))
+    ).then(results => {
       results.forEach((r, i) => {
         if (r.status === 'rejected') {
           logger.warn({ cid: deleted.documents[i].cid, err: r.reason }, 'Failed to unpin document');
@@ -1072,25 +1039,15 @@ v1.patch('/rwa/:contractId', adminAuth, writeLimiter, async (req, res) => {
   const patch = req.body;
 
   if (!Object.keys(patch).length) {
-    return res
-      .status(400)
-      .json({ error: 'Request body must contain at least one field to update' });
+    return res.status(400).json({ error: 'Request body must contain at least one field to update' });
   }
 
   const data = loadData();
   if (!data[contractId]) return res.status(404).json({ error: 'Asset metadata not found' });
 
   // Merge only provided fields
-  const allowedFields = [
-    'title',
-    'location',
-    'description',
-    'assetType',
-    'imageUrl',
-    'totalValuation',
-    'documents',
-  ];
-  allowedFields.forEach((field) => {
+  const allowedFields = ['title', 'location', 'description', 'assetType', 'imageUrl', 'totalValuation', 'documents'];
+  allowedFields.forEach(field => {
     if (field in patch && patch[field] !== undefined) {
       data[contractId][field] = patch[field];
     }
@@ -1117,62 +1074,55 @@ v1.patch('/rwa/:contractId', adminAuth, writeLimiter, async (req, res) => {
  *
  * New code should import directly from the relevant src/ module.
  */
-v1.post(
-  '/rwa/:contractId/documents',
-  adminAuth,
-  writeLimiter,
-  upload.single('document'),
-  async (req, res) => {
-    const { contractId } = req.params;
+v1.post('/rwa/:contractId/documents', adminAuth, writeLimiter, upload.single('document'), async (req, res) => {
+  const { contractId } = req.params;
 
-    // multer puts the uploaded file on req.file
-    if (!req.file) {
-      return res.status(400).json({
-        error: 'No file uploaded. Send a multipart/form-data request with field name "document".',
-      });
+  // multer puts the uploaded file on req.file
+  if (!req.file) {
+    return res.status(400).json({ error: 'No file uploaded. Send a multipart/form-data request with field name "document".' });
+  }
+
+  const data = loadData();
+  if (!data[contractId]) {
+    return res.status(404).json({ error: 'Asset metadata not found' });
+  }
+
+  try {
+    // Upload the buffer directly to Pinata — no disk writes
+    const { cid, url, name } = await uploadToIPFS(
+      req.file.buffer,
+      req.file.originalname,
+      data[contractId].title || contractId
+    );
+
+    // Store the document entry in the asset's documents array
+    const docEntry = {
+      cid,
+      url,
+      name,
+      mimeType: req.file.mimetype,
+      size: req.file.size,
+      uploadedAt: new Date().toISOString(),
+    };
+
+    if (!Array.isArray(data[contractId].documents)) {
+      data[contractId].documents = [];
     }
+    data[contractId].documents.push(docEntry);
+    data[contractId].updatedAt = new Date().toISOString();
+    saveData(data);
 
-    const data = loadData();
-    if (!data[contractId]) {
-      return res.status(404).json({ error: 'Asset metadata not found' });
-    }
+    // Bust the cache so the updated asset is returned immediately
+    cacheDel('rwa:all', cacheKey(contractId)).catch(() => {});
 
-    try {
-      // Upload the buffer directly to Pinata — no disk writes
-      const { cid, url, name } = await uploadToIPFS(
-        req.file.buffer,
-        req.file.originalname,
-        data[contractId].title || contractId,
-      );
+    req.log?.info({ contractId, cid }, 'Document uploaded to IPFS');
+    res.json({ contractId, document: docEntry, documents: data[contractId].documents });
 
-      // Store the document entry in the asset's documents array
-      const docEntry = {
-        cid,
-        url,
-        name,
-        mimeType: req.file.mimetype,
-        size: req.file.size,
-        uploadedAt: new Date().toISOString(),
-      };
-
-      if (!Array.isArray(data[contractId].documents)) {
-        data[contractId].documents = [];
-      }
-      data[contractId].documents.push(docEntry);
-      data[contractId].updatedAt = new Date().toISOString();
-      saveData(data);
-
-      // Bust the cache so the updated asset is returned immediately
-      cacheDel('rwa:all', cacheKey(contractId)).catch(() => {});
-
-      req.log?.info({ contractId, cid }, 'Document uploaded to IPFS');
-      res.json({ contractId, document: docEntry, documents: data[contractId].documents });
-    } catch (err) {
-      req.log?.error({ err, contractId }, 'IPFS upload failed');
-      res.status(502).json({ error: `IPFS upload failed: ${err.message}` });
-    }
-  },
-);
+  } catch (err) {
+    req.log?.error({ err, contractId }, 'IPFS upload failed');
+    res.status(502).json({ error: `IPFS upload failed: ${err.message}` });
+  }
+});
 
 /**
  * @openapi
@@ -1208,7 +1158,7 @@ v1.get('/rwa/:contractId/documents/:cid', async (req, res) => {
   }
 
   // Verify this CID actually belongs to this asset before redirecting
-  const doc = asset.documents?.find((d) => d.cid === cid);
+  const doc = asset.documents?.find(d => d.cid === cid);
   if (!doc) {
     return res.status(404).json({ error: 'Document not found on this asset' });
   }
@@ -1306,16 +1256,14 @@ const NEWS_STORAGE = [
   {
     id: '1',
     title: 'Platform Launch',
-    summary:
-      'The RWA Marketplace is now live on Stellar Testnet. Start exploring tokenized real-world assets.',
+    summary: 'The RWA Marketplace is now live on Stellar Testnet. Start exploring tokenized real-world assets.',
     date: new Date().toISOString(),
     link: 'https://github.com/Trust-Analysis/Tokenized-Fractional-',
   },
   {
     id: '2',
     title: 'New Asset Listings',
-    summary:
-      'Multiple new real estate and asset-backed tokens are now available for purchase in the marketplace.',
+    summary: 'Multiple new real estate and asset-backed tokens are now available for purchase in the marketplace.',
     date: new Date(Date.now() - 86400000 * 2).toISOString(),
     link: '#',
   },
@@ -1486,7 +1434,7 @@ v1.patch('/webhooks/:id', adminAuth, writeLimiter, (req, res) => {
   if (!wh) return res.status(404).json({ error: 'Webhook not found' });
 
   const allowed = ['url', 'events', 'secret', 'active'];
-  allowed.forEach((f) => {
+  allowed.forEach(f => {
     if (f in req.body && req.body[f] !== undefined) {
       wh[f] = req.body[f];
     }
@@ -1549,7 +1497,7 @@ v1.post('/notify/share-purchased', (req, res) => {
 
   req.log?.info(
     { contractId, buyerAddress, sharesToBuy, totalCost },
-    'Share purchase event broadcasted',
+    'Share purchase event broadcasted'
   );
 
   res.json({ ok: true, message: 'Event broadcasted' });
@@ -1708,7 +1656,7 @@ async function initializeApolloServer(expressApp, httpServer) {
           const isAdmin = apiKey === process.env.ADMIN_API_KEY;
           return { isAdmin, apiKey };
         },
-      }),
+      })
     );
 
     logger.info('GraphQL endpoint available at /graphql');
@@ -1729,23 +1677,20 @@ async function initializeApolloServer(expressApp, httpServer) {
 if (process.env.NODE_ENV !== 'test') {
   import('http').then(({ createServer }) => {
     const server = createServer(app);
-
+    
     // Initialize WebSocket server for REST events
     wsManager.initialize(server);
     logger.info('WebSocket server initialized');
-
+    
     // Initialize Apollo GraphQL Server with subscriptions
-    initializeApolloServer(app, server).catch((err) => {
+    initializeApolloServer(app, server).catch(err => {
       logger.error({ error: err.message }, 'Failed to start Apollo Server');
     });
-
+    
     import('./cache.js').then(({ initClient }) => initClient());
-
+    
     server.listen(PORT, () => {
-      logger.info(
-        { port: PORT },
-        'RWA Off-chain Metadata Backend started with WebSocket, GraphQL & Subscriptions support',
-      );
+      logger.info({ port: PORT }, 'RWA Off-chain Metadata Backend started with WebSocket, GraphQL & Subscriptions support');
     });
   });
 }

@@ -1,6 +1,6 @@
 /**
  * Authentication Middleware and Routes
- *
+ * 
  * JWT authentication, authorization middleware, and auth endpoints
  * for the RWA Marketplace.
  */
@@ -13,7 +13,7 @@ import { authService, extractUserFromToken, PERMISSIONS } from './auth.js';
  */
 export function authenticateToken(req, res, next) {
   try {
-    const authHeader = req.headers.authorization;
+    const authHeader = req.headers['authorization'];
     const token = authHeader && authHeader.split(' ')[1];
 
     if (!token) {
@@ -41,7 +41,7 @@ export function authenticateToken(req, res, next) {
  */
 export function optionalAuthToken(req, res, next) {
   try {
-    const authHeader = req.headers.authorization;
+    const authHeader = req.headers['authorization'];
     const token = authHeader && authHeader.split(' ')[1];
 
     if (token) {

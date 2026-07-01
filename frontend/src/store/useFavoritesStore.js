@@ -38,12 +38,13 @@ export const useFavoritesStore = create(
       clearFavorites: () => set({ favorites: [] }),
 
       /** Returns true if an asset is currently favorited. */
-      isFavorited: (contractId) => get().favorites.some((a) => a.contractId === contractId),
+      isFavorited: (contractId) =>
+        get().favorites.some((a) => a.contractId === contractId),
     }),
     {
       name: STORAGE_KEY,
       // Only persist the favorites array itself, not the methods
       partialize: (state) => ({ favorites: state.favorites }),
-    },
-  ),
+    }
+  )
 );

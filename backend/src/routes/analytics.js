@@ -88,20 +88,16 @@ export function createAnalyticsRoutes(transactionService, logger, adminAuth) {
           totalVolume: allTimeMetrics.totalVolume,
           totalVolumeFormatted: `$${allTimeMetrics.totalVolume.toLocaleString('en-US', { maximumFractionDigits: 2 })}`,
         },
-        growth:
-          allTimeMetrics.totalVolume > 0
-            ? `${((metrics.totalVolume / allTimeMetrics.totalVolume) * 100).toFixed(2)}%`
-            : 'N/A',
+        growth: allTimeMetrics.totalVolume > 0
+          ? (((metrics.totalVolume / allTimeMetrics.totalVolume) * 100)).toFixed(2) + '%'
+          : 'N/A',
         timestamp: new Date().toISOString(),
       };
 
       logger.info({ days, requestId: req.requestId }, 'Volume metrics retrieved');
       res.json({ data: volumeMetrics });
     } catch (error) {
-      logger.error(
-        { error: error.message, requestId: req.requestId },
-        'Failed to get volume metrics',
-      );
+      logger.error({ error: error.message, requestId: req.requestId }, 'Failed to get volume metrics');
       res.status(500).json({ error: 'Failed to retrieve volume metrics', message: error.message });
     }
   });
@@ -122,7 +118,7 @@ export function createAnalyticsRoutes(transactionService, logger, adminAuth) {
       const fromDate = new Date(Date.now() - days * 24 * 60 * 60 * 1000);
       const dailyAnalytics = await transactionService.getDailyAnalyticsForRange(
         fromDate,
-        new Date(),
+        new Date()
       );
 
       // Aggregate top assets from daily snapshots
@@ -156,10 +152,7 @@ export function createAnalyticsRoutes(transactionService, logger, adminAuth) {
       logger.info({ limit, days, requestId: req.requestId }, 'Popular assets retrieved');
       res.json({ data: { assets: popularAssets, period: `${days} days` } });
     } catch (error) {
-      logger.error(
-        { error: error.message, requestId: req.requestId },
-        'Failed to get popular assets',
-      );
+      logger.error({ error: error.message, requestId: req.requestId }, 'Failed to get popular assets');
       res.status(500).json({ error: 'Failed to retrieve popular assets', message: error.message });
     }
   });
@@ -186,8 +179,7 @@ export function createAnalyticsRoutes(transactionService, logger, adminAuth) {
       }
 
       const result = {
-        period:
-          period === 'week' ? 'Last 7 days' : period === 'month' ? 'Last 30 days' : 'All-time',
+        period: period === 'week' ? 'Last 7 days' : period === 'month' ? 'Last 30 days' : 'All-time',
         activeUsers,
         timestamp: new Date().toISOString(),
       };
@@ -195,10 +187,7 @@ export function createAnalyticsRoutes(transactionService, logger, adminAuth) {
       logger.info({ period, requestId: req.requestId }, 'Active users retrieved');
       res.json({ data: result });
     } catch (error) {
-      logger.error(
-        { error: error.message, requestId: req.requestId },
-        'Failed to get active users',
-      );
+      logger.error({ error: error.message, requestId: req.requestId }, 'Failed to get active users');
       res.status(500).json({ error: 'Failed to retrieve active users', message: error.message });
     }
   });
@@ -215,7 +204,7 @@ export function createAnalyticsRoutes(transactionService, logger, adminAuth) {
       const limit = Math.min(parseInt(req.query.limit) || 10, 100);
       const topBuyers = await transactionService.getTopBuyers(limit);
 
-      const buyers = topBuyers.map((buyer) => ({
+      const buyers = topBuyers.map(buyer => ({
         walletAddress: buyer.wallet_address,
         totalPurchases: buyer.total_purchases,
         totalSpent: parseFloat(buyer.total_spent),
@@ -249,10 +238,10 @@ export function createAnalyticsRoutes(transactionService, logger, adminAuth) {
       const fromDate = new Date(Date.now() - days * 24 * 60 * 60 * 1000);
       const dailyAnalytics = await transactionService.getDailyAnalyticsForRange(
         fromDate,
-        new Date(),
+        new Date()
       );
 
-      const trends = dailyAnalytics.map((day) => ({
+      const trends = dailyAnalytics.map(day => ({
         date: day.date,
         transactions: day.transactions_count,
         volume: parseFloat(day.total_volume),
@@ -265,10 +254,7 @@ export function createAnalyticsRoutes(transactionService, logger, adminAuth) {
       logger.info({ days, interval, requestId: req.requestId }, 'Purchase trends retrieved');
       res.json({ data: { trends, period: `${days} days`, interval } });
     } catch (error) {
-      logger.error(
-        { error: error.message, requestId: req.requestId },
-        'Failed to get purchase trends',
-      );
+      logger.error({ error: error.message, requestId: req.requestId }, 'Failed to get purchase trends');
       res.status(500).json({ error: 'Failed to retrieve purchase trends', message: error.message });
     }
   });
@@ -290,7 +276,7 @@ export function createAnalyticsRoutes(transactionService, logger, adminAuth) {
         return res.json({ data: { contractId, transactionCount: 0, volume: 0, transactions: [] } });
       }
 
-      const uniqueBuyers = new Set(transactions.map((t) => t.buyer_address)).size;
+      const uniqueBuyers = new Set(transactions.map(t => t.buyer_address)).size;
       const totalShares = transactions.reduce((sum, t) => sum + parseFloat(t.shares_purchased), 0);
 
       const performance = {
@@ -308,13 +294,8 @@ export function createAnalyticsRoutes(transactionService, logger, adminAuth) {
       logger.info({ contractId, requestId: req.requestId }, 'Asset performance retrieved');
       res.json({ data: performance });
     } catch (error) {
-      logger.error(
-        { error: error.message, requestId: req.requestId },
-        'Failed to get asset performance',
-      );
-      res
-        .status(500)
-        .json({ error: 'Failed to retrieve asset performance', message: error.message });
+      logger.error({ error: error.message, requestId: req.requestId }, 'Failed to get asset performance');
+      res.status(500).json({ error: 'Failed to retrieve asset performance', message: error.message });
     }
   });
 
@@ -335,17 +316,15 @@ export function createAnalyticsRoutes(transactionService, logger, adminAuth) {
 
       const result = {
         walletAddress: address,
-        activity: userActivity
-          ? {
-              totalPurchases: userActivity.total_purchases,
-              totalSpent: parseFloat(userActivity.total_spent),
-              totalSpentFormatted: `$${parseFloat(userActivity.total_spent).toLocaleString('en-US', { maximumFractionDigits: 2 })}`,
-              sharesOwned: parseFloat(userActivity.shares_owned),
-              firstPurchase: userActivity.first_seen_at,
-              lastPurchase: userActivity.last_purchase_at,
-            }
-          : null,
-        purchases: transactions.map((tx) => ({
+        activity: userActivity ? {
+          totalPurchases: userActivity.total_purchases,
+          totalSpent: parseFloat(userActivity.total_spent),
+          totalSpentFormatted: `$${parseFloat(userActivity.total_spent).toLocaleString('en-US', { maximumFractionDigits: 2 })}`,
+          sharesOwned: parseFloat(userActivity.shares_owned),
+          firstPurchase: userActivity.first_seen_at,
+          lastPurchase: userActivity.last_purchase_at,
+        } : null,
+        purchases: transactions.map(tx => ({
           transactionId: tx.transaction_id,
           contractId: tx.contract_id,
           shares: parseFloat(tx.shares_purchased),
@@ -360,10 +339,7 @@ export function createAnalyticsRoutes(transactionService, logger, adminAuth) {
       logger.info({ address, limit, requestId: req.requestId }, 'User analytics retrieved');
       res.json({ data: result });
     } catch (error) {
-      logger.error(
-        { error: error.message, requestId: req.requestId },
-        'Failed to get user analytics',
-      );
+      logger.error({ error: error.message, requestId: req.requestId }, 'Failed to get user analytics');
       res.status(500).json({ error: 'Failed to retrieve user analytics', message: error.message });
     }
   });
@@ -384,7 +360,7 @@ export function createAnalyticsRoutes(transactionService, logger, adminAuth) {
       const activeMonth = await transactionService.getActiveUsersCount(30);
       const dailyAnalytics = await transactionService.getDailyAnalyticsForRange(
         new Date(Date.now() - 30 * 24 * 60 * 60 * 1000),
-        new Date(),
+        new Date()
       );
 
       const dashboard = {
@@ -399,7 +375,7 @@ export function createAnalyticsRoutes(transactionService, logger, adminAuth) {
           week: activeWeek,
           month: activeMonth,
         },
-        topBuyers: topBuyers.map((b) => ({
+        topBuyers: topBuyers.map(b => ({
           address: b.wallet_address,
           spent: parseFloat(b.total_spent),
           purchases: b.total_purchases,
@@ -434,21 +410,15 @@ export function createAnalyticsRoutes(transactionService, logger, adminAuth) {
 
       const result = await transactionService.computeDailyAnalytics(date);
 
-      logger.info(
-        {
-          date: dateStr,
-          requestKey: req.apiKey?.id,
-          requestId: req.requestId,
-        },
-        'Daily analytics computed',
-      );
+      logger.info({
+        date: dateStr,
+        requestKey: req.apiKey?.id,
+        requestId: req.requestId,
+      }, 'Daily analytics computed');
 
       res.json({ data: result, message: 'Daily analytics computed successfully' });
     } catch (error) {
-      logger.error(
-        { error: error.message, requestId: req.requestId },
-        'Failed to compute daily analytics',
-      );
+      logger.error({ error: error.message, requestId: req.requestId }, 'Failed to compute daily analytics');
       res.status(500).json({ error: 'Failed to compute daily analytics', message: error.message });
     }
   });
@@ -464,9 +434,7 @@ export function createAnalyticsRoutes(transactionService, logger, adminAuth) {
    */
   router.get('/daily', adminAuth, async (req, res) => {
     try {
-      const from = req.query.from
-        ? new Date(req.query.from)
-        : new Date(Date.now() - 30 * 24 * 60 * 60 * 1000);
+      const from = req.query.from ? new Date(req.query.from) : new Date(Date.now() - 30 * 24 * 60 * 60 * 1000);
       const to = req.query.to ? new Date(req.query.to) : new Date();
 
       if (isNaN(from.getTime()) || isNaN(to.getTime())) {
@@ -475,22 +443,16 @@ export function createAnalyticsRoutes(transactionService, logger, adminAuth) {
 
       const dailyAnalytics = await transactionService.getDailyAnalyticsForRange(from, to);
 
-      logger.info(
-        {
-          from: from.toISOString(),
-          to: to.toISOString(),
-          recordCount: dailyAnalytics.length,
-          requestId: req.requestId,
-        },
-        'Daily analytics retrieved',
-      );
+      logger.info({
+        from: from.toISOString(),
+        to: to.toISOString(),
+        recordCount: dailyAnalytics.length,
+        requestId: req.requestId,
+      }, 'Daily analytics retrieved');
 
       res.json({ data: dailyAnalytics });
     } catch (error) {
-      logger.error(
-        { error: error.message, requestId: req.requestId },
-        'Failed to get daily analytics',
-      );
+      logger.error({ error: error.message, requestId: req.requestId }, 'Failed to get daily analytics');
       res.status(500).json({ error: 'Failed to retrieve daily analytics', message: error.message });
     }
   });

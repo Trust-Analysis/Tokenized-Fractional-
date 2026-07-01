@@ -40,21 +40,19 @@ export class TransactionService {
       const transactionId = `tx_${randomUUID().replace(/-/g, '').slice(0, 20)}`;
 
       // Insert transaction
-      const [transaction] = await this.db('transactions')
-        .insert({
-          transaction_id: transactionId,
-          contract_id: data.contractId,
-          buyer_address: data.buyerAddress,
-          shares_purchased: data.sharesPurchased,
-          price_per_share: data.pricePerShare,
-          total_amount: data.totalAmount,
-          payment_token: data.paymentToken,
-          status: 'completed',
-          blockchain_hash: data.blockchainHash || null,
-          metadata: data.metadata || {},
-          created_at: new Date(),
-        })
-        .returning('*');
+      const [transaction] = await this.db('transactions').insert({
+        transaction_id: transactionId,
+        contract_id: data.contractId,
+        buyer_address: data.buyerAddress,
+        shares_purchased: data.sharesPurchased,
+        price_per_share: data.pricePerShare,
+        total_amount: data.totalAmount,
+        payment_token: data.paymentToken,
+        status: 'completed',
+        blockchain_hash: data.blockchainHash || null,
+        metadata: data.metadata || {},
+        created_at: new Date(),
+      }).returning('*');
 
       // Update or create user activity
       const existingUser = await this.db('user_activity')
@@ -84,15 +82,12 @@ export class TransactionService {
         });
       }
 
-      this.logger.info(
-        {
-          transactionId,
-          contractId: data.contractId,
-          buyerAddress: data.buyerAddress,
-          sharesPurchased: data.sharesPurchased,
-        },
-        'Purchase recorded',
-      );
+      this.logger.info({
+        transactionId,
+        contractId: data.contractId,
+        buyerAddress: data.buyerAddress,
+        sharesPurchased: data.sharesPurchased,
+      }, 'Purchase recorded');
 
       return transaction;
     } catch (error) {
@@ -105,7 +100,9 @@ export class TransactionService {
    * Get transaction by ID
    */
   async getTransaction(transactionId) {
-    return this.db('transactions').where('transaction_id', transactionId).first();
+    return this.db('transactions')
+      .where('transaction_id', transactionId)
+      .first();
   }
 
   /**
@@ -160,14 +157,18 @@ export class TransactionService {
    * Get user activity
    */
   async getUserActivity(walletAddress) {
-    return this.db('user_activity').where('wallet_address', walletAddress).first();
+    return this.db('user_activity')
+      .where('wallet_address', walletAddress)
+      .first();
   }
 
   /**
    * Get top buyers by spending
    */
   async getTopBuyers(limit = 10) {
-    return this.db('user_activity').orderBy('total_spent', 'desc').limit(limit);
+    return this.db('user_activity')
+      .orderBy('total_spent', 'desc')
+      .limit(limit);
   }
 
   /**
@@ -185,14 +186,15 @@ export class TransactionService {
    * Get all-time metrics
    */
   async getAllTimeMetrics() {
-    const transactions = await this.db('transactions').where('status', 'completed');
+    const transactions = await this.db('transactions')
+      .where('status', 'completed');
 
     const totalTransactions = transactions.length;
     const totalVolume = transactions.reduce((sum, t) => sum + parseFloat(t.total_amount), 0);
     const totalShares = transactions.reduce((sum, t) => sum + parseFloat(t.shares_purchased), 0);
 
-    const uniqueBuyers = new Set(transactions.map((t) => t.buyer_address)).size;
-    const uniqueAssets = new Set(transactions.map((t) => t.contract_id)).size;
+    const uniqueBuyers = new Set(transactions.map(t => t.buyer_address)).size;
+    const uniqueAssets = new Set(transactions.map(t => t.contract_id)).size;
 
     return {
       totalTransactions,
@@ -215,8 +217,8 @@ export class TransactionService {
 
     const totalVolume = transactions.reduce((sum, t) => sum + parseFloat(t.total_amount), 0);
     const totalTransactions = transactions.length;
-    const uniqueBuyers = new Set(transactions.map((t) => t.buyer_address)).size;
-    const uniqueAssets = new Set(transactions.map((t) => t.contract_id)).size;
+    const uniqueBuyers = new Set(transactions.map(t => t.buyer_address)).size;
+    const uniqueAssets = new Set(transactions.map(t => t.contract_id)).size;
 
     return {
       period: `${fromDate.toISOString().split('T')[0]} to ${toDate.toISOString().split('T')[0]}`,
@@ -245,8 +247,8 @@ export class TransactionService {
 
     const transactionsCount = transactions.length;
     const totalVolume = transactions.reduce((sum, t) => sum + parseFloat(t.total_amount), 0);
-    const uniqueBuyers = new Set(transactions.map((t) => t.buyer_address)).size;
-    const uniqueAssets = new Set(transactions.map((t) => t.contract_id)).size;
+    const uniqueBuyers = new Set(transactions.map(t => t.buyer_address)).size;
+    const uniqueAssets = new Set(transactions.map(t => t.contract_id)).size;
 
     const metadata = {
       topAssets: this._getTopAssetsForDay(transactions, 5),
@@ -256,7 +258,9 @@ export class TransactionService {
     const dateStr = date.toISOString().split('T')[0];
 
     // Upsert daily analytics
-    const existing = await this.db('daily_analytics').where('date', dateStr).first();
+    const existing = await this.db('daily_analytics')
+      .where('date', dateStr)
+      .first();
 
     if (existing) {
       return this.db('daily_analytics')
@@ -271,9 +275,8 @@ export class TransactionService {
           updated_at: new Date(),
         })
         .returning('*');
-    }
-    return this.db('daily_analytics')
-      .insert({
+    } else {
+      return this.db('daily_analytics').insert({
         date: dateStr,
         transactions_count: transactionsCount,
         total_volume: totalVolume,
@@ -283,15 +286,15 @@ export class TransactionService {
         metadata,
         created_at: new Date(),
         updated_at: new Date(),
-      })
-      .returning('*');
+      }).returning('*');
+    }
   }
 
   /**
    * Get daily analytics for a date range
    */
   async getDailyAnalyticsForRange(fromDate, toDate) {
-    const dateStr = (d) => d.toISOString().split('T')[0];
+    const dateStr = d => d.toISOString().split('T')[0];
     return this.db('daily_analytics')
       .where('date', '>=', dateStr(fromDate))
       .where('date', '<=', dateStr(toDate))
