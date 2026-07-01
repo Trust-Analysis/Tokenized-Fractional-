@@ -39,7 +39,7 @@ test.describe('RWA Marketplace — critical user flows', () => {
   test('displays the marketplace heading and asset grid on load', async ({ page }) => {
     await page.goto('/');
 
-    await expect(page.getByRole('heading', { name: 'RWA Marketplace' })).toBeVisible();
+    await expect(page.getByRole('heading', { name: 'RWA Marketplace', exact: true })).toBeVisible();
     await expect(page.getByRole('heading', { name: /available assets/i })).toBeVisible();
 
     // Asset card from the mocked API should appear
@@ -79,8 +79,9 @@ test.describe('RWA Marketplace — critical user flows', () => {
 
     // Click Buy Shares → confirm dialog appears
     await page.getByRole('button', { name: /buy shares/i }).click();
-    await expect(page.getByRole('dialog')).toBeVisible({ timeout: 3_000 });
-    await expect(page.getByText(/3/)).toBeVisible();
+    const dialog = page.getByRole('dialog');
+    await expect(dialog).toBeVisible({ timeout: 3_000 });
+    await expect(dialog.getByRole('cell', { name: '3', exact: true })).toBeVisible();
 
     // Confirm the purchase
     const confirmBtn = page.getByRole('button', { name: /confirm/i });

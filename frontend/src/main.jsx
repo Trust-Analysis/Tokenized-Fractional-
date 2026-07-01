@@ -11,6 +11,8 @@ import App from './App';
 import ErrorBoundary from './components/ErrorBoundary/ErrorBoundary';
 import ErrorFallback from './components/ErrorFallback/ErrorFallback';
 import { ThemeProvider } from './context/ThemeContext';
+import OfflineIndicator from './components/OfflineIndicator/OfflineIndicator';
+import { useServiceWorker } from './hooks/useServiceWorker';
 
 // Global unhandled error handlers
 window.onerror = (message, source, lineno, colno, error) => {
@@ -46,9 +48,62 @@ ReactDOM.createRoot(document.getElementById('root')).render(
     <ErrorBoundary fallback={ErrorFallback}>
       <Sentry.ErrorBoundary fallback={ErrorFallback}>
         <BrowserRouter>
-          <App />
+          <ThemeProvider>
+            <OfflineIndicator />
+            <SWUpdateBanner />
+            <App />
+          </ThemeProvider>
         </BrowserRouter>
       </Sentry.ErrorBoundary>
     </ErrorBoundary>
   </React.StrictMode>,
 );
+
+/**
+ * SWUpdateBanner — shown when a new service worker is waiting to activate.
+ * Prompts the user to reload so they get the latest version.
+ */
+function SWUpdateBanner() {
+  const { needsUpdate, updateSW } = useServiceWorker();
+  if (!needsUpdate) return null;
+
+  return (
+    <div
+      role="alert"
+      style={{
+        position: 'fixed',
+        bottom: '1rem',
+        right: '1rem',
+        zIndex: 9998,
+        background: 'var(--color-primary, #4a9eff)',
+        color: '#fff',
+        padding: '0.75rem 1rem',
+        borderRadius: '0.5rem',
+        boxShadow: '0 4px 12px rgba(0,0,0,0.3)',
+        display: 'flex',
+        alignItems: 'center',
+        gap: '0.75rem',
+        fontSize: '0.875rem',
+        maxWidth: '320px',
+      }}
+    >
+      <span>A new version is available.</span>
+      <button
+        onClick={() => updateSW(true)}
+        style={{
+          background: 'rgba(255,255,255,0.25)',
+          border: 'none',
+          borderRadius: '0.25rem',
+          color: '#fff',
+          cursor: 'pointer',
+          padding: '0.3rem 0.6rem',
+          fontWeight: 600,
+          fontSize: '0.8rem',
+          whiteSpace: 'nowrap',
+        }}
+      >
+        Reload
+      </button>
+    </div>
+  );
+}

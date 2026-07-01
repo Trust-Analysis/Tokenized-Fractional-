@@ -7,6 +7,15 @@ target/
 *.log
 .DS_Store
 data.json
+webhooks.json
+test-data.json
+.blue-green-state.json
+
+# Database files and backups
+*.db
+backups/
+restore-database.sql
+*.pre-restore
 
 # Playwright
 test-results/
@@ -35,3 +44,6 @@ storybook-static/
 
 # Temporary PR description files
 PR_DESCRIPTION_ISSUE_*.md
+
+# ELK stack data directories
+/elk/data/

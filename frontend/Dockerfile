@@ -17,6 +17,7 @@ ARG VITE_CONTRACT_ID
 ARG VITE_RPC_URL
 ARG VITE_NETWORK_PASSPHRASE
 ARG VITE_API_URL
+ARG VITE_CDN_URL
 RUN npm run build
 
 # ── Stage: production (serve built assets) ────────────────────────────────────

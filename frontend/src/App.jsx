@@ -2,15 +2,13 @@ import React, { useState, useEffect, useRef, useMemo } from 'react';
 import { Routes, Route, useNavigate, useLocation } from 'react-router-dom';
 import { Networks, nativeToScVal } from '@stellar/stellar-sdk';
 import { useTranslation } from 'react-i18next';
-import { useSorobanRead, useSorobanWrite } from './hooks/useSoroban';
-import Spinner from './components/Spinner/Spinner';
-import Input from './components/Input/Input';
-import Button from './components/Button/Button';
-import Badge from './components/Badge/Badge';
+
 import Header from './components/Header/Header';
 import Navbar from './components/Navbar/Navbar';
 import Card from './components/Card/Card';
 import Alert from './components/Alert/Alert';
+import Badge from './components/Badge/Badge';
+import Button from './components/Button/Button';
 import Skeleton from './components/Skeleton/Skeleton';
 import AssetGrid from './components/AssetGrid/AssetGrid';
 import AdminPage from './components/AdminPage/AdminPage';
@@ -20,6 +18,13 @@ import ToastContainer from './components/Toast/Toast';
 import ConfirmPurchase from './components/ConfirmPurchase/ConfirmPurchase';
 import LanguageSwitcher from './components/LanguageSwitcher/LanguageSwitcher';
 import TransactionHistory from './components/TransactionHistory/TransactionHistory';
+import ShortcutHelpModal from './components/ShortcutHelp/ShortcutHelp';
+import VirtualTour from './components/VirtualTour/VirtualTour';
+import NewsSection from './components/NewsSection/NewsSection';
+import PriceAlert from './components/PriceAlert/PriceAlert';
+import AssetComparison from './components/AssetComparison/AssetComparison';
+import FavoritesPage from './components/FavoritesPage/FavoritesPage';
+import UserProfile from './components/UserProfile/UserProfile';
 import styles from './App.module.css';
 
 import { useWalletStore } from './store/useWalletStore';
@@ -36,42 +41,20 @@ import {
 } from './constants/errors';
 import { useAssetStore } from './store/useAssetStore';
 import { useToastStore } from './store/useToastStore';
+import { useSorobanRead, useSorobanWrite } from './hooks/useSoroban';
 import useTransactionStatus from './hooks/useTransactionStatus';
+import { useKeyboardShortcuts } from './hooks/useKeyboardShortcuts';
+import { useMarketplaceWebSocket, WS_EVENT_TYPES } from './hooks/useWebSocket';
 
 const CONTRACT_ID = import.meta.env.VITE_CONTRACT_ID || 'C...';
 const NETWORK_PASSPHRASE = import.meta.env.VITE_NETWORK_PASSPHRASE || Networks.TESTNET;
 const API_URL = import.meta.env.VITE_API_URL || 'http://localhost:3001';
 
 // Route path → Navbar view id mapping
-const PATH_TO_VIEW = {
-  '/': 'marketplace',
-  '/portfolio': 'portfolio',
-  '/admin': 'admin',
-  '/history': 'history',
-};
-const VIEW_TO_PATH = {
-  marketplace: '/',
-  portfolio: '/portfolio',
-  admin: '/admin',
-  history: '/history',
-};
+const PATH_TO_VIEW = { '/': 'marketplace', '/portfolio': 'portfolio', '/admin': 'admin', '/history': 'history', '/profile': 'profile' };
+const VIEW_TO_PATH = { marketplace: '/', portfolio: '/portfolio', admin: '/admin', history: '/history', profile: '/profile' };
 
-function MarketplacePage({
-  publicKey,
-  walletError,
-  assetMeta,
-  assets,
-  isFetchingAssets,
-  assetsError,
-  loadingMeta,
-  shares,
-  loadingShares,
-  buyAmount,
-  setBuyAmount,
-  loadingBuy,
-  handleBuyShares,
-  pricePerShare,
-}) {
+function MarketplacePage({ publicKey, walletError, assetMeta, assets, isFetchingAssets, assetsError, loadingMeta, shares, loadingShares, buyAmount, setBuyAmount, loadingBuy, handleBuyShares, pricePerShare }) {
   const isTestnet = NETWORK_PASSPHRASE === Networks.TESTNET;
   return (
     <>
@@ -83,18 +66,8 @@ function MarketplacePage({
           <div className={styles.assetImageWrapper}>
             <Skeleton variant="rect" height="100%" style={{ borderRadius: 'var(--radius-sm)' }} />
           </div>
-          <Skeleton
-            variant="text"
-            height="1.4em"
-            width="55%"
-            style={{ marginBottom: 'var(--spacing-xs)' }}
-          />
-          <Skeleton
-            variant="text"
-            height="1em"
-            width="35%"
-            style={{ marginBottom: 'var(--spacing-sm)' }}
-          />
+          <Skeleton variant="text" height="1.4em" width="55%" style={{ marginBottom: 'var(--spacing-xs)' }} />
+          <Skeleton variant="text" height="1em" width="35%" style={{ marginBottom: 'var(--spacing-sm)' }} />
           <Skeleton variant="text" lines={3} style={{ marginBottom: 'var(--spacing-md)' }} />
           <Skeleton variant="text" height="1.1em" width="40%" />
         </Card>
@@ -107,39 +80,13 @@ function MarketplacePage({
           )}
           <h2 className={styles.assetTitle}>{assetMeta.title}</h2>
           <p className={styles.assetLocation}>
-            <svg
-              width="14"
-              height="14"
-              viewBox="0 0 24 24"
-              fill="none"
-              stroke="currentColor"
-              strokeWidth="2"
-              strokeLinecap="round"
-              strokeLinejoin="round"
-              className={styles.svgIcon}
-            >
-              <path d="M21 10c0 7-9 13-9 13s-9-6-9-13a9 9 0 0 1 18 0z" />
-              <circle cx="12" cy="10" r="3" />
-            </svg>
+            <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" className={styles.svgIcon}><path d="M21 10c0 7-9 13-9 13s-9-6-9-13a9 9 0 0 1 18 0z"></path><circle cx="12" cy="10" r="3"></circle></svg>
             {assetMeta.location}
           </p>
           <p className={styles.assetDescription}>{assetMeta.description}</p>
           {assetMeta.totalValuation && (
             <div className={styles.assetValuation}>
-              <svg
-                width="16"
-                height="16"
-                viewBox="0 0 24 24"
-                fill="none"
-                stroke="currentColor"
-                strokeWidth="2.5"
-                strokeLinecap="round"
-                strokeLinejoin="round"
-                className={styles.svgIcon}
-              >
-                <line x1="12" y1="1" x2="12" y2="23" />
-                <path d="M17 5H9.5a3.5 3.5 0 0 0 0 7h5a3.5 3.5 0 0 1 0 7H6" />
-              </svg>
+              <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round" className={styles.svgIcon}><line x1="12" y1="1" x2="12" y2="23"></line><path d="M17 5H9.5a3.5 3.5 0 0 0 0 7h5a3.5 3.5 0 0 1 0 7H6"></path></svg>
               <span>Valuation: {assetMeta.totalValuation}</span>
             </div>
           )}
@@ -148,12 +95,7 @@ function MarketplacePage({
 
       <section className={styles.section}>
         <h2 className={styles.sectionTitle}>Available Assets</h2>
-        <AssetGrid
-          assets={assets}
-          loading={isFetchingAssets}
-          error={assetsError}
-          isEmpty={!isFetchingAssets && !assetsError && assets.length === 0}
-        />
+        <AssetGrid assets={assets} loading={isFetchingAssets} error={assetsError} isEmpty={!isFetchingAssets && !assetsError && assets.length === 0} />
       </section>
 
       {publicKey && (
@@ -172,15 +114,7 @@ function MarketplacePage({
           <hr className={styles.divider} />
           <h3 className={styles.purchaseHeader}>Buy Fractional Shares</h3>
           <div className={styles.purchaseRow}>
-            <Input
-              id="buy-amount-input"
-              type="number"
-              value={buyAmount}
-              onChange={(e) => setBuyAmount(Math.max(1, Number(e.target.value)))}
-              min="1"
-              disabled={loadingBuy}
-              className={styles.buyInput}
-            />
+            <Input id="buy-amount-input" type="number" value={buyAmount} onChange={(e) => setBuyAmount(Math.max(1, Number(e.target.value)))} min="1" disabled={loadingBuy} className={styles.buyInput} />
             <Button onClick={handleBuyShares} loading={loadingBuy} variant="primary">
               {loadingBuy ? 'Processing…' : 'Buy Shares'}
             </Button>
@@ -201,33 +135,18 @@ function App() {
   // ── Global store state ─────────────────────────────────────────────────────
   const { t } = useTranslation();
   const {
-    publicKey,
-    isConnecting,
-    walletError,
-    shares,
-    connect,
-    disconnect,
-    checkConnection,
-    setShares,
-    clearWalletError,
+    publicKey, isConnecting, walletError, shares,
+    connect, disconnect, checkConnection, setShares, clearWalletError,
   } = useWalletStore();
 
   const {
-    assets,
-    assetMeta,
-    isFetchingAssets,
-    isFetchingMeta,
-    assetsError,
-    fetchAllAssets,
-    fetchMetadata,
-    clearMeta,
-    clearAssets,
+    assets, assetMeta, isFetchingAssets, assetsError,
+    fetchAllAssets, fetchMetadata, clearMeta, clearAssets,
   } = useAssetStore();
 
-  const [view, setView] = useState('marketplace');
   const [buyAmount, setBuyAmount] = useState(1);
   const [confirmPending, setConfirmPending] = useState(false);
-  // `isFetchingMeta` comes from the global asset store; remove local unused state
+  const [loadingMeta] = useState(false);
   const [txError, setTxError] = useState(null);
   const [txResult, setTxResult] = useState(null);
   const [lastTxHash, setLastTxHash] = useState(null);
@@ -239,6 +158,72 @@ function App() {
 
   const [theme, setTheme] = useState(() => localStorage.getItem('theme') || 'dark');
 
+  // ── WebSocket for real-time updates ────────────────────────────────────────
+  const wsUrl = `ws://${new URL(API_URL).host}/ws`;
+  const { connected: wsConnected } = useMarketplaceWebSocket(wsUrl, (message) => {
+    // Handle WebSocket events
+    if (!message.type || !message.data) return;
+
+    switch (message.type) {
+      case WS_EVENT_TYPES.SHARE_PURCHASED:
+        // Notify about share purchase - could show a notification or update UI
+        if (publicKey && message.data.buyerAddress !== publicKey) {
+          // Someone else bought shares - refresh availability
+          console.log('Share purchase detected:', message.data);
+        }
+        break;
+
+      case WS_EVENT_TYPES.PRICE_UPDATED:
+        // Price updated - could trigger a refresh of prices
+        console.log('Price updated:', message.data);
+        break;
+
+      case WS_EVENT_TYPES.AVAILABILITY_CHANGED:
+        // Available shares changed
+        console.log('Availability changed:', message.data);
+        break;
+
+      case WS_EVENT_TYPES.ASSET_UPDATED:
+        // Asset metadata updated
+        console.log('Asset updated:', message.data);
+        break;
+
+      case WS_EVENT_TYPES.MARKETPLACE_PAUSED:
+        addToast({ message: 'Marketplace has been paused', type: 'warning' });
+        break;
+
+      case WS_EVENT_TYPES.MARKETPLACE_UNPAUSED:
+        addToast({ message: 'Marketplace is now available', type: 'success' });
+        break;
+
+      default:
+        console.log('Unknown WebSocket event:', message.type);
+    }
+  }, {
+    enabled: process.env.NODE_ENV !== 'test',
+    reconnectAttempts: 5,
+    reconnectDelay: 3000,
+  });
+
+  // ── Keyboard shortcuts (Issue #194) ─────────────────────────────────────────
+  const [view, setView] = useState('marketplace');
+  const [shortcutHelpOpen, setShortcutHelpOpen] = useState(false);
+
+  useKeyboardShortcuts({
+    search:    () => { /* focus search input if present */
+      const el = document.getElementById('search-input') || document.getElementById('asset-search');
+      if (el) { el.focus(); el.select(); }
+      else { setView('marketplace'); }
+    },
+    portfolio: () => setView('portfolio'),
+    home:      () => setView('marketplace'),
+    help:      () => setShortcutHelpOpen(prev => !prev),
+    escape:    () => {
+      setShortcutHelpOpen(false);
+      setConfirmPending(false);
+    },
+  });
+
   useEffect(() => {
     document.documentElement.setAttribute('data-theme', theme);
     localStorage.setItem('theme', theme);
@@ -246,60 +231,66 @@ function App() {
 
   const toggleTheme = () => setTheme((prev) => (prev === 'dark' ? 'light' : 'dark'));
 
+  // Track purchase details for WebSocket broadcast
+  const lastPurchaseRef = useRef({ amount: null, timestamp: null });
+
   useEffect(() => {
     if (!lastTxHash || notifiedRef.current[lastTxHash]) return;
     if (txStatus === 'confirmed') {
       notifiedRef.current[lastTxHash] = true;
-      if (pendingToastRef.current) {
-        removeToast(pendingToastRef.current);
-        pendingToastRef.current = null;
-      }
+      if (pendingToastRef.current) { removeToast(pendingToastRef.current); pendingToastRef.current = null; }
       addToast({ message: TX_CONFIRMED, type: 'success', txHash: lastTxHash });
       setTxResult(null);
+      
+      // Broadcast share purchase event to WebSocket subscribers
+      if (publicKey && lastPurchaseRef.current.amount && pricePerShare) {
+        const totalCost = lastPurchaseRef.current.amount * pricePerShare;
+        fetch(`${API_URL}/api/v1/notify/share-purchased`, {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({
+            contractId: CONTRACT_ID,
+            buyerAddress: publicKey,
+            sharesToBuy: lastPurchaseRef.current.amount,
+            totalCost,
+          }),
+        }).catch(err => console.error('Failed to broadcast share purchase:', err));
+      }
+      
       fetchShares();
     } else if (txStatus === 'failed') {
       notifiedRef.current[lastTxHash] = true;
-      if (pendingToastRef.current) {
-        removeToast(pendingToastRef.current);
-        pendingToastRef.current = null;
-      }
+      if (pendingToastRef.current) { removeToast(pendingToastRef.current); pendingToastRef.current = null; }
       addToast({ message: TX_FAILED, type: 'error', txHash: lastTxHash });
       setTxError(null);
     }
-  }, [lastTxHash, txStatus]);
+  }, [lastTxHash, txStatus, publicKey, pricePerShare]);
 
-  useEffect(() => {
-    checkConnection();
-  }, [checkConnection]);
+  useEffect(() => { checkConnection(); }, [checkConnection]);
 
   const fetchSharesArgs = useMemo(() => {
     if (!publicKey) return [];
-    try {
-      return [nativeToScVal(publicKey, { type: 'address' })];
-    } catch {
-      return [];
-    }
+    try { return [nativeToScVal(publicKey, { type: 'address' })]; }
+    catch { return []; }
   }, [publicKey]);
 
-  const { loading: loadingShares, refetch: fetchShares } = useSorobanRead(
-    'get_shares',
-    fetchSharesArgs,
-    {
-      skip: !publicKey || CONTRACT_ID.length < 50,
-      onSuccess: (result) => {
-        if (result?.retval) setShares(Number(result.retval.u32()));
-      },
-      onError: () => console.error(FAILED_FETCH_SHARE_BALANCE),
-    },
-  );
+  const { loading: loadingShares, refetch: fetchShares } = useSorobanRead('get_shares', fetchSharesArgs, {
+    skip: !publicKey || CONTRACT_ID.length < 50,
+    onSuccess: (result) => { if (result?.retval) setShares(Number(result.retval.u32())); },
+    onError: () => console.error(FAILED_FETCH_SHARE_BALANCE),
+  });
 
   const buySharesTx = useSorobanWrite('buy_shares');
   const loadingBuy = buySharesTx.loading;
 
-  const { data: priceData } = useSorobanRead('get_price', [], {
-    skip: CONTRACT_ID.length < 50,
-  });
+  const { data: priceData } = useSorobanRead('get_price', [], { skip: CONTRACT_ID.length < 50 });
   const pricePerShare = priceData?.retval ? Number(priceData.retval.u64()) : null;
+
+  const { data: availableSharesData } = useSorobanRead('get_available_shares', [], { skip: CONTRACT_ID.length < 50 });
+  const availableShares = availableSharesData?.retval != null ? Number(availableSharesData.retval.u32()) : null;
+
+  const { data: totalSharesData } = useSorobanRead('get_total_shares', [], { skip: CONTRACT_ID.length < 50 });
+  const totalShares = totalSharesData?.retval != null ? Number(totalSharesData.retval.u32()) : null;
 
   const [acceptedTokens, setAcceptedTokens] = useState([]);
   const [paymentToken, setPaymentToken] = useState('');
@@ -336,28 +327,14 @@ function App() {
     if (publicKey) fetchMetadata(CONTRACT_ID, API_URL);
   }, [publicKey]);
 
-  useEffect(() => {
-    fetchAllAssets(API_URL);
-  }, []);
+  useEffect(() => { fetchAllAssets(API_URL); }, []);
 
-  const connectWallet = async () => {
-    clearWalletError();
-    await connect();
-  };
-  const disconnectWallet = () => {
-    disconnect();
-    clearMeta();
-    clearAssets();
-    setTxResult(null);
-    setTxError(null);
-  };
+  const connectWallet = async () => { clearWalletError(); await connect(); };
+  const disconnectWallet = () => { disconnect(); clearMeta(); clearAssets(); setTxResult(null); setTxError(null); };
 
   const handleBuyShares = () => {
     if (!publicKey) return;
-    if (buyAmount < 1) {
-      addToast({ message: MUST_BUY_AT_LEAST_ONE_SHARE, type: 'error' });
-      return;
-    }
+    if (buyAmount < 1) { addToast({ message: MUST_BUY_AT_LEAST_ONE_SHARE, type: 'error' }); return; }
     setConfirmPending(true);
   };
 
@@ -368,15 +345,15 @@ function App() {
       const scValBuyer = nativeToScVal(publicKey, { type: 'address' });
       const scValShares = nativeToScVal(buyAmount, { type: 'u32' });
       const scValToken = nativeToScVal(paymentToken, { type: 'address' });
+      
+      // Store purchase details for WebSocket broadcast on confirmation
+      lastPurchaseRef.current = { amount: buyAmount, timestamp: Date.now() };
+      
       const submitRes = await buySharesTx.execute([scValBuyer, scValShares, scValToken]);
       setConfirmPending(false);
-      const { hash } = submitRes;
+      const hash = submitRes.hash;
       setLastTxHash(hash);
-      pendingToastRef.current = addToast({
-        message: TX_SUBMITTED,
-        type: 'pending',
-        txHash: hash,
-      });
+      pendingToastRef.current = addToast({ message: TX_SUBMITTED, type: 'pending', txHash: hash });
     } catch (err) {
       setConfirmPending(false);
       let msg = TX_FAILED_CHECK_BALANCE;
@@ -393,23 +370,11 @@ function App() {
       <header className={styles.header}>
         <div className={styles.titleArea}>
           <div className={styles.titleRow}>
-            <a
-              href="https://github.com/Trust-Analysis/Tokenized-Fractional-"
-              target="_blank"
-              rel="noreferrer noopener"
-              className={styles.repoAvatarLink}
-              title="View repository on GitHub"
-            >
-              <img
-                src="https://github.com/Trust-Analysis.png"
-                alt="Repo avatar"
-                className={styles.repoAvatar}
-              />
+            <a href="https://github.com/Trust-Analysis/Tokenized-Fractional-" target="_blank" rel="noreferrer noopener" className={styles.repoAvatarLink} title="View repository on GitHub">
+              <img src="https://github.com/Trust-Analysis.png" alt="Repo avatar" className={styles.repoAvatar} />
             </a>
             <h1 className={styles.title}>RWA Marketplace</h1>
-            <Badge variant={isTestnet ? 'success' : 'danger'}>
-              {isTestnet ? 'TESTNET' : 'MAINNET'}
-            </Badge>
+            <Badge variant={isTestnet ? 'success' : 'danger'}>{isTestnet ? 'TESTNET' : 'MAINNET'}</Badge>
           </div>
         </div>
         <div className={styles.walletArea}>
@@ -421,21 +386,9 @@ function App() {
             aria-label="Toggle theme"
           >
             {theme === 'dark' ? (
-              <svg viewBox="0 0 24 24">
-                <circle cx="12" cy="12" r="5" />
-                <line x1="12" y1="1" x2="12" y2="3" />
-                <line x1="12" y1="21" x2="12" y2="23" />
-                <line x1="4.22" y1="4.22" x2="5.64" y2="5.64" />
-                <line x1="18.36" y1="18.36" x2="19.78" y2="19.78" />
-                <line x1="1" y1="12" x2="3" y2="12" />
-                <line x1="21" y1="12" x2="23" y2="12" />
-                <line x1="4.22" y1="19.78" x2="5.64" y2="18.36" />
-                <line x1="18.36" y1="5.64" x2="19.78" y2="4.22" />
-              </svg>
+              <svg viewBox="0 0 24 24"><circle cx="12" cy="12" r="5"></circle><line x1="12" y1="1" x2="12" y2="3"></line><line x1="12" y1="21" x2="12" y2="23"></line><line x1="4.22" y1="4.22" x2="5.64" y2="5.64"></line><line x1="18.36" y1="18.36" x2="19.78" y2="19.78"></line><line x1="1" y1="12" x2="3" y2="12"></line><line x1="21" y1="12" x2="23" y2="12"></line><line x1="4.22" y1="19.78" x2="5.64" y2="18.36"></line><line x1="18.36" y1="5.64" x2="19.78" y2="4.22"></line></svg>
             ) : (
-              <svg viewBox="0 0 24 24">
-                <path d="M21 12.79A9 9 0 1 1 11.21 3 7 7 0 0 0 21 12.79z" />
-              </svg>
+              <svg viewBox="0 0 24 24"><path d="M21 12.79A9 9 0 1 1 11.21 3 7 7 0 0 0 21 12.79z"></path></svg>
             )}
           </button>
           {!publicKey ? (
@@ -481,6 +434,18 @@ function App() {
         >
           History
         </button>
+        <button
+          className={`${styles.tab} ${view === 'compare' ? styles.tabActive : ''}`}
+          onClick={() => setView('compare')}
+        >
+          Compare
+        </button>
+        <button
+          className={`${styles.tab} ${view === 'favorites' ? styles.tabActive : ''}`}
+          onClick={() => setView('favorites')}
+        >
+          ★ Favorites
+        </button>
       </nav>
 
       <ToastContainer />
@@ -488,155 +453,140 @@ function App() {
       {view === 'portfolio' ? (
         <PortfolioPage />
       ) : view === 'admin' ? (
-        <AdminPage publicKey={publicKey} onDisconnect={() => setView('marketplace')} />
+        <AdminPage
+          publicKey={publicKey}
+          onDisconnect={() => setView('marketplace')}
+        />
       ) : view === 'history' ? (
         <TransactionHistory />
+      ) : view === 'compare' ? (
+        <AssetComparison />
+      ) : view === 'favorites' ? (
+        <FavoritesPage />
+      ) : view === 'profile' ? (
+        <UserProfile />
       ) : (
         <>
           {/* Wallet errors (connection issues) */}
-          {walletError && <Alert variant="error">{walletError}</Alert>}
+      {walletError && (
+        <Alert variant="error">
+          {walletError}
+        </Alert>
+      )}
 
-          {/* Contract not configured */}
-          {CONTRACT_ID === 'C...' && <Alert variant="warning">{CONTRACT_NOT_CONFIGURED}</Alert>}
+      {/* Contract not configured */}
+      {CONTRACT_ID === 'C...' && (
+        <Alert variant="warning">
+          {CONTRACT_NOT_CONFIGURED}
+        </Alert>
+      )}
 
-          {/* ── Asset Metadata Card ─────────────────────────────────────────── */}
-          {isFetchingMeta ? (
-            <Card>
-              <div className={styles.assetImageWrapper}>
-                <Skeleton
-                  variant="rect"
-                  height="100%"
-                  style={{ borderRadius: 'var(--radius-sm)' }}
-                />
-              </div>
-              <Skeleton
-                variant="text"
-                height="1.4em"
-                width="55%"
-                style={{ marginBottom: 'var(--spacing-xs)' }}
-              />
-              <Skeleton
-                variant="text"
-                height="1em"
-                width="35%"
-                style={{ marginBottom: 'var(--spacing-sm)' }}
-              />
-              <Skeleton variant="text" lines={3} style={{ marginBottom: 'var(--spacing-md)' }} />
-              <Skeleton variant="text" height="1.1em" width="40%" />
-            </Card>
-          ) : assetMeta ? (
-            <Card hoverable>
-              {assetMeta.imageUrl && (
-                <div className={styles.assetImageWrapper}>
-                  <img
-                    src={assetMeta.imageUrl}
-                    alt={assetMeta.title}
-                    className={styles.assetImage}
-                  />
-                </div>
-              )}
-              <h2 className={styles.assetTitle}>{assetMeta.title}</h2>
-              <p className={styles.assetLocation}>
-                <svg
-                  width="14"
-                  height="14"
-                  viewBox="0 0 24 24"
-                  fill="none"
-                  stroke="currentColor"
-                  strokeWidth="2"
-                  strokeLinecap="round"
-                  strokeLinejoin="round"
-                  className={styles.svgIcon}
-                >
-                  <path d="M21 10c0 7-9 13-9 13s-9-6-9-13a9 9 0 0 1 18 0z" />
-                  <circle cx="12" cy="10" r="3" />
-                </svg>
-                {assetMeta.location}
-              </p>
-              <p className={styles.assetDescription}>{assetMeta.description}</p>
-              {assetMeta.totalValuation && (
-                <div className={styles.assetValuation}>
-                  <svg
-                    width="16"
-                    height="16"
-                    viewBox="0 0 24 24"
-                    fill="none"
-                    stroke="currentColor"
-                    strokeWidth="2.5"
-                    strokeLinecap="round"
-                    strokeLinejoin="round"
-                    className={styles.svgIcon}
-                  >
-                    <line x1="12" y1="1" x2="12" y2="23" />
-                    <path d="M17 5H9.5a3.5 3.5 0 0 0 0 7h5a3.5 3.5 0 0 1 0 7H6" />
-                  </svg>
-                  <span>Valuation: {assetMeta.totalValuation}</span>
-                </div>
-              )}
-            </Card>
-          ) : null}
-
-          {/* ── Asset Listing Grid ─────────────────────────────────────────── */}
-          <section className={styles.section}>
-            <h2 className={styles.sectionTitle}>{t('marketplace.availableAssets')}</h2>
-            <AssetGrid
-              assets={assets}
-              loading={isFetchingAssets}
-              error={assetsError}
-              isEmpty={!isFetchingAssets && !assetsError && assets.length === 0}
-            />
-          </section>
-
-          {/* ── Holdings + Buy Card ─────────────────────────────────────────── */}
-          {publicKey && (
-            <Card>
-              <div className={styles.holdingsRow}>
-                <span className={styles.holdingsLabel}>{t('marketplace.shareBalance')}</span>
-                {loadingShares ? (
-                  <span className={styles.holdingsValueLoading}>
-                    <Spinner size="sm" label="Fetching share balance…" />
-                    <Skeleton variant="text" width="3rem" height="1.6em" />
-                  </span>
-                ) : (
-                  <span className={styles.holdingsValue}>{shares}</span>
-                )}
-              </div>
-              <hr className={styles.divider} />
-              <h3 className={styles.purchaseHeader}>{t('marketplace.buyShares')}</h3>
-              <div className={styles.purchaseRow}>
-                <Input
-                  id="buy-amount-input"
-                  type="number"
-                  value={buyAmount}
-                  onChange={(e) => setBuyAmount(Math.max(1, Number(e.target.value)))}
-                  min="1"
-                  disabled={loadingBuy}
-                  className={styles.buyInput}
-                />
-                <Button onClick={handleBuyShares} loading={loadingBuy} variant="primary">
-                  {loadingBuy ? t('marketplace.processing') : t('marketplace.buyButton')}
-                </Button>
-              </div>
-              {loadingBuy && (
-                <div className={styles.buyLoadingHint}>
-                  <Spinner size="sm" label="Processing transaction…" />
-                  <span>Submitting transaction to the network…</span>
-                </div>
-              )}
-            </Card>
+      {/* ── Asset Metadata Card ─────────────────────────────────────────── */}
+      {loadingMeta ? (
+        <Card>
+          <div className={styles.assetImageWrapper}>
+            <Skeleton variant="rect" height="100%" style={{ borderRadius: 'var(--radius-sm)' }} />
+          </div>
+          <Skeleton variant="text" height="1.4em" width="55%" style={{ marginBottom: 'var(--spacing-xs)' }} />
+          <Skeleton variant="text" height="1em" width="35%" style={{ marginBottom: 'var(--spacing-sm)' }} />
+          <Skeleton variant="text" lines={3} style={{ marginBottom: 'var(--spacing-md)' }} />
+          <Skeleton variant="text" height="1.1em" width="40%" />
+        </Card>
+      ) : assetMeta ? (
+        <Card hoverable>
+          {assetMeta.imageUrl && (
+            <div className={styles.assetImageWrapper}>
+              <img src={assetMeta.imageUrl} alt={assetMeta.title} className={styles.assetImage} />
+            </div>
           )}
+          {assetMeta.assetType === 'real_estate' && assetMeta.imageUrl && (
+            <VirtualTour imageUrl={assetMeta.imageUrl} title={assetMeta.title} />
+          )}
+          <h2 className={styles.assetTitle}>{assetMeta.title}</h2>
+          <p className={styles.assetLocation}>
+            <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" className={styles.svgIcon}><path d="M21 10c0 7-9 13-9 13s-9-6-9-13a9 9 0 0 1 18 0z"></path><circle cx="12" cy="10" r="3"></circle></svg>
+            {assetMeta.location}
+          </p>
+          <p className={styles.assetDescription}>{assetMeta.description}</p>
+          {assetMeta.totalValuation && (
+            <div className={styles.assetValuation}>
+              <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round" className={styles.svgIcon}><line x1="12" y1="1" x2="12" y2="23"></line><path d="M17 5H9.5a3.5 3.5 0 0 0 0 7h5a3.5 3.5 0 0 1 0 7H6"></path></svg>
+              <span>Valuation: {assetMeta.totalValuation}</span>
+            </div>
+          )}
+        </Card>
+      ) : null}
+
+      {/* ── Asset Listing Grid ─────────────────────────────────────────── */}
+      <section className={styles.section}>
+        <h2 className={styles.sectionTitle}>{t('marketplace.availableAssets')}</h2>
+        <AssetGrid
+          assets={assets}
+          loading={isFetchingAssets}
+          error={assetsError}
+          isEmpty={!isFetchingAssets && !assetsError && assets.length === 0}
+        />
+      </section>
+
+      {/* ── News & Updates Section (Issue #191) ─────────────────────────── */}
+      <NewsSection />
+
+      {/* ── Holdings + Buy Card ─────────────────────────────────────────── */}
+      {publicKey && (
+        <BuyShares
+          shares={shares}
+          loadingShares={loadingShares}
+          loadingBuy={loadingBuy}
+          onBuy={handleBuyShares}
+          acceptedTokens={acceptedTokens}
+          paymentToken={paymentToken}
+          onTokenChange={setPaymentToken}
+          availableShares={availableShares}
+          totalShares={totalShares}
+          pricePerShare={pricePerShare}
+          buyAmount={buyAmount}
+          onBuyAmountChange={setBuyAmount}
+        />
+      )}
+
+      {/* ── Price Alerts (Issue #188) ─────────────────────────────────────── */}
+      {CONTRACT_ID.length >= 50 && pricePerShare != null && (
+        <PriceAlert
+          contractId={CONTRACT_ID}
+          assetTitle={assetMeta?.title || 'Asset'}
+          currentPrice={pricePerShare}
+        />
+      )}
+
+      {/* ── Investment Calculator (Issue #189) ───────────────────────────── */}
+      <InvestmentCalculator
+        pricePerShare={pricePerShare}
+        assetTitle={assetMeta?.title || 'Asset'}
+        totalShares={totalShares}
+        availableShares={availableShares}
+      />
         </>
       )}
 
       {confirmPending && (
-        <ConfirmPurchase
-          shares={buyAmount}
-          pricePerShare={pricePerShare}
-          onConfirm={handleConfirmBuy}
-          onCancel={() => setConfirmPending(false)}
-          loading={loadingBuy}
-        />
+        <ConfirmPurchase shares={buyAmount} pricePerShare={pricePerShare} onConfirm={handleConfirmBuy} onCancel={() => setConfirmPending(false)} loading={loadingBuy} />
       )}
+
+      {/* Keyboard shortcut help modal (Issue #194: Ctrl+/) */}
+      <ShortcutHelpModal open={shortcutHelpOpen} onClose={() => setShortcutHelpOpen(false)} />
+
+      {/* Keyboard shortcuts hint shown in footer */}
+      <div
+        role="button"
+        tabIndex={0}
+        id="shortcut-help-trigger"
+        aria-label="Show keyboard shortcuts"
+        onClick={() => setShortcutHelpOpen(true)}
+        onKeyDown={(e) => { if (e.key === 'Enter' || e.key === ' ') setShortcutHelpOpen(true); }}
+        style={{ textAlign: 'center', padding: '0.5rem', fontSize: '0.75rem', cursor: 'pointer', opacity: 0.5 }}
+      >
+        ⌨️ Keyboard shortcuts available &mdash; press <kbd style={{ background: 'none', border: '1px solid currentColor', borderRadius: '3px', padding: '0 4px', fontFamily: 'monospace' }}>Ctrl+/</kbd> for help
+      </div>
     </div>
   );
 }

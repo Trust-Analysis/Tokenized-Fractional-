@@ -10,6 +10,8 @@ import styles from './TransactionHistory.module.css';
 const HORIZON_URL = 'https://horizon-testnet.stellar.org';
 const CONTRACT_ID = import.meta.env.VITE_CONTRACT_ID || '';
 const HORIZON_LIMIT = 20;
+const NETWORK_PASSPHRASE = import.meta.env.VITE_NETWORK_PASSPHRASE || '';
+const EXPLORER_NETWORK = NETWORK_PASSPHRASE === 'Public Global Stellar Network ; September 2015' ? 'public' : 'testnet';
 
 function formatDate(iso) {
   return new Date(iso).toLocaleString(undefined, {
@@ -29,7 +31,7 @@ function shortHash(hash) {
 }
 
 function explorerLink(hash) {
-  return `https://stellar.expert/explorer/testnet/tx/${hash}`;
+  return `https://stellar.expert/explorer/${EXPLORER_NETWORK}/tx/${hash}`;
 }
 
 export default function TransactionHistory() {
