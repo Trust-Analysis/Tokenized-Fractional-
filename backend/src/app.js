@@ -8,8 +8,6 @@
  */
 
 import 'dotenv/config';
-import { validateEnv } from '../env.js';
-validateEnv();
 
 import { randomUUID } from 'crypto';
 import express from 'express';
@@ -19,12 +17,28 @@ import pinoHttp from 'pino-http';
 import * as Sentry from '@sentry/node';
 import swaggerUi from 'swagger-ui-express';
 import prometheus from 'express-prom-bundle';
+import { validateEnv } from '../env.js';
 
-import { CORS_ORIGINS, SENTRY_DSN, SENTRY_TRACES_SAMPLE_RATE, SENTRY_PROFILES_SAMPLE_RATE, REDIS_URL, DEPLOYMENT_COLOR, SERVICE_NAME, BUILD_ID, NODE_ENV } from './config.js';
+import {
+  CORS_ORIGINS,
+  SENTRY_DSN,
+  SENTRY_TRACES_SAMPLE_RATE,
+  SENTRY_PROFILES_SAMPLE_RATE,
+  REDIS_URL,
+  DEPLOYMENT_COLOR,
+  SERVICE_NAME,
+  BUILD_ID,
+  NODE_ENV,
+} from './config.js';
 import { logger } from './services/logger.js';
 import { apiLimiter } from './middleware/rateLimiter.js';
 import { createAdminAuth, adminAuth as legacyAdminAuth } from './middleware/auth.js';
-import { createTieredRateLimiter, initializeRedisLimiter, closeRedisLimiter, extractWalletMiddleware } from './middleware/tieredRateLimiter.js';
+import {
+  createTieredRateLimiter,
+  initializeRedisLimiter,
+  closeRedisLimiter,
+  extractWalletMiddleware,
+} from './middleware/tieredRateLimiter.js';
 import { v1 } from './routes/rwa.js';
 import { swaggerSpec } from '../docs.js';
 import { initDatabase, getDatabase } from './services/database.js';
@@ -35,6 +49,8 @@ import { createAnalyticsRoutes } from './routes/analytics.js';
 import { createPurchaseRoutes } from './routes/purchases.js';
 import { createRateLimitingRoutes } from './routes/rateLimiting.js';
 
+validateEnv();
+
 // ── Sentry init ───────────────────────────────────────────────────────────────
 if (SENTRY_DSN && process.env.NODE_ENV !== 'test') {
   Sentry.init({
@@ -42,10 +58,7 @@ if (SENTRY_DSN && process.env.NODE_ENV !== 'test') {
     environment: process.env.NODE_ENV || 'development',
     tracesSampleRate: SENTRY_TRACES_SAMPLE_RATE,
     profilesSampleRate: SENTRY_PROFILES_SAMPLE_RATE,
-    integrations: [
-      Sentry.httpIntegration({ breadcrumbs: true }),
-      Sentry.expressIntegration(),
-    ],
+    integrations: [Sentry.httpIntegration({ breadcrumbs: true }), Sentry.expressIntegration()],
   });
   logger.info({ dsnPrefix: SENTRY_DSN.slice(0, 30) }, 'Sentry initialized');
 }
@@ -125,11 +138,13 @@ if (SENTRY_DSN) {
 }
 
 app.use(helmet());
-app.use(cors({
-  origin: CORS_ORIGINS,
-  methods: ['GET', 'POST', 'PATCH', 'DELETE'],
-  allowedHeaders: ['Content-Type', 'x-api-key', 'X-Request-ID'],
-}));
+app.use(
+  cors({
+    origin: CORS_ORIGINS,
+    methods: ['GET', 'POST', 'PATCH', 'DELETE'],
+    allowedHeaders: ['Content-Type', 'x-api-key', 'X-Request-ID'],
+  }),
+);
 app.use(express.json({ limit: '10kb' }));
 
 // Request-ID middleware
@@ -141,11 +156,13 @@ app.use((req, res, next) => {
 });
 
 // HTTP request logging (silent in test)
-app.use(pinoHttp({
-  logger,
-  autoLogging: { ignore: req => req.url === '/health' },
-  genReqId: req => req.requestId,
-}));
+app.use(
+  pinoHttp({
+    logger,
+    autoLogging: { ignore: (req) => req.url === '/health' },
+    genReqId: (req) => req.requestId,
+  }),
+);
 
 // Extract wallet address for authentication detection
 app.use(extractWalletMiddleware);
@@ -170,13 +187,21 @@ app.get('/metrics', async (_req, res) => {
 });
 
 // Swagger docs
-app.use('/api-docs', swaggerUi.serve, swaggerUi.setup(swaggerSpec, {
-  customSiteTitle: 'RWA Marketplace API Docs',
-}));
+app.use(
+  '/api-docs',
+  swaggerUi.serve,
+  swaggerUi.setup(swaggerSpec, {
+    customSiteTitle: 'RWA Marketplace API Docs',
+  }),
+);
 app.get('/api-docs.json', (_req, res) => res.json(swaggerSpec));
 
 // Admin key verification (requires initialization)
-app.get('/api/admin/verify', (req, res, next) => adminAuth(req, res, next), (_req, res) => res.json({ ok: true }));
+app.get(
+  '/api/admin/verify',
+  (req, res, next) => adminAuth(req, res, next),
+  (_req, res) => res.json({ ok: true }),
+);
 
 // Health check
 app.get('/health', async (_req, res) => {
@@ -198,7 +223,9 @@ app.get('/health', async (_req, res) => {
       deps.redis = { status: 'ok' };
     } catch {
       deps.redis = { status: 'error', message: 'Redis configured but unreachable' };
-      return res.status(503).json({ status: 'degraded', timestamp: new Date().toISOString(), dependencies: deps });
+      return res
+        .status(503)
+        .json({ status: 'degraded', timestamp: new Date().toISOString(), dependencies: deps });
     }
   }
 

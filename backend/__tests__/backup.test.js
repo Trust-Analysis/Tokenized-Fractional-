@@ -1,5 +1,3 @@
-process.env.NODE_ENV = 'test';
-
 import { mkdtempSync, mkdirSync, writeFileSync, readFileSync, existsSync, rmSync } from 'fs';
 import { tmpdir } from 'os';
 import { join } from 'path';
@@ -14,6 +12,8 @@ import {
   parseBackupTimestamp,
 } from '../backup.js';
 import { restoreBackup } from '../restore.js';
+
+process.env.NODE_ENV = 'test';
 
 let root;
 
@@ -56,7 +56,11 @@ describe('loadBackupConfig', () => {
   });
 
   test('parses S3 config when bucket is set', () => {
-    const cfg = loadBackupConfig({ BACKUP_S3_BUCKET: 'b', BACKUP_S3_PREFIX: 'p/', BACKUP_S3_REGION: 'eu-west-1' });
+    const cfg = loadBackupConfig({
+      BACKUP_S3_BUCKET: 'b',
+      BACKUP_S3_PREFIX: 'p/',
+      BACKUP_S3_REGION: 'eu-west-1',
+    });
     expect(cfg.s3).toEqual({ bucket: 'b', prefix: 'p', region: 'eu-west-1', endpoint: undefined });
   });
 });
@@ -65,7 +69,9 @@ describe('loadBackupConfig', () => {
 describe('createBackup / verifyBackup', () => {
   test('creates gzipped members + manifest and verifies clean', async () => {
     const cfg = makeConfig();
-    const { dir, manifest } = await createBackup(cfg, { now: new Date('2026-06-30T03:00:00.000Z') });
+    const { dir, manifest } = await createBackup(cfg, {
+      now: new Date('2026-06-30T03:00:00.000Z'),
+    });
 
     expect(existsSync(join(dir, 'data.json.gz'))).toBe(true);
     expect(existsSync(join(dir, 'webhooks.json.gz'))).toBe(true);
@@ -152,7 +158,10 @@ describe('restoreBackup', () => {
 
     // Mutate live data, then restore
     writeFileSync(join(root, 'data.json'), JSON.stringify({ asset: 999 }));
-    const written = await restoreBackup(name, { config: cfg, log: { info() {}, warn() {}, error() {} } });
+    const written = await restoreBackup(name, {
+      config: cfg,
+      log: { info() {}, warn() {}, error() {} },
+    });
 
     expect(JSON.parse(readFileSync(join(root, 'data.json'), 'utf-8'))).toEqual({ asset: 1 });
     expect(existsSync(join(root, 'data.json.pre-restore'))).toBe(true);
@@ -164,8 +173,8 @@ describe('restoreBackup', () => {
     const { name, dir } = await createBackup(cfg, { now: new Date('2026-06-30T03:00:00.000Z') });
     writeFileSync(join(dir, 'data.json.gz'), Buffer.from('corrupt'));
 
-    await expect(restoreBackup(name, { config: cfg, log: { info() {}, warn() {}, error() {} } })).rejects.toThrow(
-      /failed verification/
-    );
+    await expect(
+      restoreBackup(name, { config: cfg, log: { info() {}, warn() {}, error() {} } }),
+    ).rejects.toThrow(/failed verification/);
   });
 });

@@ -26,7 +26,7 @@ export function validateContractId(id) {
  */
 export function validateRwaBody(body) {
   const required = ['title', 'location', 'description', 'assetType'];
-  const missing = required.filter(f => !body[f]);
+  const missing = required.filter((f) => !body[f]);
   if (missing.length > 0) return `Missing required fields: ${missing.join(', ')}`;
   return null;
 }
@@ -47,7 +47,7 @@ export function validateWebhookBody(body) {
   if (!Array.isArray(body.events) || body.events.length === 0) {
     return 'events must be a non-empty array';
   }
-  const invalid = body.events.filter(e => !WEBHOOK_VALID_EVENTS.includes(e));
+  const invalid = body.events.filter((e) => !WEBHOOK_VALID_EVENTS.includes(e));
   if (invalid.length > 0) {
     return `Invalid events: ${invalid.join(', ')}. Valid: ${WEBHOOK_VALID_EVENTS.join(', ')}`;
   }

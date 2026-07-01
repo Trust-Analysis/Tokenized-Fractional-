@@ -1,6 +1,6 @@
 /**
  * Mock Data Generator for Price History
- * 
+ *
  * Generates realistic price history data for testing and development
  * Supports various time ranges and price volatility patterns
  */
@@ -14,7 +14,7 @@
  */
 export function generateMockPriceData(days = 30, basePrice = null, volatility = 0.05) {
   const data = [];
-  const startPrice = basePrice ?? (Math.random() * 5000 + 1000);
+  const startPrice = basePrice ?? Math.random() * 5000 + 1000;
   const now = new Date();
 
   for (let i = days; i >= 0; i--) {
@@ -23,7 +23,7 @@ export function generateMockPriceData(days = 30, basePrice = null, volatility = 
     date.setHours(0, 0, 0, 0);
 
     // Generate realistic price with trend and noise
-    const trend = (days - i) / days * 0.02; // 2% trend over period
+    const trend = ((days - i) / days) * 0.02; // 2% trend over period
     const noise = (Math.random() - 0.5) * 2 * volatility;
     const price = startPrice * (1 + trend + noise);
 
@@ -174,7 +174,7 @@ export const TEST_SCENARIOS = {
       date.setDate(date.getDate() - i);
       date.setHours(0, 0, 0, 0);
 
-      const uptrend = (days - i) / days * 0.15; // 15% total uptrend
+      const uptrend = ((days - i) / days) * 0.15; // 15% total uptrend
       const noise = (Math.random() - 0.5) * 0.02;
       const price = basePrice * (1 + uptrend + noise);
 
@@ -202,7 +202,7 @@ export const TEST_SCENARIOS = {
       date.setDate(date.getDate() - i);
       date.setHours(0, 0, 0, 0);
 
-      const downtrend = -(days - i) / days * 0.12; // 12% total downtrend
+      const downtrend = (-(days - i) / days) * 0.12; // 12% total downtrend
       const noise = (Math.random() - 0.5) * 0.02;
       const price = basePrice * (1 + downtrend + noise);
 
@@ -231,7 +231,7 @@ export const TEST_SCENARIOS = {
       date.setHours(0, 0, 0, 0);
 
       const volatility = (Math.random() - 0.5) * 2 * 0.15; // 15% volatility
-      const trend = (Math.sin(i / 5) * 0.1); // Cyclic pattern
+      const trend = Math.sin(i / 5) * 0.1; // Cyclic pattern
       const price = basePrice * (1 + volatility + trend);
 
       data.push({
@@ -291,7 +291,7 @@ export const TEST_SCENARIOS = {
         price = basePrice * 0.7; // 30% drop
       } else if (i < crashDay) {
         // Recovery
-        const recovery = (crashDay - i) / crashDay * 0.3;
+        const recovery = ((crashDay - i) / crashDay) * 0.3;
         price = basePrice * (0.7 + recovery);
       } else {
         // Normal trend before crash
@@ -299,7 +299,7 @@ export const TEST_SCENARIOS = {
       }
 
       const noise = (Math.random() - 0.5) * 0.02;
-      price = price * (1 + noise);
+      price *= 1 + noise;
 
       data.push({
         date: date.toISOString().split('T')[0],

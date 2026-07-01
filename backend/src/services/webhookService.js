@@ -52,12 +52,15 @@ async function deliverWebhookWithRetry(webhook, payload, maxRetries = 3) {
  */
 export async function fireWebhooks(event, data) {
   const webhooks = loadWebhooks();
-  const active = Object.values(webhooks).filter(w => w.active && w.events.includes(event));
+  const active = Object.values(webhooks).filter((w) => w.active && w.events.includes(event));
   if (active.length === 0) {
-    logger.info({ event, webhookCount: Object.keys(webhooks).length }, 'No active webhooks for event');
+    logger.info(
+      { event, webhookCount: Object.keys(webhooks).length },
+      'No active webhooks for event',
+    );
     return;
   }
-  logger.info({ event, count: active.length, urls: active.map(w => w.url) }, 'Firing webhooks');
+  logger.info({ event, count: active.length, urls: active.map((w) => w.url) }, 'Firing webhooks');
 
   const payload = {
     event,
@@ -65,9 +68,7 @@ export async function fireWebhooks(event, data) {
     data,
   };
 
-  const results = await Promise.allSettled(
-    active.map(w => deliverWebhookWithRetry(w, payload)),
-  );
+  const results = await Promise.allSettled(active.map((w) => deliverWebhookWithRetry(w, payload)));
 
   let changed = false;
   active.forEach((webhook, i) => {
@@ -76,7 +77,10 @@ export async function fireWebhooks(event, data) {
       webhook.lastFailureAt = new Date().toISOString();
       if (webhook.failureCount >= 5) {
         webhook.active = false;
-        logger.warn({ webhookId: webhook.id, url: webhook.url }, 'Webhook auto-disabled after 5 failures');
+        logger.warn(
+          { webhookId: webhook.id, url: webhook.url },
+          'Webhook auto-disabled after 5 failures',
+        );
       }
     } else {
       webhook.failureCount = 0;

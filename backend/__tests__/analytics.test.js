@@ -31,16 +31,14 @@ describe('Analytics API', () => {
 
   describe('POST /api/purchases', () => {
     it('should record a purchase successfully', async () => {
-      const response = await request(app)
-        .post('/api/purchases')
-        .send({
-          contractId: 'CBKJ5G3XLQQ2N2CTJVQ7H2L3L5M6N7O8P9Q1R2S3T4U5V6W7X8Y9Z0',
-          buyerAddress: 'GBRPYHIL2CI3FV4BMSXIGTZTZMSMSCGVMFKFPGBCYDNBRJSVH4RRPCP5',
-          sharesPurchased: 500,
-          pricePerShare: 1000,
-          totalAmount: 500000,
-          paymentToken: 'CDLZFC3SYJYDZT7K67VZ75HPJVIEUVNIXF47ZG2FB2RMQQVU2HHGCYSC',
-        });
+      const response = await request(app).post('/api/purchases').send({
+        contractId: 'CBKJ5G3XLQQ2N2CTJVQ7H2L3L5M6N7O8P9Q1R2S3T4U5V6W7X8Y9Z0',
+        buyerAddress: 'GBRPYHIL2CI3FV4BMSXIGTZTZMSMSCGVMFKFPGBCYDNBRJSVH4RRPCP5',
+        sharesPurchased: 500,
+        pricePerShare: 1000,
+        totalAmount: 500000,
+        paymentToken: 'CDLZFC3SYJYDZT7K67VZ75HPJVIEUVNIXF47ZG2FB2RMQQVU2HHGCYSC',
+      });
 
       expect(response.status).toBe(201);
       expect(response.body.data).toHaveProperty('transactionId');
@@ -49,29 +47,25 @@ describe('Analytics API', () => {
     });
 
     it('should reject missing required fields', async () => {
-      const response = await request(app)
-        .post('/api/purchases')
-        .send({
-          contractId: 'CBKJ5G3XLQQ2N2CTJVQ7H2L3L5M6N7O8P9Q1R2S3T4U5V6W7X8Y9Z0',
-          // Missing buyerAddress
-          sharesPurchased: 500,
-        });
+      const response = await request(app).post('/api/purchases').send({
+        contractId: 'CBKJ5G3XLQQ2N2CTJVQ7H2L3L5M6N7O8P9Q1R2S3T4U5V6W7X8Y9Z0',
+        // Missing buyerAddress
+        sharesPurchased: 500,
+      });
 
       expect(response.status).toBe(400);
       expect(response.body.error).toBe('Missing required fields');
     });
 
     it('should reject invalid contractId', async () => {
-      const response = await request(app)
-        .post('/api/purchases')
-        .send({
-          contractId: 'invalid', // Must start with C
-          buyerAddress: 'GBRPYHIL2CI3FV4BMSXIGTZTZMSMSCGVMFKFPGBCYDNBRJSVH4RRPCP5',
-          sharesPurchased: 500,
-          pricePerShare: 1000,
-          totalAmount: 500000,
-          paymentToken: 'CDLZFC3SYJYDZT7K67VZ75HPJVIEUVNIXF47ZG2FB2RMQQVU2HHGCYSC',
-        });
+      const response = await request(app).post('/api/purchases').send({
+        contractId: 'invalid', // Must start with C
+        buyerAddress: 'GBRPYHIL2CI3FV4BMSXIGTZTZMSMSCGVMFKFPGBCYDNBRJSVH4RRPCP5',
+        sharesPurchased: 500,
+        pricePerShare: 1000,
+        totalAmount: 500000,
+        paymentToken: 'CDLZFC3SYJYDZT7K67VZ75HPJVIEUVNIXF47ZG2FB2RMQQVU2HHGCYSC',
+      });
 
       expect(response.status).toBe(400);
       expect(response.body.error).toBe('Invalid contractId');
@@ -83,22 +77,19 @@ describe('Analytics API', () => {
 
     beforeAll(async () => {
       // Create a purchase first
-      const response = await request(app)
-        .post('/api/purchases')
-        .send({
-          contractId: 'CBKJ5G3XLQQ2N2CTJVQ7H2L3L5M6N7O8P9Q1R2S3T4U5V6W7X8Y9Z0',
-          buyerAddress: 'GBRPYHIL2CI3FV4BMSXIGTZTZMSMSCGVMFKFPGBCYDNBRJSVH4RRPCP5',
-          sharesPurchased: 500,
-          pricePerShare: 1000,
-          totalAmount: 500000,
-          paymentToken: 'CDLZFC3SYJYDZT7K67VZ75HPJVIEUVNIXF47ZG2FB2RMQQVU2HHGCYSC',
-        });
+      const response = await request(app).post('/api/purchases').send({
+        contractId: 'CBKJ5G3XLQQ2N2CTJVQ7H2L3L5M6N7O8P9Q1R2S3T4U5V6W7X8Y9Z0',
+        buyerAddress: 'GBRPYHIL2CI3FV4BMSXIGTZTZMSMSCGVMFKFPGBCYDNBRJSVH4RRPCP5',
+        sharesPurchased: 500,
+        pricePerShare: 1000,
+        totalAmount: 500000,
+        paymentToken: 'CDLZFC3SYJYDZT7K67VZ75HPJVIEUVNIXF47ZG2FB2RMQQVU2HHGCYSC',
+      });
       transactionId = response.body.data.transactionId;
     });
 
     it('should retrieve purchase details', async () => {
-      const response = await request(app)
-        .get(`/api/purchases/${transactionId}`);
+      const response = await request(app).get(`/api/purchases/${transactionId}`);
 
       expect(response.status).toBe(200);
       expect(response.body.data).toHaveProperty('transactionId', transactionId);
@@ -108,8 +99,7 @@ describe('Analytics API', () => {
     });
 
     it('should return 404 for non-existent transaction', async () => {
-      const response = await request(app)
-        .get('/api/purchases/tx_nonexistent');
+      const response = await request(app).get('/api/purchases/tx_nonexistent');
 
       expect(response.status).toBe(404);
       expect(response.body.error).toBe('Transaction not found');
@@ -119,21 +109,18 @@ describe('Analytics API', () => {
   describe('GET /api/analytics/overview', () => {
     beforeAll(async () => {
       // Ensure we have at least one purchase
-      await request(app)
-        .post('/api/purchases')
-        .send({
-          contractId: 'CBKJ5G3XLQQ2N2CTJVQ7H2L3L5M6N7O8P9Q1R2S3T4U5V6W7X8Y9Z0',
-          buyerAddress: 'GBRPYHIL2CI3FV4BMSXIGTZTZMSMSCGVMFKFPGBCYDNBRJSVH4RRPCP5',
-          sharesPurchased: 500,
-          pricePerShare: 1000,
-          totalAmount: 500000,
-          paymentToken: 'CDLZFC3SYJYDZT7K67VZ75HPJVIEUVNIXF47ZG2FB2RMQQVU2HHGCYSC',
-        });
+      await request(app).post('/api/purchases').send({
+        contractId: 'CBKJ5G3XLQQ2N2CTJVQ7H2L3L5M6N7O8P9Q1R2S3T4U5V6W7X8Y9Z0',
+        buyerAddress: 'GBRPYHIL2CI3FV4BMSXIGTZTZMSMSCGVMFKFPGBCYDNBRJSVH4RRPCP5',
+        sharesPurchased: 500,
+        pricePerShare: 1000,
+        totalAmount: 500000,
+        paymentToken: 'CDLZFC3SYJYDZT7K67VZ75HPJVIEUVNIXF47ZG2FB2RMQQVU2HHGCYSC',
+      });
     });
 
     it('should return overview metrics', async () => {
-      const response = await request(app)
-        .get('/api/analytics/overview');
+      const response = await request(app).get('/api/analytics/overview');
 
       expect(response.status).toBe(200);
       expect(response.body.data).toHaveProperty('totalTransactions');
@@ -146,8 +133,7 @@ describe('Analytics API', () => {
 
   describe('GET /api/analytics/popular', () => {
     it('should return popular assets', async () => {
-      const response = await request(app)
-        .get('/api/analytics/popular?limit=10');
+      const response = await request(app).get('/api/analytics/popular?limit=10');
 
       expect(response.status).toBe(200);
       expect(response.body.data).toHaveProperty('assets');
@@ -158,8 +144,9 @@ describe('Analytics API', () => {
 
   describe('GET /api/analytics/user/:address', () => {
     it('should return user portfolio', async () => {
-      const response = await request(app)
-        .get('/api/analytics/user/GBRPYHIL2CI3FV4BMSXIGTZTZMSMSCGVMFKFPGBCYDNBRJSVH4RRPCP5');
+      const response = await request(app).get(
+        '/api/analytics/user/GBRPYHIL2CI3FV4BMSXIGTZTZMSMSCGVMFKFPGBCYDNBRJSVH4RRPCP5',
+      );
 
       expect(response.status).toBe(200);
       expect(response.body.data).toHaveProperty('walletAddress');
@@ -174,8 +161,9 @@ describe('Analytics API', () => {
 
   describe('GET /api/analytics/asset-performance/:contractId', () => {
     it('should return asset performance metrics', async () => {
-      const response = await request(app)
-        .get('/api/analytics/asset-performance/CBKJ5G3XLQQ2N2CTJVQ7H2L3L5M6N7O8P9Q1R2S3T4U5V6W7X8Y9Z0');
+      const response = await request(app).get(
+        '/api/analytics/asset-performance/CBKJ5G3XLQQ2N2CTJVQ7H2L3L5M6N7O8P9Q1R2S3T4U5V6W7X8Y9Z0',
+      );
 
       expect(response.status).toBe(200);
       expect(response.body.data).toHaveProperty('contractId');
@@ -186,8 +174,7 @@ describe('Analytics API', () => {
 
   describe('GET /api/analytics/purchase-trends', () => {
     it('should return purchase trends', async () => {
-      const response = await request(app)
-        .get('/api/analytics/purchase-trends?days=30');
+      const response = await request(app).get('/api/analytics/purchase-trends?days=30');
 
       expect(response.status).toBe(200);
       expect(response.body.data).toHaveProperty('trends');
@@ -200,8 +187,7 @@ describe('Analytics API', () => {
   describe('Admin Endpoints', () => {
     describe('GET /api/analytics/dashboard', () => {
       it('should require API key', async () => {
-        const response = await request(app)
-          .get('/api/analytics/dashboard');
+        const response = await request(app).get('/api/analytics/dashboard');
 
         expect(response.status).toBe(401);
       });
@@ -250,8 +236,9 @@ describe('Analytics API', () => {
 
     describe('GET /api/analytics/daily', () => {
       it('should require API key', async () => {
-        const response = await request(app)
-          .get('/api/analytics/daily?from=2026-06-01&to=2026-06-30');
+        const response = await request(app).get(
+          '/api/analytics/daily?from=2026-06-01&to=2026-06-30',
+        );
 
         expect(response.status).toBe(401);
       });

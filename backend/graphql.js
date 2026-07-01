@@ -1,6 +1,6 @@
 /**
  * GraphQL Schema and Resolvers for RWA Marketplace
- * 
+ *
  * Provides full CRUD access to real-world assets with queries and mutations.
  * Includes real-time subscriptions for marketplace events.
  * Integrates with the existing REST API data layer.
@@ -17,34 +17,34 @@ export const typeDefs = gql`
   type RWA {
     # Unique contract identifier on Stellar network
     contractId: String!
-    
+
     # Asset title/name
     title: String!
-    
+
     # Geographic location
     location: String!
-    
+
     # Detailed description
     description: String!
-    
+
     # Asset classification (commercial_real_estate, residential, etc.)
     assetType: String!
-    
+
     # Total number of fractional shares issued
     totalShares: Int
-    
+
     # Price per share in stroops
     pricePerShare: Int
-    
+
     # Currently available shares for purchase
     availableShares: Int
-    
+
     # Whether marketplace is paused for this asset
     isPaused: Boolean
-    
+
     # Document hashes stored on IPFS
     documents: [DocumentHash!]
-    
+
     # Metadata timestamps
     createdAt: String
     updatedAt: String
@@ -54,13 +54,13 @@ export const typeDefs = gql`
   type DocumentHash {
     # File name or identifier
     name: String!
-    
+
     # IPFS content hash
     hash: String!
-    
+
     # MIME type
     mimeType: String
-    
+
     # Upload timestamp
     uploadedAt: String
   }
@@ -69,10 +69,10 @@ export const typeDefs = gql`
   input RWAFilter {
     # Search by title, location, or description
     search: String
-    
+
     # Filter by asset type
     assetType: String
-    
+
     # Filter by location
     location: String
   }
@@ -92,19 +92,19 @@ export const typeDefs = gql`
   type Query {
     # Retrieve all assets with optional filtering
     assets(filter: RWAFilter, limit: Int, offset: Int): [RWA!]!
-    
+
     # Get asset count
     assetsCount: Int!
-    
+
     # Retrieve single asset by contract ID
     asset(contractId: String!): RWA
-    
+
     # Search assets by full-text search
     searchAssets(query: String!, limit: Int): [RWA!]!
-    
+
     # Get pending (unpublished) assets
     pendingAssets: [RWA!]!
-    
+
     # Get asset statistics
     statistics: Statistics!
   }
@@ -113,13 +113,13 @@ export const typeDefs = gql`
   type Statistics {
     # Total number of assets
     totalAssets: Int!
-    
+
     # Number of pending assets
     pendingAssets: Int!
-    
+
     # Total shares available across all assets
     totalSharesAvailable: Int!
-    
+
     # Average price per share
     averagePricePerShare: Float!
   }
@@ -128,19 +128,19 @@ export const typeDefs = gql`
   type Mutation {
     # Create new asset
     createAsset(input: RWAInput!): RWA!
-    
+
     # Update existing asset
     updateAsset(contractId: String!, input: RWAInput!): RWA!
-    
+
     # Delete asset
     deleteAsset(contractId: String!): Boolean!
-    
+
     # Approve pending asset for publication
     approveAsset(contractId: String!): RWA!
-    
+
     # Pause asset trading
     pauseAsset(contractId: String!): RWA!
-    
+
     # Unpause asset trading
     unpauseAsset(contractId: String!): RWA!
   }
@@ -149,10 +149,10 @@ export const typeDefs = gql`
   type SubscriptionEvent {
     # Event type
     event: String!
-    
+
     # Event timestamp
     timestamp: String!
-    
+
     # Event payload data
     data: String!
   }
@@ -161,19 +161,19 @@ export const typeDefs = gql`
   type SharePurchasedEvent {
     # The asset being purchased
     contractId: String!
-    
+
     # Buyer address
     buyer: String!
-    
+
     # Number of shares purchased
     shareCount: Int!
-    
+
     # Purchase price
     totalPrice: Int!
-    
+
     # Remaining available shares
     remainingShares: Int!
-    
+
     # Transaction timestamp
     timestamp: String!
   }
@@ -182,13 +182,13 @@ export const typeDefs = gql`
   type PriceUpdatedEvent {
     # The asset with updated price
     contractId: String!
-    
+
     # New price per share
     newPrice: Int!
-    
+
     # Old price per share
     oldPrice: Int!
-    
+
     # Update timestamp
     timestamp: String!
   }
@@ -197,13 +197,13 @@ export const typeDefs = gql`
   type AvailabilityChangedEvent {
     # The asset with changed availability
     contractId: String!
-    
+
     # New available share count
     availableShares: Int!
-    
+
     # Previous available share count
     previousAvailable: Int!
-    
+
     # Change timestamp
     timestamp: String!
   }
@@ -212,13 +212,13 @@ export const typeDefs = gql`
   type MarketplaceStatusEvent {
     # The affected asset
     contractId: String!
-    
+
     # Is the marketplace paused
     isPaused: Boolean!
-    
+
     # Status change reason
     reason: String
-    
+
     # Change timestamp
     timestamp: String!
   }
@@ -227,19 +227,19 @@ export const typeDefs = gql`
   type TransactionCompletedEvent {
     # Transaction identifier
     transactionId: String!
-    
+
     # Affected asset
     contractId: String!
-    
+
     # Transaction type
     type: String!
-    
+
     # Transaction status
     status: String!
-    
+
     # Transaction metadata
     metadata: String
-    
+
     # Completion timestamp
     timestamp: String!
   }
@@ -248,25 +248,25 @@ export const typeDefs = gql`
   type Subscription {
     # Subscribe to share purchase events
     onSharePurchased(contractId: String): SharePurchasedEvent!
-    
+
     # Subscribe to price updates
     onPriceUpdated(contractId: String): PriceUpdatedEvent!
-    
+
     # Subscribe to asset listing events
     onAssetListed: RWA!
-    
+
     # Subscribe to asset update events
     onAssetUpdated(contractId: String): RWA!
-    
+
     # Subscribe to availability changes
     onAvailabilityChanged(contractId: String): AvailabilityChangedEvent!
-    
+
     # Subscribe to marketplace paused events
     onMarketplacePaused: MarketplaceStatusEvent!
-    
+
     # Subscribe to marketplace unpaused events
     onMarketplaceUnpaused: MarketplaceStatusEvent!
-    
+
     # Subscribe to transaction completion events
     onTransactionCompleted(contractId: String): TransactionCompletedEvent!
   }
@@ -274,7 +274,7 @@ export const typeDefs = gql`
 
 /**
  * GraphQL Resolvers
- * 
+ *
  * Data access layer that bridges GraphQL to the existing REST API backend.
  * All data operations go through the same validation and storage layer.
  */
@@ -299,21 +299,22 @@ export function createResolvers(dataLayer) {
         // Apply search filter
         if (filter?.search) {
           const searchTerms = filter.search.toLowerCase();
-          filtered = filtered.filter(asset =>
-            asset.title.toLowerCase().includes(searchTerms) ||
-            asset.location.toLowerCase().includes(searchTerms) ||
-            asset.description.toLowerCase().includes(searchTerms)
+          filtered = filtered.filter(
+            (asset) =>
+              asset.title.toLowerCase().includes(searchTerms) ||
+              asset.location.toLowerCase().includes(searchTerms) ||
+              asset.description.toLowerCase().includes(searchTerms),
           );
         }
 
         // Apply asset type filter
         if (filter?.assetType) {
-          filtered = filtered.filter(asset => asset.assetType === filter.assetType);
+          filtered = filtered.filter((asset) => asset.assetType === filter.assetType);
         }
 
         // Apply location filter
         if (filter?.location) {
-          filtered = filtered.filter(asset => asset.location === filter.location);
+          filtered = filtered.filter((asset) => asset.location === filter.location);
         }
 
         // Apply pagination
@@ -323,9 +324,7 @@ export function createResolvers(dataLayer) {
       /**
        * Get total count of assets
        */
-      assetsCount: () => {
-        return Object.keys(dataLayer.loadData()).length;
-      },
+      assetsCount: () => Object.keys(dataLayer.loadData()).length,
 
       /**
        * Get single asset by contract ID
@@ -350,18 +349,16 @@ export function createResolvers(dataLayer) {
       searchAssets: (_parent, args) => {
         const { query, limit = 20 } = args;
         const data = dataLayer.loadData();
-        
+
         // Use the built-in search scoring
         const scored = dataLayer.scoreSearch(query, data);
-        const results = scored
-          .slice(0, limit)
-          .map(({ contractId }) => ({
-            contractId,
-            ...data[contractId],
-            isPaused: data[contractId].paused || false,
-            createdAt: data[contractId].createdAt || new Date().toISOString(),
-            updatedAt: data[contractId].updatedAt || new Date().toISOString(),
-          }));
+        const results = scored.slice(0, limit).map(({ contractId }) => ({
+          contractId,
+          ...data[contractId],
+          isPaused: data[contractId].paused || false,
+          createdAt: data[contractId].createdAt || new Date().toISOString(),
+          updatedAt: data[contractId].updatedAt || new Date().toISOString(),
+        }));
 
         return results;
       },
@@ -391,11 +388,12 @@ export function createResolvers(dataLayer) {
       statistics: () => {
         const data = dataLayer.loadData();
         const assets = Object.values(data);
-        const pendingCount = assets.filter(a => a.pending === true).length;
+        const pendingCount = assets.filter((a) => a.pending === true).length;
         const totalShares = assets.reduce((sum, a) => sum + (a.availableShares || 0), 0);
-        const avgPrice = assets.length > 0
-          ? assets.reduce((sum, a) => sum + (a.pricePerShare || 0), 0) / assets.length
-          : 0;
+        const avgPrice =
+          assets.length > 0
+            ? assets.reduce((sum, a) => sum + (a.pricePerShare || 0), 0) / assets.length
+            : 0;
 
         return {
           totalAssets: assets.length,
@@ -598,7 +596,7 @@ export function createResolvers(dataLayer) {
       onSharePurchased: {
         subscribe: (_parent, args) => {
           const { contractId } = args;
-          const topic = contractId 
+          const topic = contractId
             ? `${SUBSCRIPTION_EVENTS.SHARE_PURCHASED}:${contractId}`
             : SUBSCRIPTION_EVENTS.SHARE_PURCHASED;
 
@@ -636,11 +634,8 @@ export function createResolvers(dataLayer) {
        * Subscribe to new asset listings
        */
       onAssetListed: {
-        subscribe: () => {
-          return pubsub.subscribe(SUBSCRIPTION_EVENTS.ASSET_LISTED, (payload) => {
-            return payload.data;
-          });
-        },
+        subscribe: () =>
+          pubsub.subscribe(SUBSCRIPTION_EVENTS.ASSET_LISTED, (payload) => payload.data),
       },
 
       /**
@@ -687,22 +682,16 @@ export function createResolvers(dataLayer) {
        * Subscribe to marketplace paused events
        */
       onMarketplacePaused: {
-        subscribe: () => {
-          return pubsub.subscribe(SUBSCRIPTION_EVENTS.MARKETPLACE_PAUSED, (payload) => {
-            return payload.data;
-          });
-        },
+        subscribe: () =>
+          pubsub.subscribe(SUBSCRIPTION_EVENTS.MARKETPLACE_PAUSED, (payload) => payload.data),
       },
 
       /**
        * Subscribe to marketplace unpaused events
        */
       onMarketplaceUnpaused: {
-        subscribe: () => {
-          return pubsub.subscribe(SUBSCRIPTION_EVENTS.MARKETPLACE_UNPAUSED, (payload) => {
-            return payload.data;
-          });
-        },
+        subscribe: () =>
+          pubsub.subscribe(SUBSCRIPTION_EVENTS.MARKETPLACE_UNPAUSED, (payload) => payload.data),
       },
 
       /**

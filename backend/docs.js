@@ -44,9 +44,21 @@ const options = {
             },
             totalValuation: { type: 'string', example: '$5,000,000' },
             documents: { type: 'array', items: { type: 'string' } },
-            status: { type: 'string', enum: ['pending', 'approved', 'rejected'], description: 'Verification status' },
-            submittedAt: { type: 'string', format: 'date-time', description: 'When the asset was submitted for review' },
-            reviewedAt: { type: 'string', format: 'date-time', description: 'When the asset was reviewed by an admin' },
+            status: {
+              type: 'string',
+              enum: ['pending', 'approved', 'rejected'],
+              description: 'Verification status',
+            },
+            submittedAt: {
+              type: 'string',
+              format: 'date-time',
+              description: 'When the asset was submitted for review',
+            },
+            reviewedAt: {
+              type: 'string',
+              format: 'date-time',
+              description: 'When the asset was reviewed by an admin',
+            },
             reviewedBy: { type: 'string', description: 'Admin who reviewed the asset' },
             createdAt: { type: 'string', format: 'date-time' },
             updatedAt: { type: 'string', format: 'date-time' },
@@ -110,9 +122,26 @@ const options = {
         Webhook: {
           type: 'object',
           properties: {
-            id: { type: 'string', description: 'Unique webhook ID (wh_...)', example: 'wh_abc123def456' },
+            id: {
+              type: 'string',
+              description: 'Unique webhook ID (wh_...)',
+              example: 'wh_abc123def456',
+            },
             url: { type: 'string', format: 'uri', description: 'URL to call on events' },
-            events: { type: 'array', items: { type: 'string', enum: ['asset.created', 'asset.updated', 'asset.deleted', 'asset.approved', 'asset.rejected'] }, description: 'Events to subscribe to' },
+            events: {
+              type: 'array',
+              items: {
+                type: 'string',
+                enum: [
+                  'asset.created',
+                  'asset.updated',
+                  'asset.deleted',
+                  'asset.approved',
+                  'asset.rejected',
+                ],
+              },
+              description: 'Events to subscribe to',
+            },
             secret: { type: 'string', description: 'Optional secret for HMAC signing' },
             active: { type: 'boolean', description: 'Whether the webhook is active' },
             createdAt: { type: 'string', format: 'date-time' },
@@ -127,9 +156,25 @@ const options = {
           required: ['url', 'events'],
           properties: {
             url: { type: 'string', format: 'uri', description: 'URL to call on events' },
-            events: { type: 'array', items: { type: 'string', enum: ['asset.created', 'asset.updated', 'asset.deleted', 'asset.approved', 'asset.rejected'] }, description: 'Events to subscribe to' },
+            events: {
+              type: 'array',
+              items: {
+                type: 'string',
+                enum: [
+                  'asset.created',
+                  'asset.updated',
+                  'asset.deleted',
+                  'asset.approved',
+                  'asset.rejected',
+                ],
+              },
+              description: 'Events to subscribe to',
+            },
             secret: { type: 'string', description: 'Optional secret for HMAC signing' },
-            active: { type: 'boolean', description: 'Whether the webhook is active (default true)' },
+            active: {
+              type: 'boolean',
+              description: 'Whether the webhook is active (default true)',
+            },
           },
         },
       },
@@ -417,11 +462,18 @@ const options = {
           description: '**Deprecated path.** Alias for `GET /api/v1/rwa/pending`.',
           security: [{ ApiKeyAuth: [] }],
           responses: {
-            '200': {
+            200: {
               description: 'List of pending assets',
-              content: { 'application/json': { schema: { type: 'array', items: { $ref: '#/components/schemas/Asset' } } } },
+              content: {
+                'application/json': {
+                  schema: { type: 'array', items: { $ref: '#/components/schemas/Asset' } },
+                },
+              },
             },
-            '401': { description: 'Unauthorized', content: { 'application/json': { schema: { $ref: '#/components/schemas/Error' } } } },
+            401: {
+              description: 'Unauthorized',
+              content: { 'application/json': { schema: { $ref: '#/components/schemas/Error' } } },
+            },
           },
         },
       },
@@ -515,11 +567,18 @@ const options = {
           description: 'Returns all assets with status "pending" that await admin review.',
           security: [{ ApiKeyAuth: [] }],
           responses: {
-            '200': {
+            200: {
               description: 'List of pending assets',
-              content: { 'application/json': { schema: { type: 'array', items: { $ref: '#/components/schemas/Asset' } } } },
+              content: {
+                'application/json': {
+                  schema: { type: 'array', items: { $ref: '#/components/schemas/Asset' } },
+                },
+              },
             },
-            '401': { description: 'Unauthorized', content: { 'application/json': { schema: { $ref: '#/components/schemas/Error' } } } },
+            401: {
+              description: 'Unauthorized',
+              content: { 'application/json': { schema: { $ref: '#/components/schemas/Error' } } },
+            },
           },
         },
       },
@@ -530,12 +589,27 @@ const options = {
           description: 'Sets asset status to "approved". Requires admin API key.',
           security: [{ ApiKeyAuth: [] }],
           parameters: [
-            { in: 'path', name: 'contractId', required: true, schema: { type: 'string' }, description: 'Soroban contract ID' },
+            {
+              in: 'path',
+              name: 'contractId',
+              required: true,
+              schema: { type: 'string' },
+              description: 'Soroban contract ID',
+            },
           ],
           responses: {
-            '200': { description: 'Asset approved', content: { 'application/json': { schema: { $ref: '#/components/schemas/Asset' } } } },
-            '401': { description: 'Unauthorized', content: { 'application/json': { schema: { $ref: '#/components/schemas/Error' } } } },
-            '404': { description: 'Asset not found', content: { 'application/json': { schema: { $ref: '#/components/schemas/Error' } } } },
+            200: {
+              description: 'Asset approved',
+              content: { 'application/json': { schema: { $ref: '#/components/schemas/Asset' } } },
+            },
+            401: {
+              description: 'Unauthorized',
+              content: { 'application/json': { schema: { $ref: '#/components/schemas/Error' } } },
+            },
+            404: {
+              description: 'Asset not found',
+              content: { 'application/json': { schema: { $ref: '#/components/schemas/Error' } } },
+            },
           },
         },
       },
@@ -546,12 +620,27 @@ const options = {
           description: 'Sets asset status to "rejected". Requires admin API key.',
           security: [{ ApiKeyAuth: [] }],
           parameters: [
-            { in: 'path', name: 'contractId', required: true, schema: { type: 'string' }, description: 'Soroban contract ID' },
+            {
+              in: 'path',
+              name: 'contractId',
+              required: true,
+              schema: { type: 'string' },
+              description: 'Soroban contract ID',
+            },
           ],
           responses: {
-            '200': { description: 'Asset rejected', content: { 'application/json': { schema: { $ref: '#/components/schemas/Asset' } } } },
-            '401': { description: 'Unauthorized', content: { 'application/json': { schema: { $ref: '#/components/schemas/Error' } } } },
-            '404': { description: 'Asset not found', content: { 'application/json': { schema: { $ref: '#/components/schemas/Error' } } } },
+            200: {
+              description: 'Asset rejected',
+              content: { 'application/json': { schema: { $ref: '#/components/schemas/Asset' } } },
+            },
+            401: {
+              description: 'Unauthorized',
+              content: { 'application/json': { schema: { $ref: '#/components/schemas/Error' } } },
+            },
+            404: {
+              description: 'Asset not found',
+              content: { 'application/json': { schema: { $ref: '#/components/schemas/Error' } } },
+            },
           },
         },
       },
@@ -561,11 +650,18 @@ const options = {
           summary: 'List all webhooks (admin only)',
           security: [{ ApiKeyAuth: [] }],
           responses: {
-            '200': {
+            200: {
               description: 'List of registered webhooks',
-              content: { 'application/json': { schema: { type: 'array', items: { $ref: '#/components/schemas/Webhook' } } } },
+              content: {
+                'application/json': {
+                  schema: { type: 'array', items: { $ref: '#/components/schemas/Webhook' } },
+                },
+              },
             },
-            '401': { description: 'Unauthorized', content: { 'application/json': { schema: { $ref: '#/components/schemas/Error' } } } },
+            401: {
+              description: 'Unauthorized',
+              content: { 'application/json': { schema: { $ref: '#/components/schemas/Error' } } },
+            },
           },
         },
         post: {
@@ -574,12 +670,23 @@ const options = {
           security: [{ ApiKeyAuth: [] }],
           requestBody: {
             required: true,
-            content: { 'application/json': { schema: { $ref: '#/components/schemas/WebhookInput' } } },
+            content: {
+              'application/json': { schema: { $ref: '#/components/schemas/WebhookInput' } },
+            },
           },
           responses: {
-            '201': { description: 'Webhook created', content: { 'application/json': { schema: { $ref: '#/components/schemas/Webhook' } } } },
-            '400': { description: 'Validation error', content: { 'application/json': { schema: { $ref: '#/components/schemas/Error' } } } },
-            '401': { description: 'Unauthorized', content: { 'application/json': { schema: { $ref: '#/components/schemas/Error' } } } },
+            201: {
+              description: 'Webhook created',
+              content: { 'application/json': { schema: { $ref: '#/components/schemas/Webhook' } } },
+            },
+            400: {
+              description: 'Validation error',
+              content: { 'application/json': { schema: { $ref: '#/components/schemas/Error' } } },
+            },
+            401: {
+              description: 'Unauthorized',
+              content: { 'application/json': { schema: { $ref: '#/components/schemas/Error' } } },
+            },
           },
         },
       },
@@ -589,12 +696,27 @@ const options = {
           summary: 'Get a webhook by ID (admin only)',
           security: [{ ApiKeyAuth: [] }],
           parameters: [
-            { in: 'path', name: 'id', required: true, schema: { type: 'string' }, description: 'Webhook ID' },
+            {
+              in: 'path',
+              name: 'id',
+              required: true,
+              schema: { type: 'string' },
+              description: 'Webhook ID',
+            },
           ],
           responses: {
-            '200': { description: 'Webhook details', content: { 'application/json': { schema: { $ref: '#/components/schemas/Webhook' } } } },
-            '401': { description: 'Unauthorized', content: { 'application/json': { schema: { $ref: '#/components/schemas/Error' } } } },
-            '404': { description: 'Webhook not found', content: { 'application/json': { schema: { $ref: '#/components/schemas/Error' } } } },
+            200: {
+              description: 'Webhook details',
+              content: { 'application/json': { schema: { $ref: '#/components/schemas/Webhook' } } },
+            },
+            401: {
+              description: 'Unauthorized',
+              content: { 'application/json': { schema: { $ref: '#/components/schemas/Error' } } },
+            },
+            404: {
+              description: 'Webhook not found',
+              content: { 'application/json': { schema: { $ref: '#/components/schemas/Error' } } },
+            },
           },
         },
         patch: {
@@ -602,17 +724,37 @@ const options = {
           summary: 'Update a webhook (admin only)',
           security: [{ ApiKeyAuth: [] }],
           parameters: [
-            { in: 'path', name: 'id', required: true, schema: { type: 'string' }, description: 'Webhook ID' },
+            {
+              in: 'path',
+              name: 'id',
+              required: true,
+              schema: { type: 'string' },
+              description: 'Webhook ID',
+            },
           ],
           requestBody: {
             required: true,
-            content: { 'application/json': { schema: { $ref: '#/components/schemas/WebhookInput' } } },
+            content: {
+              'application/json': { schema: { $ref: '#/components/schemas/WebhookInput' } },
+            },
           },
           responses: {
-            '200': { description: 'Webhook updated', content: { 'application/json': { schema: { $ref: '#/components/schemas/Webhook' } } } },
-            '400': { description: 'Validation error', content: { 'application/json': { schema: { $ref: '#/components/schemas/Error' } } } },
-            '401': { description: 'Unauthorized', content: { 'application/json': { schema: { $ref: '#/components/schemas/Error' } } } },
-            '404': { description: 'Webhook not found', content: { 'application/json': { schema: { $ref: '#/components/schemas/Error' } } } },
+            200: {
+              description: 'Webhook updated',
+              content: { 'application/json': { schema: { $ref: '#/components/schemas/Webhook' } } },
+            },
+            400: {
+              description: 'Validation error',
+              content: { 'application/json': { schema: { $ref: '#/components/schemas/Error' } } },
+            },
+            401: {
+              description: 'Unauthorized',
+              content: { 'application/json': { schema: { $ref: '#/components/schemas/Error' } } },
+            },
+            404: {
+              description: 'Webhook not found',
+              content: { 'application/json': { schema: { $ref: '#/components/schemas/Error' } } },
+            },
           },
         },
         delete: {
@@ -620,12 +762,34 @@ const options = {
           summary: 'Delete a webhook (admin only)',
           security: [{ ApiKeyAuth: [] }],
           parameters: [
-            { in: 'path', name: 'id', required: true, schema: { type: 'string' }, description: 'Webhook ID' },
+            {
+              in: 'path',
+              name: 'id',
+              required: true,
+              schema: { type: 'string' },
+              description: 'Webhook ID',
+            },
           ],
           responses: {
-            '200': { description: 'Webhook deleted', content: { 'application/json': { schema: { type: 'object', properties: { message: { type: 'string' }, id: { type: 'string' } } } } } },
-            '401': { description: 'Unauthorized', content: { 'application/json': { schema: { $ref: '#/components/schemas/Error' } } } },
-            '404': { description: 'Webhook not found', content: { 'application/json': { schema: { $ref: '#/components/schemas/Error' } } } },
+            200: {
+              description: 'Webhook deleted',
+              content: {
+                'application/json': {
+                  schema: {
+                    type: 'object',
+                    properties: { message: { type: 'string' }, id: { type: 'string' } },
+                  },
+                },
+              },
+            },
+            401: {
+              description: 'Unauthorized',
+              content: { 'application/json': { schema: { $ref: '#/components/schemas/Error' } } },
+            },
+            404: {
+              description: 'Webhook not found',
+              content: { 'application/json': { schema: { $ref: '#/components/schemas/Error' } } },
+            },
           },
         },
       },

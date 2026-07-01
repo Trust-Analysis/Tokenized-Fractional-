@@ -21,7 +21,7 @@ const PINATA_GATEWAY = process.env.PINATA_GATEWAY || 'https://gateway.pinata.clo
 //   CIDv0 starts with "Qm" and is being phased out. New projects use v1.
 // ---------------------------------------------------------------------------
 export async function uploadToIPFS(fileBuffer, originalName, assetName) {
-    const PINATA_JWT = process.env.PINATA_JWT;
+  const { PINATA_JWT } = process.env;
   if (!PINATA_JWT) {
     throw new Error('PINATA_JWT is not configured. Add it to your .env file.');
   }
@@ -34,16 +34,10 @@ export async function uploadToIPFS(fileBuffer, originalName, assetName) {
   });
 
   // Label this pin on the Pinata dashboard so you can identify it later
-  formData.append(
-    'pinataMetadata',
-    JSON.stringify({ name: `${assetName} - ${originalName}` })
-  );
+  formData.append('pinataMetadata', JSON.stringify({ name: `${assetName} - ${originalName}` }));
 
   // Request CIDv1
-  formData.append(
-    'pinataOptions',
-    JSON.stringify({ cidVersion: 1 })
-  );
+  formData.append('pinataOptions', JSON.stringify({ cidVersion: 1 }));
 
   const response = await fetch('https://api.pinata.cloud/pinning/pinFileToIPFS', {
     method: 'POST',
@@ -89,10 +83,10 @@ export function getIPFSFileUrl(cid) {
 // immediately — other nodes may still have it. It just removes your guarantee.
 // ---------------------------------------------------------------------------
 export async function unpinFromIPFS(cid) {
-    const PINATA_JWT = process.env.PINATA_JWT;
-    if (!PINATA_JWT) {
-        throw new Error('PINATA_JWT is not configured.');
-    }
+  const { PINATA_JWT } = process.env;
+  if (!PINATA_JWT) {
+    throw new Error('PINATA_JWT is not configured.');
+  }
 
   const response = await fetch(`https://api.pinata.cloud/pinning/unpin/${cid}`, {
     method: 'DELETE',

@@ -1,6 +1,6 @@
 /**
  * User Authentication and Authorization System
- * 
+ *
  * Comprehensive authentication with JWT, role-based access control (RBAC),
  * and permission management for the RWA Marketplace.
  */
@@ -91,7 +91,8 @@ export const ROLE_PERMISSIONS = {
  */
 export class AuthService {
   constructor(config = {}) {
-    this.jwtSecret = config.jwtSecret || process.env.JWT_SECRET || 'your-secret-key-change-in-production';
+    this.jwtSecret =
+      config.jwtSecret || process.env.JWT_SECRET || 'your-secret-key-change-in-production';
     this.jwtExpiry = config.jwtExpiry || process.env.JWT_EXPIRY || '24h';
     this.refreshTokenExpiry = config.refreshTokenExpiry || '7d';
     this.logger = config.logger || console;
@@ -281,7 +282,7 @@ export class AuthService {
     }
 
     const userPermissions = ROLE_PERMISSIONS[user.role] || [];
-    return permissions.some(p => userPermissions.includes(p));
+    return permissions.some((p) => userPermissions.includes(p));
   }
 
   /**
@@ -293,7 +294,7 @@ export class AuthService {
     }
 
     const userPermissions = ROLE_PERMISSIONS[user.role] || [];
-    return permissions.every(p => userPermissions.includes(p));
+    return permissions.every((p) => userPermissions.includes(p));
   }
 }
 

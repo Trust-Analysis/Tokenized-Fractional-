@@ -192,7 +192,8 @@ export class WebSocketManager {
 
     for (const clientId of subscribers) {
       const client = this.clients.get(clientId);
-      if (client && client.ws.readyState === 1) { // WebSocket.OPEN
+      if (client && client.ws.readyState === 1) {
+        // WebSocket.OPEN
         try {
           client.ws.send(message);
         } catch (error) {
@@ -203,11 +204,15 @@ export class WebSocketManager {
     }
 
     // Clean up failed clients
-    failedClients.forEach(clientId => this.handleDisconnect(clientId));
+    failedClients.forEach((clientId) => this.handleDisconnect(clientId));
 
     logger.debug(
-      { topic, subscriberCount: subscribers.size, sentCount: subscribers.size - failedClients.length },
-      'Event broadcasted'
+      {
+        topic,
+        subscriberCount: subscribers.size,
+        sentCount: subscribers.size - failedClients.length,
+      },
+      'Event broadcasted',
     );
   }
 
@@ -216,7 +221,8 @@ export class WebSocketManager {
    */
   send(ws, message) {
     try {
-      if (ws.readyState === 1) { // WebSocket.OPEN
+      if (ws.readyState === 1) {
+        // WebSocket.OPEN
         ws.send(JSON.stringify(message));
       }
     } catch (error) {
@@ -301,7 +307,9 @@ export class WebSocketManager {
    * Broadcast marketplace pause/unpause
    */
   broadcastMarketplaceStatus(isPaused) {
-    const eventType = isPaused ? WS_EVENT_TYPES.MARKETPLACE_PAUSED : WS_EVENT_TYPES.MARKETPLACE_UNPAUSED;
+    const eventType = isPaused
+      ? WS_EVENT_TYPES.MARKETPLACE_PAUSED
+      : WS_EVENT_TYPES.MARKETPLACE_UNPAUSED;
     this.broadcast('marketplace-status', {
       type: eventType,
       data: { isPaused },
@@ -317,7 +325,7 @@ export class WebSocketManager {
       activeTopics: this.subscriptions.size,
       totalSubscriptions: Array.from(this.subscriptions.values()).reduce(
         (sum, set) => sum + set.size,
-        0
+        0,
       ),
     };
   }

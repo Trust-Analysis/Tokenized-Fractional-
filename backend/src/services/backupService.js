@@ -92,7 +92,7 @@ export class BackupService {
     }
 
     return Array.from(backups.values()).sort(
-      (a, b) => b.createdAt.getTime() - a.createdAt.getTime()
+      (a, b) => b.createdAt.getTime() - a.createdAt.getTime(),
     );
   }
 
@@ -140,7 +140,7 @@ export class BackupService {
       this.metrics.totalBackups = this._countTotalBackups();
 
       this.logger.info(
-        `Backup completed: ${result.name} to ${locations.join(', ')} (${duration}ms)`
+        `Backup completed: ${result.name} to ${locations.join(', ')} (${duration}ms)`,
       );
 
       return {
@@ -244,11 +244,13 @@ export class BackupService {
     return {
       status: this.metrics.failureCount === 0 ? 'healthy' : 'degraded',
       totalBackups: backups.length,
-      latestBackup: latestBackup ? {
-        name: latestBackup.name,
-        createdAt: latestBackup.createdAt.toISOString(),
-        age: this._getBackupAge(latestBackup.createdAt),
-      } : null,
+      latestBackup: latestBackup
+        ? {
+            name: latestBackup.name,
+            createdAt: latestBackup.createdAt.toISOString(),
+            age: this._getBackupAge(latestBackup.createdAt),
+          }
+        : null,
       metrics: {
         successCount: this.metrics.successCount,
         failureCount: this.metrics.failureCount,
@@ -271,15 +273,18 @@ export class BackupService {
 
     this.logger.info(`Starting backup scheduler (every ${intervalHours} hours)`);
 
-    this.scheduler = setInterval(() => {
-      this.runBackup()
-        .then((result) => {
-          this.logger.info(`Scheduled backup completed: ${result.name}`);
-        })
-        .catch((error) => {
-          this.logger.error(`Scheduled backup failed: ${error.message}`);
-        });
-    }, intervalHours * 3600 * 1000);
+    this.scheduler = setInterval(
+      () => {
+        this.runBackup()
+          .then((result) => {
+            this.logger.info(`Scheduled backup completed: ${result.name}`);
+          })
+          .catch((error) => {
+            this.logger.error(`Scheduled backup failed: ${error.message}`);
+          });
+      },
+      intervalHours * 3600 * 1000,
+    );
 
     // Don't keep process alive just for backups
     this.scheduler.unref?.();
@@ -310,14 +315,18 @@ export class BackupService {
         s3: !!this.config.s3,
         gcs: !!this.config.gcs,
       },
-      s3: this.config.s3 ? {
-        bucket: this.config.s3.bucket,
-        region: this.config.s3.region,
-      } : null,
-      gcs: this.config.gcs ? {
-        bucket: this.config.gcs.bucket,
-        projectId: this.config.gcs.projectId,
-      } : null,
+      s3: this.config.s3
+        ? {
+            bucket: this.config.s3.bucket,
+            region: this.config.s3.region,
+          }
+        : null,
+      gcs: this.config.gcs
+        ? {
+            bucket: this.config.gcs.bucket,
+            projectId: this.config.gcs.projectId,
+          }
+        : null,
     };
   }
 
@@ -329,7 +338,9 @@ export class BackupService {
       const { S3Client, ListObjectsV2Command } = await import('@aws-sdk/client-s3');
       const client = new S3Client({
         region: this.config.s3.region,
-        ...(this.config.s3.endpoint ? { endpoint: this.config.s3.endpoint, forcePathStyle: true } : {}),
+        ...(this.config.s3.endpoint
+          ? { endpoint: this.config.s3.endpoint, forcePathStyle: true }
+          : {}),
       });
 
       const names = new Set();
@@ -341,7 +352,7 @@ export class BackupService {
             Bucket: this.config.s3.bucket,
             Prefix: `${this.config.s3.prefix}/`,
             ContinuationToken,
-          })
+          }),
         );
 
         for (const obj of page.Contents || []) {

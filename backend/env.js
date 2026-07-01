@@ -45,7 +45,12 @@ const RULES = [
     key: 'PINATA_GATEWAY',
     required: false,
     validate: (v) => {
-      try { new URL(v); return true; } catch { return false; }
+      try {
+        new URL(v);
+        return true;
+      } catch {
+        return false;
+      }
     },
     description: 'IPFS gateway base URL (default: https://gateway.pinata.cloud)',
     invalid: 'must be a valid URL',

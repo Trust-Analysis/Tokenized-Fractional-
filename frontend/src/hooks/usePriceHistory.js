@@ -2,7 +2,7 @@ import { useState, useCallback, useEffect } from 'react';
 
 /**
  * usePriceHistory Hook
- * 
+ *
  * Manages price history data for an asset
  * - Fetches historical price data (supports real API or mock data)
  * - Caches data to avoid unnecessary fetches
@@ -32,7 +32,7 @@ export function usePriceHistory(contractId, assetName = '') {
       // Create realistic price fluctuation: ±5% per day
       const volatility = 0.05;
       const change = (Math.random() - 0.5) * 2 * volatility;
-      const price = basePrice * (1 + change * (days - i) / days + Math.random() * volatility);
+      const price = basePrice * (1 + (change * (days - i)) / days + Math.random() * volatility);
 
       data.push({
         date: date.toISOString().split('T')[0], // YYYY-MM-DD
@@ -65,90 +65,98 @@ export function usePriceHistory(contractId, assetName = '') {
     const days = daysMap[range] || 30;
     const cutoffDate = new Date(now.getTime() - days * 24 * 60 * 60 * 1000);
 
-    return data.filter(item => new Date(item.timestamp) >= cutoffDate);
+    return data.filter((item) => new Date(item.timestamp) >= cutoffDate);
   }, []);
 
   /**
    * Fetch price history data
    * Currently uses mock data; can be replaced with real API call
    */
-  const fetchPriceHistory = useCallback(async (force = false) => {
-    // Return cached data if available and not forced
-    if (cached && !force) {
-      return;
-    }
+  const fetchPriceHistory = useCallback(
+    async (force = false) => {
+      // Return cached data if available and not forced
+      if (cached && !force) {
+        return;
+      }
 
-    setLoading(true);
-    setError(null);
+      setLoading(true);
+      setError(null);
 
-    try {
-      // TODO: Replace with real API call to backend
-      // const response = await fetch(`/api/rwa/${contractId}/price-history`);
-      // const data = await response.json();
+      try {
+        // TODO: Replace with real API call to backend
+        // const response = await fetch(`/api/rwa/${contractId}/price-history`);
+        // const data = await response.json();
 
-      // For now, use mock data
-      await new Promise(resolve => setTimeout(resolve, 500)); // Simulate network delay
+        // For now, use mock data
+        await new Promise((resolve) => setTimeout(resolve, 500)); // Simulate network delay
 
-      const data = generateMockData(365); // Generate 1 year of data
-      setPriceData(data);
-      setCached(true);
-    } catch (err) {
-      setError(err.message || 'Failed to fetch price history');
-      console.error('Error fetching price history:', err);
-    } finally {
-      setLoading(false);
-    }
-  }, [contractId, cached, generateMockData]);
+        const data = generateMockData(365); // Generate 1 year of data
+        setPriceData(data);
+        setCached(true);
+      } catch (err) {
+        setError(err.message || 'Failed to fetch price history');
+        console.error('Error fetching price history:', err);
+      } finally {
+        setLoading(false);
+      }
+    },
+    [contractId, cached, generateMockData],
+  );
 
   /**
    * Calculate statistics for the price data
    */
-  const calculateStats = useCallback((data = priceData) => {
-    if (!data || data.length === 0) {
+  const calculateStats = useCallback(
+    (data = priceData) => {
+      if (!data || data.length === 0) {
+        return {
+          min: 0,
+          max: 0,
+          avg: 0,
+          latest: 0,
+          earliest: 0,
+          change: 0,
+          changePercent: 0,
+          high52w: 0,
+          low52w: 0,
+        };
+      }
+
+      const prices = data.map((d) => d.price);
+      const min = Math.min(...prices);
+      const max = Math.max(...prices);
+      const avg = Math.round((prices.reduce((a, b) => a + b, 0) / prices.length) * 100) / 100;
+      const latest = prices[prices.length - 1];
+      const earliest = prices[0];
+      const change = Math.round((latest - earliest) * 100) / 100;
+      const changePercent = Math.round(((latest - earliest) / earliest) * 10000) / 100;
+
       return {
-        min: 0,
-        max: 0,
-        avg: 0,
-        latest: 0,
-        earliest: 0,
-        change: 0,
-        changePercent: 0,
-        high52w: 0,
-        low52w: 0,
+        min,
+        max,
+        avg,
+        latest,
+        earliest,
+        change,
+        changePercent,
+        high52w: max,
+        low52w: min,
       };
-    }
-
-    const prices = data.map(d => d.price);
-    const min = Math.min(...prices);
-    const max = Math.max(...prices);
-    const avg = Math.round((prices.reduce((a, b) => a + b, 0) / prices.length) * 100) / 100;
-    const latest = prices[prices.length - 1];
-    const earliest = prices[0];
-    const change = Math.round((latest - earliest) * 100) / 100;
-    const changePercent = Math.round(((latest - earliest) / earliest) * 10000) / 100;
-
-    return {
-      min,
-      max,
-      avg,
-      latest,
-      earliest,
-      change,
-      changePercent,
-      high52w: max,
-      low52w: min,
-    };
-  }, [priceData]);
+    },
+    [priceData],
+  );
 
   /**
    * Format price for display
    */
-  const formatPrice = useCallback((price) => {
-    return `$${Number(price).toLocaleString('en-US', {
-      minimumFractionDigits: 2,
-      maximumFractionDigits: 2,
-    })}`;
-  }, []);
+  const formatPrice = useCallback(
+    (price) =>
+      `$${Number(price).toLocaleString('en-US', {
+        minimumFractionDigits: 2,
+        maximumFractionDigits: 2,
+      })}`,
+    [],
+  );
 
   /**
    * Format percentage for display

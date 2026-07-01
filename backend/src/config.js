@@ -9,7 +9,7 @@
 export const PORT = process.env.PORT || 3001;
 
 export const CORS_ORIGINS = process.env.CORS_ORIGINS
-  ? process.env.CORS_ORIGINS.split(',').map(s => s.trim())
+  ? process.env.CORS_ORIGINS.split(',').map((s) => s.trim())
   : ['http://localhost:5173', 'http://localhost:4173'];
 
 export const NODE_ENV = process.env.NODE_ENV || 'development';

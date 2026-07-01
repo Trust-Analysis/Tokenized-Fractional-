@@ -12,16 +12,9 @@
  */
 
 import { clientsClaim } from 'workbox-core';
-import {
-  precacheAndRoute,
-  createHandlerBoundToURL,
-} from 'workbox-precaching';
+import { precacheAndRoute, createHandlerBoundToURL } from 'workbox-precaching';
 import { registerRoute, NavigationRoute } from 'workbox-routing';
-import {
-  CacheFirst,
-  StaleWhileRevalidate,
-  NetworkFirst,
-} from 'workbox-strategies';
+import { CacheFirst, StaleWhileRevalidate, NetworkFirst } from 'workbox-strategies';
 import { ExpirationPlugin } from 'workbox-expiration';
 import { BackgroundSyncPlugin } from 'workbox-background-sync';
 import { CacheableResponsePlugin } from 'workbox-cacheable-response';
@@ -63,14 +56,13 @@ registerRoute(
         purgeOnQuotaError: true,
       }),
     ],
-  })
+  }),
 );
 
 // ── Google Fonts — CacheFirst ─────────────────────────────────────────────────
 registerRoute(
   ({ url }) =>
-    url.origin === 'https://fonts.googleapis.com' ||
-    url.origin === 'https://fonts.gstatic.com',
+    url.origin === 'https://fonts.googleapis.com' || url.origin === 'https://fonts.gstatic.com',
   new CacheFirst({
     cacheName: 'google-fonts-v1',
     plugins: [
@@ -80,7 +72,7 @@ registerRoute(
         maxAgeSeconds: 365 * 24 * 60 * 60, // 1 year
       }),
     ],
-  })
+  }),
 );
 
 // ── API: RWA asset list — StaleWhileRevalidate ────────────────────────────────
@@ -98,7 +90,7 @@ registerRoute(
         purgeOnQuotaError: true,
       }),
     ],
-  })
+  }),
 );
 
 // ── API: health and news — NetworkFirst ───────────────────────────────────────
@@ -115,7 +107,7 @@ registerRoute(
       new CacheableResponsePlugin({ statuses: [200] }),
       new ExpirationPlugin({ maxEntries: 20, maxAgeSeconds: 10 * 60 }),
     ],
-  })
+  }),
 );
 
 // ── Background Sync — queue failed POST/PATCH/DELETE ─────────────────────────
@@ -127,14 +119,13 @@ const bgSyncPlugin = new BackgroundSyncPlugin('admin-writes-queue', {
 
 registerRoute(
   ({ url, request }) =>
-    url.pathname.startsWith('/api/') &&
-    ['POST', 'PATCH', 'DELETE'].includes(request.method),
+    url.pathname.startsWith('/api/') && ['POST', 'PATCH', 'DELETE'].includes(request.method),
   new NetworkFirst({
     cacheName: 'admin-writes-v1',
     plugins: [bgSyncPlugin],
     fetchOptions: { credentials: 'same-origin' },
   }),
-  'POST'
+  'POST',
 );
 
 // ── Push notifications (placeholder) ─────────────────────────────────────────

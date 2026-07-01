@@ -62,7 +62,9 @@ export function useServiceWorker() {
       }
     })();
 
-    return () => { cancelled = true; };
+    return () => {
+      cancelled = true;
+    };
   }, []);
 
   return {

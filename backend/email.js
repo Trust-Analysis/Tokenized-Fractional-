@@ -1,6 +1,6 @@
 /**
  * Email Notification Service
- * 
+ *
  * Handles email sending with templates, queuing, and error handling.
  * Supports multiple email types with MJML templates and Handlebars rendering.
  */
@@ -295,7 +295,7 @@ export class EmailService {
         const emailData = this.queue.shift();
         await this.send(emailData);
         // Small delay between sends to avoid overwhelming the SMTP server
-        await new Promise(resolve => setTimeout(resolve, 100));
+        await new Promise((resolve) => setTimeout(resolve, 100));
       }
     } finally {
       this.isProcessing = false;
@@ -307,11 +307,7 @@ export class EmailService {
    */
   async send(emailData) {
     try {
-      const {
-        type,
-        to,
-        variables = {},
-      } = emailData;
+      const { type, to, variables = {} } = emailData;
 
       const template = EMAIL_TEMPLATES[type];
       if (!template) {
@@ -343,15 +339,12 @@ export class EmailService {
 
       this.logger.info(
         { type, to, subject, messageId: result.messageId },
-        'Email sent successfully'
+        'Email sent successfully',
       );
 
       return result;
     } catch (error) {
-      this.logger.error(
-        { error: error.message, emailData },
-        'Failed to send email'
-      );
+      this.logger.error({ error: error.message, emailData }, 'Failed to send email');
 
       if (this.sentry) {
         this.sentry.captureException(error, {

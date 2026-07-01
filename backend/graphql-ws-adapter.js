@@ -1,6 +1,6 @@
 /**
  * GraphQL WebSocket Subscription Handler
- * 
+ *
  * Integrates graphql-ws library with Apollo Server for real-time subscriptions
  * over WebSocket connections.
  */
@@ -10,7 +10,7 @@ import { makeServer } from 'graphql-ws';
 import { useServer } from 'graphql-ws/lib/use/ws';
 import { logger } from './index.js';
 
-let wsHandler = null;
+const wsHandler = null;
 
 /**
  * Initialize GraphQL subscriptions WebSocket server
@@ -29,11 +29,8 @@ export function initializeGraphQLSubscriptions(httpServer, apolloServer) {
   const wsHandler = useServer(
     {
       schema: apolloServer.schema,
-      execute: apolloServer.executeOperation ? 
-        (args) => apolloServer.executeOperation(args) :
-        null,
-      subscribe: apolloServer.subscribe ||
-        apolloServer.executeOperation,
+      execute: apolloServer.executeOperation ? (args) => apolloServer.executeOperation(args) : null,
+      subscribe: apolloServer.subscribe || apolloServer.executeOperation,
       // Optional: Add authentication context for subscriptions
       onConnect(ctx) {
         logger.info('GraphQL subscription client connected');

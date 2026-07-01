@@ -14,20 +14,22 @@ describe('CDN asset URL helpers', () => {
 
   test('prefixes relative uploaded asset paths with the CDN base URL', () => {
     expect(resolveCdnAssetUrl('/uploads/asset.jpg', 'https://cdn.example.com')).toBe(
-      'https://cdn.example.com/uploads/asset.jpg'
+      'https://cdn.example.com/uploads/asset.jpg',
     );
     expect(resolveCdnAssetUrl('documents/deed.pdf', 'https://cdn.example.com/assets')).toBe(
-      'https://cdn.example.com/assets/documents/deed.pdf'
+      'https://cdn.example.com/assets/documents/deed.pdf',
     );
   });
 
   test('preserves absolute and protocol URLs', () => {
     expect(resolveCdnAssetUrl('https://example.com/asset.jpg', 'https://cdn.example.com')).toBe(
-      'https://example.com/asset.jpg'
+      'https://example.com/asset.jpg',
     );
-    expect(resolveCdnAssetUrl('ipfs://asset-hash', 'https://cdn.example.com')).toBe('ipfs://asset-hash');
+    expect(resolveCdnAssetUrl('ipfs://asset-hash', 'https://cdn.example.com')).toBe(
+      'ipfs://asset-hash',
+    );
     expect(resolveCdnAssetUrl('data:image/png;base64,abc', 'https://cdn.example.com')).toBe(
-      'data:image/png;base64,abc'
+      'data:image/png;base64,abc',
     );
   });
 

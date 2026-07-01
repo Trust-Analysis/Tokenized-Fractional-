@@ -32,10 +32,13 @@ export function createBackupRoutes(backupService, logger) {
     try {
       const backups = await backupService.listAllBackups();
 
-      logger.info({
-        count: backups.length,
-        requestKey: req.apiKey?.id,
-      }, 'Backups listed');
+      logger.info(
+        {
+          count: backups.length,
+          requestKey: req.apiKey?.id,
+        },
+        'Backups listed',
+      );
 
       res.json({
         data: backups,
@@ -58,10 +61,13 @@ export function createBackupRoutes(backupService, logger) {
     try {
       const health = backupService.getHealth();
 
-      logger.info({
-        status: health.status,
-        requestKey: req.apiKey?.id,
-      }, 'Health check performed');
+      logger.info(
+        {
+          status: health.status,
+          requestKey: req.apiKey?.id,
+        },
+        'Health check performed',
+      );
 
       const statusCode = health.status === 'healthy' ? 200 : 503;
       res.status(statusCode).json(health);
@@ -82,9 +88,12 @@ export function createBackupRoutes(backupService, logger) {
     try {
       const policy = backupService.getPolicy();
 
-      logger.info({
-        requestKey: req.apiKey?.id,
-      }, 'Backup policy retrieved');
+      logger.info(
+        {
+          requestKey: req.apiKey?.id,
+        },
+        'Backup policy retrieved',
+      );
 
       res.json(policy);
     } catch (error) {
@@ -104,12 +113,15 @@ export function createBackupRoutes(backupService, logger) {
     try {
       const result = await backupService.runBackup();
 
-      logger.info({
-        backupName: result.name,
-        locations: result.locations,
-        size: result.size,
-        requestKey: req.apiKey?.id,
-      }, 'Manual backup created');
+      logger.info(
+        {
+          backupName: result.name,
+          locations: result.locations,
+          size: result.size,
+          requestKey: req.apiKey?.id,
+        },
+        'Manual backup created',
+      );
 
       res.status(201).json(result);
     } catch (error) {
@@ -130,11 +142,14 @@ export function createBackupRoutes(backupService, logger) {
       const { name } = req.params;
       const verification = await backupService.verifyBackup(name);
 
-      logger.info({
-        backupName: name,
-        verified: verification.ok,
-        requestKey: req.apiKey?.id,
-      }, 'Backup verification completed');
+      logger.info(
+        {
+          backupName: name,
+          verified: verification.ok,
+          requestKey: req.apiKey?.id,
+        },
+        'Backup verification completed',
+      );
 
       res.json(verification);
     } catch (error) {
@@ -157,7 +172,7 @@ export function createBackupRoutes(backupService, logger) {
   /**
    * POST /backups/:name/restore
    * Restore a backup
-   * 
+   *
    * Body:
    * {
    *   "source": "local|s3|gcs",  // optional, auto-detect by default
@@ -170,20 +185,26 @@ export function createBackupRoutes(backupService, logger) {
       const { source, force = false } = req.body;
 
       // Warn about destructive operation
-      logger.warn({
-        backupName: name,
-        source,
-        force,
-        requestKey: req.apiKey?.id,
-      }, 'BACKUP RESTORE INITIATED - DATA WILL BE OVERWRITTEN');
+      logger.warn(
+        {
+          backupName: name,
+          source,
+          force,
+          requestKey: req.apiKey?.id,
+        },
+        'BACKUP RESTORE INITIATED - DATA WILL BE OVERWRITTEN',
+      );
 
       const result = await backupService.restore(name, { source, force });
 
-      logger.info({
-        backupName: name,
-        filesRestored: result.files.length,
-        requestKey: req.apiKey?.id,
-      }, 'Backup restore completed');
+      logger.info(
+        {
+          backupName: name,
+          filesRestored: result.files.length,
+          requestKey: req.apiKey?.id,
+        },
+        'Backup restore completed',
+      );
 
       res.json({
         ...result,
@@ -216,7 +237,7 @@ export function createBackupRoutes(backupService, logger) {
   /**
    * DELETE /backups/:name
    * Delete a backup (local and remote)
-   * 
+   *
    * Query:
    * - locations: comma-separated list of locations to delete from (local,s3,gcs)
    */
@@ -224,13 +245,16 @@ export function createBackupRoutes(backupService, logger) {
     try {
       const { name } = req.params;
       const { locations = 'local,s3,gcs' } = req.query;
-      const locList = locations.split(',').map(l => l.trim());
+      const locList = locations.split(',').map((l) => l.trim());
 
-      logger.warn({
-        backupName: name,
-        locations: locList,
-        requestKey: req.apiKey?.id,
-      }, 'BACKUP DELETION INITIATED');
+      logger.warn(
+        {
+          backupName: name,
+          locations: locList,
+          requestKey: req.apiKey?.id,
+        },
+        'BACKUP DELETION INITIATED',
+      );
 
       // Implement deletion based on locations
       // For now, return success

@@ -1,6 +1,6 @@
 /**
  * PubSub Manager for GraphQL Subscriptions
- * 
+ *
  * Manages real-time event broadcasting for GraphQL subscriptions.
  * Handles subscription/unsubscription logic and event distribution to subscribers.
  */
@@ -80,7 +80,7 @@ class PubSubManager extends EventEmitter {
     if (!this.subscribers.has(topic)) return;
 
     const subscribers = this.subscribers.get(topic);
-    const subscriber = Array.from(subscribers).find(s => s.id === subscriberId);
+    const subscriber = Array.from(subscribers).find((s) => s.id === subscriberId);
 
     if (subscriber) {
       subscribers.delete(subscriber);
@@ -109,7 +109,7 @@ class PubSubManager extends EventEmitter {
     if (!this.subscriptionTopics.has(subscriberId)) return;
 
     const topics = Array.from(this.subscriptionTopics.get(subscriberId));
-    topics.forEach(topic => this.unsubscribe(topic, subscriberId));
+    topics.forEach((topic) => this.unsubscribe(topic, subscriberId));
   }
 
   /**
@@ -125,17 +125,21 @@ class PubSubManager extends EventEmitter {
 
     const subscribers = Array.from(this.subscribers.get(topic));
     logger.info(
-      { topic, subscriberCount: subscribers.length, payload: JSON.stringify(payload).slice(0, 100) },
-      'Publishing event to subscribers'
+      {
+        topic,
+        subscriberCount: subscribers.length,
+        payload: JSON.stringify(payload).slice(0, 100),
+      },
+      'Publishing event to subscribers',
     );
 
-    subscribers.forEach(subscriber => {
+    subscribers.forEach((subscriber) => {
       try {
         subscriber.callback(payload);
       } catch (error) {
         logger.error(
           { error: error.message, subscriberId: subscriber.id, topic },
-          'Error calling subscriber callback'
+          'Error calling subscriber callback',
         );
       }
     });
@@ -174,7 +178,7 @@ class PubSubManager extends EventEmitter {
       stats.topicStats[topic] = {
         subscriberCount: subscribers.size,
         subscriptionTimes: Array.from(subscribers)
-          .map(s => s.subscribedAt)
+          .map((s) => s.subscribedAt)
           .sort((a, b) => b - a)
           .slice(0, 5),
       };

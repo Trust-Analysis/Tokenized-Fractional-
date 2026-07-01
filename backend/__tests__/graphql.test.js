@@ -1,6 +1,6 @@
 /**
  * GraphQL API Tests
- * 
+ *
  * Tests for GraphQL queries and mutations using Apollo Server test client.
  */
 
@@ -13,7 +13,7 @@ describe('GraphQL API', () => {
   // Mock data layer
   const mockDataLayer = {
     data: {
-      'CTEST123456789012345678901234567890123456789012': {
+      CTEST123456789012345678901234567890123456789012: {
         title: 'Test Asset',
         location: 'Test City',
         description: 'Test Description',
@@ -26,18 +26,20 @@ describe('GraphQL API', () => {
         updatedAt: '2026-06-30T00:00:00Z',
       },
     },
-    loadData: function() { return this.data; },
-    saveData: function(data) { this.data = data; },
+    loadData() {
+      return this.data;
+    },
+    saveData(data) {
+      this.data = data;
+    },
     validateContractId: (id) => typeof id === 'string' && id.length >= 50 && id.startsWith('C'),
     validateRwaBody: (body) => {
       const required = ['title', 'location', 'description', 'assetType'];
-      const missing = required.filter(f => !body[f]);
+      const missing = required.filter((f) => !body[f]);
       return missing.length > 0 ? `Missing: ${missing.join(', ')}` : null;
     },
-    scoreSearch: (query, data) => {
-      return Object.keys(data).map(id => ({ contractId: id, score: 1 }));
-    },
-    syncSearchIndex: function() {},
+    scoreSearch: (query, data) => Object.keys(data).map((id) => ({ contractId: id, score: 1 })),
+    syncSearchIndex() {},
   };
 
   beforeEach(async () => {
@@ -177,7 +179,7 @@ describe('GraphQL API', () => {
     });
 
     test('should return pending assets only for admin', async () => {
-      mockDataLayer.data['CPENDING123456789012345678901234567890123456789012'] = {
+      mockDataLayer.data.CPENDING123456789012345678901234567890123456789012 = {
         title: 'Pending Asset',
         location: 'Pending City',
         description: 'Pending Description',
@@ -199,7 +201,7 @@ describe('GraphQL API', () => {
             }
           `,
         },
-        { req: { headers: { 'x-api-key': 'test-admin-key' } } }
+        { req: { headers: { 'x-api-key': 'test-admin-key' } } },
       );
 
       expect(result.errors).toBeUndefined();
@@ -217,7 +219,7 @@ describe('GraphQL API', () => {
             }
           `,
         },
-        { req: { headers: {} } }
+        { req: { headers: {} } },
       );
 
       expect(result.errors).toBeDefined();
@@ -249,7 +251,7 @@ describe('GraphQL API', () => {
             }
           `,
         },
-        { req: { headers: { 'x-api-key': 'test-admin-key' } } }
+        { req: { headers: { 'x-api-key': 'test-admin-key' } } },
       );
 
       expect(result.errors).toBeUndefined();
@@ -295,7 +297,7 @@ describe('GraphQL API', () => {
             }
           `,
         },
-        { req: { headers: { 'x-api-key': 'test-admin-key' } } }
+        { req: { headers: { 'x-api-key': 'test-admin-key' } } },
       );
 
       expect(result.errors).toBeDefined();
@@ -326,7 +328,7 @@ describe('GraphQL API', () => {
             }
           `,
         },
-        { req: { headers: { 'x-api-key': 'test-admin-key' } } }
+        { req: { headers: { 'x-api-key': 'test-admin-key' } } },
       );
 
       expect(result.errors).toBeUndefined();
@@ -335,7 +337,7 @@ describe('GraphQL API', () => {
     });
 
     test('should approve pending asset', async () => {
-      mockDataLayer.data['CTEST123456789012345678901234567890123456789012'].pending = true;
+      mockDataLayer.data.CTEST123456789012345678901234567890123456789012.pending = true;
 
       const result = await server.executeOperation(
         {
@@ -348,7 +350,7 @@ describe('GraphQL API', () => {
             }
           `,
         },
-        { req: { headers: { 'x-api-key': 'test-admin-key' } } }
+        { req: { headers: { 'x-api-key': 'test-admin-key' } } },
       );
 
       expect(result.errors).toBeUndefined();
@@ -367,7 +369,7 @@ describe('GraphQL API', () => {
             }
           `,
         },
-        { req: { headers: { 'x-api-key': 'test-admin-key' } } }
+        { req: { headers: { 'x-api-key': 'test-admin-key' } } },
       );
 
       expect(result.errors).toBeUndefined();
@@ -375,7 +377,7 @@ describe('GraphQL API', () => {
     });
 
     test('should unpause asset', async () => {
-      mockDataLayer.data['CTEST123456789012345678901234567890123456789012'].paused = true;
+      mockDataLayer.data.CTEST123456789012345678901234567890123456789012.paused = true;
 
       const result = await server.executeOperation(
         {
@@ -388,7 +390,7 @@ describe('GraphQL API', () => {
             }
           `,
         },
-        { req: { headers: { 'x-api-key': 'test-admin-key' } } }
+        { req: { headers: { 'x-api-key': 'test-admin-key' } } },
       );
 
       expect(result.errors).toBeUndefined();
@@ -404,12 +406,14 @@ describe('GraphQL API', () => {
             }
           `,
         },
-        { req: { headers: { 'x-api-key': 'test-admin-key' } } }
+        { req: { headers: { 'x-api-key': 'test-admin-key' } } },
       );
 
       expect(result.errors).toBeUndefined();
       expect(result.data.deleteAsset).toBe(true);
-      expect(mockDataLayer.loadData()['CTEST123456789012345678901234567890123456789012']).toBeUndefined();
+      expect(
+        mockDataLayer.loadData().CTEST123456789012345678901234567890123456789012,
+      ).toBeUndefined();
     });
 
     test('should return error for invalid contract ID', async () => {
@@ -431,7 +435,7 @@ describe('GraphQL API', () => {
             }
           `,
         },
-        { req: { headers: { 'x-api-key': 'test-admin-key' } } }
+        { req: { headers: { 'x-api-key': 'test-admin-key' } } },
       );
 
       expect(result.errors).toBeDefined();

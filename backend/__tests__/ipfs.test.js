@@ -4,6 +4,8 @@
 
 import { jest } from '@jest/globals';
 
+import { uploadToIPFS, getIPFSFileUrl, unpinFromIPFS } from '../ipfs.js';
+
 // ---------------------------------------------------------------------------
 // We mock the global fetch before importing ipfs.js so the module picks up
 // our mock. Jest hoists jest.mock() calls but since we're using ES modules
@@ -15,8 +17,6 @@ global.fetch = mockFetch;
 // Set a fake JWT so the module doesn't throw at import time
 process.env.PINATA_JWT = 'test-jwt-token';
 process.env.PINATA_GATEWAY = 'https://gateway.pinata.cloud';
-
-import { uploadToIPFS, getIPFSFileUrl, unpinFromIPFS } from '../ipfs.js';
 
 // ---------------------------------------------------------------------------
 // Helpers
@@ -45,7 +45,7 @@ describe('uploadToIPFS', () => {
 
   test('returns cid and url on success', async () => {
     mockFetch.mockResolvedValueOnce(
-      mockResponse({ IpfsHash: FAKE_CID, PinSize: 100, Timestamp: '2026-01-01' })
+      mockResponse({ IpfsHash: FAKE_CID, PinSize: 100, Timestamp: '2026-01-01' }),
     );
 
     const result = await uploadToIPFS(FAKE_BUFFER, 'deed.pdf', 'My Property');
@@ -56,9 +56,7 @@ describe('uploadToIPFS', () => {
   });
 
   test('calls the correct Pinata endpoint', async () => {
-    mockFetch.mockResolvedValueOnce(
-      mockResponse({ IpfsHash: FAKE_CID })
-    );
+    mockFetch.mockResolvedValueOnce(mockResponse({ IpfsHash: FAKE_CID }));
 
     await uploadToIPFS(FAKE_BUFFER, 'deed.pdf', 'My Property');
 
@@ -71,18 +69,18 @@ describe('uploadToIPFS', () => {
   test('throws when Pinata returns a non-ok response', async () => {
     mockFetch.mockResolvedValueOnce(mockResponse({ error: 'Unauthorized' }, 401));
 
-    await expect(
-      uploadToIPFS(FAKE_BUFFER, 'deed.pdf', 'My Property')
-    ).rejects.toThrow('Pinata upload failed (401)');
+    await expect(uploadToIPFS(FAKE_BUFFER, 'deed.pdf', 'My Property')).rejects.toThrow(
+      'Pinata upload failed (401)',
+    );
   });
 
   test('throws when PINATA_JWT is missing', async () => {
     const original = process.env.PINATA_JWT;
     delete process.env.PINATA_JWT;
 
-    await expect(
-      uploadToIPFS(FAKE_BUFFER, 'deed.pdf', 'My Property')
-    ).rejects.toThrow('PINATA_JWT is not configured');
+    await expect(uploadToIPFS(FAKE_BUFFER, 'deed.pdf', 'My Property')).rejects.toThrow(
+      'PINATA_JWT is not configured',
+    );
 
     process.env.PINATA_JWT = original;
   });

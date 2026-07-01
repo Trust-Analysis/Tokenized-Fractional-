@@ -59,14 +59,19 @@ function sqliteTarget(config) {
  * @param {{ config?: ReturnType<typeof loadBackupConfig>, log?: typeof consoleLog, force?: boolean }} [opts]
  * @returns {Promise<string[]>} paths written
  */
-export async function restoreBackup(name, { config = loadBackupConfig(), log = consoleLog, force = false } = {}) {
+export async function restoreBackup(
+  name,
+  { config = loadBackupConfig(), log = consoleLog, force = false } = {},
+) {
   const dir = join(config.backupDir, name);
   if (!existsSync(dir)) throw new Error(`backup not found: ${dir}`);
 
   const verification = await verifyBackup(dir);
   if (!verification.ok && !force) {
     const failed = verification.results.filter((r) => !r.ok).map((r) => `${r.name} (${r.error})`);
-    throw new Error(`backup failed verification: ${failed.join(', ')}. Re-run with --force to override.`);
+    throw new Error(
+      `backup failed verification: ${failed.join(', ')}. Re-run with --force to override.`,
+    );
   }
   if (!verification.ok) log.warn('verification failed but --force was given; continuing');
 
@@ -130,12 +135,14 @@ export async function downloadBackupFromS3(name, config = loadBackupConfig(), lo
   let count = 0;
   do {
     const page = await client.send(
-      new ListObjectsV2Command({ Bucket: config.s3.bucket, Prefix: prefix, ContinuationToken })
+      new ListObjectsV2Command({ Bucket: config.s3.bucket, Prefix: prefix, ContinuationToken }),
     );
     for (const obj of page.Contents || []) {
       const file = obj.Key.slice(prefix.length);
       if (!file) continue;
-      const res = await client.send(new GetObjectCommand({ Bucket: config.s3.bucket, Key: obj.Key }));
+      const res = await client.send(
+        new GetObjectCommand({ Bucket: config.s3.bucket, Key: obj.Key }),
+      );
       const bytes = Buffer.from(await res.Body.transformToByteArray());
       writeFileSync(join(localDir, file), bytes);
       count += 1;
@@ -175,7 +182,8 @@ if (invokedDirectly) {
       await downloadBackupFromS3(name, config, consoleLog);
     } else {
       name = args.find((a) => a.startsWith('backup-'));
-      if (!name) throw new Error('usage: node restore.js <backup-name> | --from-s3 <name> | --list');
+      if (!name)
+        throw new Error('usage: node restore.js <backup-name> | --from-s3 <name> | --list');
     }
 
     const written = await restoreBackup(name, { config, log: consoleLog, force });

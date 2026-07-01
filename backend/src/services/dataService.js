@@ -85,10 +85,10 @@ export function buildSearchIndex(data) {
 
   for (const [contractId, meta] of Object.entries(data)) {
     const fields = [
-      { value: meta.title,       weight: 3 },
-      { value: meta.location,    weight: 2 },
+      { value: meta.title, weight: 3 },
+      { value: meta.location, weight: 2 },
       { value: meta.description, weight: 1 },
-      { value: meta.assetType,   weight: 2 },
+      { value: meta.assetType, weight: 2 },
     ];
 
     const termFreq = {};
@@ -139,7 +139,7 @@ export function scoreSearch(query, data) {
   const { index, totalDocs } = getSearchIndex();
   const terms = tokenize(query);
   if (terms.length === 0) {
-    return Object.keys(data).map(id => ({ contractId: id, score: 1 }));
+    return Object.keys(data).map((id) => ({ contractId: id, score: 1 }));
   }
 
   const scores = {};

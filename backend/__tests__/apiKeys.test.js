@@ -26,14 +26,11 @@ afterAll(async () => {
 describe('API Key Management', () => {
   // Helper: Create a test API key for use in authenticated requests
   async function createTestKey() {
-    const res = await request(app)
-      .post('/api/v1/api-keys')
-      .set('x-api-key', testApiKey)
-      .send({
-        name: 'test-key-for-tests',
-        description: 'Used for testing',
-      });
-    
+    const res = await request(app).post('/api/v1/api-keys').set('x-api-key', testApiKey).send({
+      name: 'test-key-for-tests',
+      description: 'Used for testing',
+    });
+
     if (res.status !== 201) {
       throw new Error(`Failed to create test key: ${res.body.error}`);
     }
@@ -62,13 +59,10 @@ describe('API Key Management', () => {
 
   describe('POST /api/v1/api-keys', () => {
     test('should create a new API key', async () => {
-      const res = await request(app)
-        .post('/api/v1/api-keys')
-        .set('x-api-key', testApiKey)
-        .send({
-          name: 'Production API Key',
-          description: 'For production environment',
-        });
+      const res = await request(app).post('/api/v1/api-keys').set('x-api-key', testApiKey).send({
+        name: 'Production API Key',
+        description: 'For production environment',
+      });
 
       expect(res.status).toBe(201);
       expect(res.body).toHaveProperty('key');
@@ -80,13 +74,10 @@ describe('API Key Management', () => {
 
     test('should create an API key with expiration', async () => {
       const futureDate = new Date(Date.now() + 30 * 24 * 60 * 60 * 1000).toISOString();
-      const res = await request(app)
-        .post('/api/v1/api-keys')
-        .set('x-api-key', testApiKey)
-        .send({
-          name: 'Expiring Key',
-          expiresAt: futureDate,
-        });
+      const res = await request(app).post('/api/v1/api-keys').set('x-api-key', testApiKey).send({
+        name: 'Expiring Key',
+        expiresAt: futureDate,
+      });
 
       expect(res.status).toBe(201);
       expect(res.body.expiresAt).toBeDefined();
@@ -104,35 +95,27 @@ describe('API Key Management', () => {
 
     test('should reject past expiration dates', async () => {
       const pastDate = new Date(Date.now() - 1000).toISOString();
-      const res = await request(app)
-        .post('/api/v1/api-keys')
-        .set('x-api-key', testApiKey)
-        .send({
-          name: 'Past Expiry Key',
-          expiresAt: pastDate,
-        });
+      const res = await request(app).post('/api/v1/api-keys').set('x-api-key', testApiKey).send({
+        name: 'Past Expiry Key',
+        expiresAt: pastDate,
+      });
 
       expect(res.status).toBe(400);
       expect(res.body.error).toContain('future');
     });
 
     test('should reject invalid date format', async () => {
-      const res = await request(app)
-        .post('/api/v1/api-keys')
-        .set('x-api-key', testApiKey)
-        .send({
-          name: 'Bad Date Key',
-          expiresAt: 'not-a-date',
-        });
+      const res = await request(app).post('/api/v1/api-keys').set('x-api-key', testApiKey).send({
+        name: 'Bad Date Key',
+        expiresAt: 'not-a-date',
+      });
 
       expect(res.status).toBe(400);
       expect(res.body.error).toContain('ISO 8601');
     });
 
     test('should require authentication', async () => {
-      const res = await request(app)
-        .post('/api/v1/api-keys')
-        .send({ name: 'Unauth Key' });
+      const res = await request(app).post('/api/v1/api-keys').send({ name: 'Unauth Key' });
 
       expect(res.status).toBe(401);
     });
@@ -160,9 +143,7 @@ describe('API Key Management', () => {
         .set('x-api-key', testApiKey)
         .send({ name: 'Key 2' });
 
-      const res = await request(app)
-        .get('/api/v1/api-keys')
-        .set('x-api-key', testApiKey);
+      const res = await request(app).get('/api/v1/api-keys').set('x-api-key', testApiKey);
 
       expect(res.status).toBe(200);
       expect(res.body.data).toBeInstanceOf(Array);
@@ -184,11 +165,9 @@ describe('API Key Management', () => {
         .delete(`/api/v1/api-keys/${createRes.body.id}`)
         .set('x-api-key', testApiKey);
 
-      const listRes = await request(app)
-        .get('/api/v1/api-keys')
-        .set('x-api-key', testApiKey);
+      const listRes = await request(app).get('/api/v1/api-keys').set('x-api-key', testApiKey);
 
-      const revokedInList = listRes.body.data.some(k => k.id === createRes.body.id);
+      const revokedInList = listRes.body.data.some((k) => k.id === createRes.body.id);
       expect(revokedInList).toBe(false);
     });
 
@@ -342,9 +321,7 @@ describe('API Key Management', () => {
     });
 
     test('should require authentication', async () => {
-      const res = await request(app)
-        .post('/api/v1/api-keys/key_xyz/rotate')
-        .send({});
+      const res = await request(app).post('/api/v1/api-keys/key_xyz/rotate').send({});
 
       expect(res.status).toBe(401);
     });
@@ -422,7 +399,7 @@ describe('API Key Management', () => {
         });
 
       // Wait for expiration
-      await new Promise(resolve => setTimeout(resolve, 1100));
+      await new Promise((resolve) => setTimeout(resolve, 1100));
 
       // Try to use the expired key
       const useRes = await request(app)
@@ -436,9 +413,7 @@ describe('API Key Management', () => {
 
   describe('Backward Compatibility', () => {
     test('should work with /api/api-keys (without /v1)', async () => {
-      const res = await request(app)
-        .get('/api/api-keys')
-        .set('x-api-key', testApiKey);
+      const res = await request(app).get('/api/api-keys').set('x-api-key', testApiKey);
 
       expect(res.status).toBe(200);
       expect(res.body.data).toBeInstanceOf(Array);

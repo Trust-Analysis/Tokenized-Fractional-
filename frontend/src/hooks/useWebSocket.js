@@ -64,7 +64,7 @@ export function useWebSocket(wsUrl, options = {}) {
       JSON.stringify({
         action: 'subscribe',
         topic,
-      })
+      }),
     );
 
     subscriptionsRef.current.add(topic);
@@ -82,7 +82,7 @@ export function useWebSocket(wsUrl, options = {}) {
       JSON.stringify({
         action: 'unsubscribe',
         topic,
-      })
+      }),
     );
 
     subscriptionsRef.current.delete(topic);
@@ -150,7 +150,7 @@ export function useWebSocket(wsUrl, options = {}) {
         if (reconnectCountRef.current < reconnectAttempts) {
           reconnectCountRef.current += 1;
           console.log(
-            `Attempting to reconnect... (${reconnectCountRef.current}/${reconnectAttempts})`
+            `Attempting to reconnect... (${reconnectCountRef.current}/${reconnectAttempts})`,
           );
 
           reconnectTimeoutRef.current = setTimeout(() => {

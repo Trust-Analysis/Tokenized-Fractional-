@@ -3,7 +3,7 @@
 
 /**
  * src/routes/apiKeys.js — API key management routes
- * 
+ *
  * Admin endpoints for managing API keys:
  * - POST /api-keys — Create a new API key
  * - GET /api-keys — List all API keys
@@ -62,15 +62,21 @@ export function createApiKeysRouter(apiKeyService, logger) {
         description,
       });
 
-      logger.info({
-        keyId: result.id,
-        keyName: result.name,
-        requestKey: req.apiKey?.id,
-      }, 'API key created via admin API');
+      logger.info(
+        {
+          keyId: result.id,
+          keyName: result.name,
+          requestKey: req.apiKey?.id,
+        },
+        'API key created via admin API',
+      );
 
       res.status(201).json(result);
     } catch (error) {
-      logger.error({ error: error.message, requestKey: req.apiKey?.id }, 'Failed to create API key');
+      logger.error(
+        { error: error.message, requestKey: req.apiKey?.id },
+        'Failed to create API key',
+      );
       res.status(500).json({
         error: 'Failed to create API key',
         message: error.message,
@@ -89,10 +95,13 @@ export function createApiKeysRouter(apiKeyService, logger) {
         includeRevoked: includeRevoked === 'true',
       });
 
-      logger.info({
-        count: keys.length,
-        requestKey: req.apiKey?.id,
-      }, 'API keys listed');
+      logger.info(
+        {
+          count: keys.length,
+          requestKey: req.apiKey?.id,
+        },
+        'API keys listed',
+      );
 
       res.json({
         data: keys,
@@ -124,14 +133,20 @@ export function createApiKeysRouter(apiKeyService, logger) {
         });
       }
 
-      logger.info({
-        keyId: id,
-        requestKey: req.apiKey?.id,
-      }, 'API key details retrieved');
+      logger.info(
+        {
+          keyId: id,
+          requestKey: req.apiKey?.id,
+        },
+        'API key details retrieved',
+      );
 
       res.json(key);
     } catch (error) {
-      logger.error({ error: error.message, requestKey: req.apiKey?.id }, 'Failed to retrieve API key');
+      logger.error(
+        { error: error.message, requestKey: req.apiKey?.id },
+        'Failed to retrieve API key',
+      );
       res.status(500).json({
         error: 'Failed to retrieve API key',
         message: error.message,
@@ -155,15 +170,21 @@ export function createApiKeysRouter(apiKeyService, logger) {
         });
       }
 
-      logger.info({
-        keyId: id,
-        usageCount: stats.usageCount,
-        requestKey: req.apiKey?.id,
-      }, 'API key usage stats retrieved');
+      logger.info(
+        {
+          keyId: id,
+          usageCount: stats.usageCount,
+          requestKey: req.apiKey?.id,
+        },
+        'API key usage stats retrieved',
+      );
 
       res.json(stats);
     } catch (error) {
-      logger.error({ error: error.message, requestKey: req.apiKey?.id }, 'Failed to retrieve usage stats');
+      logger.error(
+        { error: error.message, requestKey: req.apiKey?.id },
+        'Failed to retrieve usage stats',
+      );
       res.status(500).json({
         error: 'Failed to retrieve usage statistics',
         message: error.message,
@@ -202,15 +223,21 @@ export function createApiKeysRouter(apiKeyService, logger) {
         description,
       });
 
-      logger.info({
-        oldKeyId: id,
-        newKeyId: result.newKey.id,
-        requestKey: req.apiKey?.id,
-      }, 'API key rotated via admin API');
+      logger.info(
+        {
+          oldKeyId: id,
+          newKeyId: result.newKey.id,
+          requestKey: req.apiKey?.id,
+        },
+        'API key rotated via admin API',
+      );
 
       res.json(result);
     } catch (error) {
-      logger.error({ error: error.message, requestKey: req.apiKey?.id }, 'Failed to rotate API key');
+      logger.error(
+        { error: error.message, requestKey: req.apiKey?.id },
+        'Failed to rotate API key',
+      );
 
       if (error.message === 'API key not found') {
         return res.status(404).json({
@@ -238,10 +265,13 @@ export function createApiKeysRouter(apiKeyService, logger) {
       if (hardDelete === 'true') {
         // Hard delete (remove from database)
         await apiKeyService.delete(id);
-        logger.info({
-          keyId: id,
-          requestKey: req.apiKey?.id,
-        }, 'API key hard deleted via admin API');
+        logger.info(
+          {
+            keyId: id,
+            requestKey: req.apiKey?.id,
+          },
+          'API key hard deleted via admin API',
+        );
 
         res.json({
           message: 'API key deleted permanently',
@@ -250,11 +280,14 @@ export function createApiKeysRouter(apiKeyService, logger) {
       } else {
         // Soft delete / revoke (mark as revoked)
         const result = await apiKeyService.revoke(id);
-        logger.info({
-          keyId: id,
-          revokedAt: result.revokedAt,
-          requestKey: req.apiKey?.id,
-        }, 'API key revoked via admin API');
+        logger.info(
+          {
+            keyId: id,
+            revokedAt: result.revokedAt,
+            requestKey: req.apiKey?.id,
+          },
+          'API key revoked via admin API',
+        );
 
         res.json({
           message: 'API key revoked',
@@ -262,7 +295,10 @@ export function createApiKeysRouter(apiKeyService, logger) {
         });
       }
     } catch (error) {
-      logger.error({ error: error.message, requestKey: req.apiKey?.id }, 'Failed to delete API key');
+      logger.error(
+        { error: error.message, requestKey: req.apiKey?.id },
+        'Failed to delete API key',
+      );
 
       if (error.message === 'API key not found') {
         return res.status(404).json({
