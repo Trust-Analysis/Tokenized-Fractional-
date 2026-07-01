@@ -226,11 +226,16 @@ describe('DELETE /api/rwa/:contractId', () => {
 
 // ── PATCH /api/rwa/:contractId ────────────────────────────────────────────────
 describe('PATCH /api/rwa/:contractId', () => {
-  const ID = 'C' + 'P'.repeat(55);
+  const ID = `C${'P'.repeat(55)}`;
 
   beforeAll(async () => {
-    await request(app).post('/api/rwa').set('x-api-key', API_KEY)
-      .send({ contractId: ID, title: 'Original Title', location: 'Original Location', description: 'Original description', assetType: 'Real Estate' });
+    await request(app).post('/api/rwa').set('x-api-key', API_KEY).send({
+      contractId: ID,
+      title: 'Original Title',
+      location: 'Original Location',
+      description: 'Original description',
+      assetType: 'Real Estate',
+    });
   });
 
   test('rejects without API key', async () => {
@@ -260,16 +265,13 @@ describe('PATCH /api/rwa/:contractId', () => {
   });
 
   test('rejects empty request body', async () => {
-    const res = await request(app)
-      .patch(`/api/rwa/${ID}`)
-      .set('x-api-key', API_KEY)
-      .send({});
+    const res = await request(app).patch(`/api/rwa/${ID}`).set('x-api-key', API_KEY).send({});
     expect(res.status).toBe(400);
     expect(res.body.error).toMatch(/at least one field/i);
   });
 
   test('returns 404 for non-existent asset', async () => {
-    const unknown = 'C' + 'Z'.repeat(55);
+    const unknown = `C${'Z'.repeat(55)}`;
     const res = await request(app)
       .patch(`/api/rwa/${unknown}`)
       .set('x-api-key', API_KEY)
@@ -285,7 +287,9 @@ describe('PATCH /api/rwa/:contractId', () => {
       .send({ description: 'Updated description' });
     const after = new Date().toISOString();
     expect(res.status).toBe(200);
-    expect(new Date(res.body.updatedAt).getTime()).toBeGreaterThanOrEqual(new Date(before).getTime());
+    expect(new Date(res.body.updatedAt).getTime()).toBeGreaterThanOrEqual(
+      new Date(before).getTime(),
+    );
     expect(new Date(res.body.updatedAt).getTime()).toBeLessThanOrEqual(new Date(after).getTime());
   });
 

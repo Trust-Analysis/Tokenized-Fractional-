@@ -3,6 +3,13 @@
   "private": true,
   "version": "1.0.0",
   "scripts": {
-    "prepare": "husky"
+    "prepare": "husky",
+    "lint": "npm --prefix backend run lint && npm --prefix frontend run lint",
+    "lint:ci": "npm --prefix backend run lint:ci && npm --prefix frontend run lint:ci",
+    "lint:fix": "npm --prefix backend run lint:fix && npm --prefix frontend run lint:fix"
+  },
+  "devDependencies": {
+    "husky": "^9.0.0",
+    "lint-staged": "^13.0.0"
   }
 }

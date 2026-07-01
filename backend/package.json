@@ -13,7 +13,8 @@
     "migrate:rollback": "knex migrate:rollback",
     "migrate:make": "knex migrate:make",
     "migrate:status": "knex migrate:list",
-    "lint": "eslint . --ext .js --max-warnings=0",
+    "lint": "eslint . --ext .js",
+    "lint:ci": "eslint . --ext .js --max-warnings=0",
     "lint:fix": "eslint . --ext .js --fix"
   },
   "jest": {

@@ -11,7 +11,12 @@ const server = new rpc.Server(RPC_URL);
 
 function getContract() {
   if (CONTRACT_ID.length < 50) return null;
-  try { return new Contract(CONTRACT_ID); } catch { return null; }
+
+  try {
+    return new Contract(CONTRACT_ID);
+  } catch {
+    return null;
+  }
 }
 
 /**
@@ -76,7 +81,9 @@ export function useSorobanRead(fnName, args = [], options = {}) {
     setError(null);
     try {
       if (import.meta.env.VITE_MOCK_WALLET === 'true') {
-        await new Promise((resolve) => setTimeout(resolve, 300));
+        await new Promise((resolve) => {
+          setTimeout(resolve, 300);
+        });
         let mockVal = 10;
         if (fnName === 'get_shares') {
           const stored = localStorage.getItem('mock_shares_balance');
@@ -158,7 +165,9 @@ export function useSorobanWrite(fnName) {
 
       try {
         if (import.meta.env.VITE_MOCK_WALLET === 'true') {
-          await new Promise((resolve) => setTimeout(resolve, 800)); // Simulate Freighter signing delay
+          await new Promise((resolve) => {
+            setTimeout(resolve, 800);
+          }); // Simulate Freighter signing delay
 
           if (fnName === 'buy_shares') {
             let buyAmount = 1;

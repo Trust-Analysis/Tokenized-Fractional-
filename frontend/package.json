@@ -12,7 +12,8 @@
     "deploy": "npm run build && echo 'Build complete — Render auto-deploys via render.yaml'",
     "test:e2e": "playwright test",
     "test:e2e:ui": "playwright test --ui",
-    "lint": "eslint . --ext .js,.jsx --max-warnings=0",
+    "lint": "eslint . --ext .js,.jsx",
+    "lint:ci": "eslint . --ext .js,.jsx --max-warnings=0",
     "lint:fix": "eslint . --ext .js,.jsx --fix"
   },
   "dependencies": {

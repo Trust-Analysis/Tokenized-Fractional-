@@ -536,15 +536,25 @@ v1.patch('/rwa/:contractId', adminAuth, writeLimiter, async (req, res) => {
   const patch = req.body;
 
   if (!Object.keys(patch).length) {
-    return res.status(400).json({ error: 'Request body must contain at least one field to update' });
+    return res
+      .status(400)
+      .json({ error: 'Request body must contain at least one field to update' });
   }
 
   const data = loadData();
   if (!data[contractId]) return res.status(404).json({ error: 'Asset metadata not found' });
 
   // Merge only provided fields
-  const allowedFields = ['title', 'location', 'description', 'assetType', 'imageUrl', 'totalValuation', 'documents'];
-  allowedFields.forEach(field => {
+  const allowedFields = [
+    'title',
+    'location',
+    'description',
+    'assetType',
+    'imageUrl',
+    'totalValuation',
+    'documents',
+  ];
+  allowedFields.forEach((field) => {
     if (field in patch && patch[field] !== undefined) {
       data[contractId][field] = patch[field];
     }
