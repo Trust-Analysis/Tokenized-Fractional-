@@ -7,7 +7,7 @@ edition = "2021"
 crate-type = ["cdylib", "rlib"]
 
 [dependencies]
-soroban-sdk = "26.1.0"
+soroban-sdk = "27.0.6"
 stellar-tokens = "0.7.1"
 stellar-macros = "0.7.1"
 
@@ -17,5 +17,5 @@ lto = true
 debug = false
 
 [dev-dependencies]
-soroban-sdk = { version = "26.1.0", features = ["testutils"] }
+soroban-sdk = { version = "27.0.6", features = ["testutils"] }
 stellar-tokens = { version = "0.7.1" }
