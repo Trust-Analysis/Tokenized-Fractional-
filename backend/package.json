@@ -73,7 +73,7 @@
     "bullmq": "^5.34.0",
     "cors": "^2.8.5",
     "dataloader": "^2.2.2",
-    "dotenv": "^16.4.5",
+    "dotenv": "^17.4.2",
     "express": "^4.21.0",
     "express-prom-bundle": "^7.0.0",
     "express-rate-limit": "^7.4.0",
