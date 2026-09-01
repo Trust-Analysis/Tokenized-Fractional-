@@ -1,0 +1,2616 @@
+// contract_upgrade_migration_strategy.rs
+//
+// Comprehensive smart-contract upgrade and migration strategy.
+//
+// Goals:
+//
+// 1. Maintain an explicit contract version.
+// 2. Prevent unauthorized upgrades.
+// 3. Support controlled migrations between versions.
+// 4. Prevent skipping required migration steps.
+// 5. Support emergency pause/freeze.
+// 6. Preserve existing state during upgrades.
+// 7. Make migrations deterministic and idempotent.
+// 8. Emit upgrade/migration events.
+// 9. Provide rollback/failure protection at the application level.
+// 10. Provide extensive unit tests.
+//
+// IMPORTANT:
+//
+// Soroban contracts should treat persistent storage as durable state.
+// Contract upgrades should therefore be treated separately from ordinary
+// code deployment.
+//
+// The strategy implemented here is:
+//
+//     Version N
+//        |
+//        v
+//     authorize upgrade
+//        |
+//        v
+//     pause if required
+//        |
+//        v
+//     install new contract code
+//        |
+//        v
+//     execute migration N -> N+1
+//        |
+//        v
+//     validate state
+//        |
+//        v
+//     activate new version
+//        |
+//        v
+//     unpause
+//
+// ============================================================
+
+#![cfg(test)]
+
+use soroban_sdk::{
+    contract,
+    contractimpl,
+    contracttype,
+    symbol_short,
+    Address,
+    Env,
+    String,
+    Vec,
+};
+
+
+// ============================================================
+// CONTRACT VERSION
+// ============================================================
+
+#[derive(
+    Clone,
+    Copy,
+    Debug,
+    Eq,
+    PartialEq,
+    PartialOrd,
+    Ord,
+)]
+#[contracttype]
+pub struct ContractVersion {
+    pub major: u32,
+    pub minor: u32,
+    pub patch: u32,
+}
+
+impl ContractVersion {
+    pub fn new(
+        major: u32,
+        minor: u32,
+        patch: u32,
+    ) -> Self {
+        Self {
+            major,
+            minor,
+            patch,
+        }
+    }
+
+    pub fn initial() -> Self {
+        Self {
+            major: 1,
+            minor: 0,
+            patch: 0,
+        }
+    }
+}
+
+
+// ============================================================
+// MIGRATION STATUS
+// ============================================================
+
+#[derive(
+    Clone,
+    Debug,
+    Eq,
+    PartialEq,
+)]
+#[contracttype]
+pub enum MigrationStatus {
+    Idle,
+
+    UpgradeAuthorized,
+
+    MigrationRequired,
+
+    Migrating,
+
+    Validating,
+
+    Complete,
+
+    Failed,
+
+    Paused,
+}
+
+
+// ============================================================
+// MIGRATION STATE
+// ============================================================
+
+#[derive(
+    Clone,
+    Debug,
+    Eq,
+    PartialEq,
+)]
+#[contracttype]
+pub struct MigrationState {
+    pub from_version:
+        ContractVersion,
+
+    pub target_version:
+        ContractVersion,
+
+    pub status:
+        MigrationStatus,
+
+    pub step:
+        u32,
+
+    pub total_steps:
+        u32,
+
+    pub started_at:
+        u64,
+
+    pub completed_at:
+        Option<u64>,
+}
+
+
+// ============================================================
+// STORAGE KEYS
+// ============================================================
+
+#[derive(
+    Clone,
+)]
+#[contracttype]
+pub enum DataKey {
+
+    // Administrator responsible for upgrades.
+    Admin,
+
+    // Current deployed application version.
+    Version,
+
+    // Current migration state.
+    Migration,
+
+    // Current contract implementation identifier.
+    Implementation,
+
+    // Pause state.
+    Paused,
+
+    // Whether an upgrade has been authorized.
+    UpgradeAuthorized,
+
+    // Target version for authorized upgrade.
+    TargetVersion,
+
+    // Migration lock.
+    MigrationLock,
+
+    // Example application state.
+    TotalValue,
+
+    // Example user state.
+    UserValue(Address),
+}
+
+
+// ============================================================
+// ERRORS
+// ============================================================
+
+#[derive(
+    Clone,
+    Copy,
+    Debug,
+    Eq,
+    PartialEq,
+)]
+#[contracttype]
+pub enum ContractError {
+
+    NotInitialized = 1,
+
+    Unauthorized = 2,
+
+    InvalidVersion = 3,
+
+    DowngradeNotAllowed = 4,
+
+    UpgradeNotAuthorized = 5,
+
+    UpgradeAlreadyAuthorized = 6,
+
+    MigrationRequired = 7,
+
+    MigrationNotInProgress = 8,
+
+    InvalidMigrationStep = 9,
+
+    MigrationAlreadyRunning = 10,
+
+    MigrationIncomplete = 11,
+
+    ValidationFailed = 12,
+
+    ContractPaused = 13,
+
+    InvalidTargetVersion = 14,
+
+    ImplementationMismatch = 15,
+
+    UpgradeNotReady = 16,
+
+    InvalidMigration = 17,
+}
+
+
+// ============================================================
+// EVENTS
+// ============================================================
+
+fn emit_upgrade_authorized(
+    env: &Env,
+    admin: &Address,
+    from: &ContractVersion,
+    to: &ContractVersion,
+) {
+    env.events().publish(
+        (
+            symbol_short!("upgrade"),
+            symbol_short!("auth"),
+        ),
+        (
+            admin.clone(),
+            from.clone(),
+            to.clone(),
+        ),
+    );
+}
+
+
+fn emit_migration_started(
+    env: &Env,
+    from: &ContractVersion,
+    to: &ContractVersion,
+) {
+    env.events().publish(
+        (
+            symbol_short!("migration"),
+            symbol_short!("start"),
+        ),
+        (
+            from.clone(),
+            to.clone(),
+        ),
+    );
+}
+
+
+fn emit_migration_step(
+    env: &Env,
+    step: u32,
+) {
+    env.events().publish(
+        (
+            symbol_short!("migration"),
+            symbol_short!("step"),
+        ),
+        step,
+    );
+}
+
+
+fn emit_migration_complete(
+    env: &Env,
+    version: &ContractVersion,
+) {
+    env.events().publish(
+        (
+            symbol_short!("migration"),
+            symbol_short!("done"),
+        ),
+        version.clone(),
+    );
+}
+
+
+fn emit_upgrade_cancelled(
+    env: &Env,
+) {
+    env.events().publish(
+        (
+            symbol_short!("upgrade"),
+            symbol_short!("cancel"),
+        ),
+        true,
+    );
+}
+
+
+// ============================================================
+// CONTRACT
+// ============================================================
+
+#[contract]
+pub struct UpgradeableContract;
+
+
+// ============================================================
+// CONTRACT IMPLEMENTATION
+// ============================================================
+
+#[contractimpl]
+impl UpgradeableContract {
+
+    // ========================================================
+    // INITIALIZATION
+    // ========================================================
+
+    pub fn initialize(
+        env: Env,
+        admin: Address,
+    ) -> Result<(), ContractError> {
+
+        if env
+            .storage()
+            .instance()
+            .has(&DataKey::Admin)
+        {
+            return Err(
+                ContractError::InvalidMigration
+            );
+        }
+
+        admin.require_auth();
+
+        env.storage()
+            .instance()
+            .set(
+                &DataKey::Admin,
+                &admin,
+            );
+
+        env.storage()
+            .instance()
+            .set(
+                &DataKey::Version,
+                &ContractVersion::initial(),
+            );
+
+        env.storage()
+            .instance()
+            .set(
+                &DataKey::Paused,
+                &false,
+            );
+
+        env.storage()
+            .instance()
+            .set(
+                &DataKey::UpgradeAuthorized,
+                &false,
+            );
+
+        env.storage()
+            .instance()
+            .set(
+                &DataKey::TotalValue,
+                &0u128,
+            );
+
+        Ok(())
+    }
+
+
+    // ========================================================
+    // ADMIN
+    // ========================================================
+
+    fn require_admin(
+        env: &Env,
+        caller: &Address,
+    ) -> Result<(), ContractError> {
+
+        let admin:
+            Address =
+            env.storage()
+                .instance()
+                .get(&DataKey::Admin)
+                .ok_or(
+                    ContractError::NotInitialized
+                )?;
+
+        if admin != *caller {
+            return Err(
+                ContractError::Unauthorized
+            );
+        }
+
+        caller.require_auth();
+
+        Ok(())
+    }
+
+
+    // ========================================================
+    // READ CURRENT VERSION
+    // ========================================================
+
+    pub fn version(
+        env: Env,
+    ) -> Result<
+        ContractVersion,
+        ContractError,
+    > {
+
+        env.storage()
+            .instance()
+            .get(&DataKey::Version)
+            .ok_or(
+                ContractError::NotInitialized
+            )
+    }
+
+
+    // ========================================================
+    // READ MIGRATION STATE
+    // ========================================================
+
+    pub fn migration_state(
+        env: Env,
+    ) -> Option<MigrationState> {
+
+        env.storage()
+            .instance()
+            .get(&DataKey::Migration)
+    }
+
+
+    // ========================================================
+    // PAUSE CONTRACT
+    // ========================================================
+
+    pub fn pause(
+        env: Env,
+        caller: Address,
+    ) -> Result<(), ContractError> {
+
+        Self::require_admin(
+            &env,
+            &caller,
+        )?;
+
+        env.storage()
+            .instance()
+            .set(
+                &DataKey::Paused,
+                &true,
+            );
+
+        Ok(())
+    }
+
+
+    // ========================================================
+    // UNPAUSE CONTRACT
+    // ========================================================
+
+    pub fn unpause(
+        env: Env,
+        caller: Address,
+    ) -> Result<(), ContractError> {
+
+        Self::require_admin(
+            &env,
+            &caller,
+        )?;
+
+        env.storage()
+            .instance()
+            .set(
+                &DataKey::Paused,
+                &false,
+            );
+
+        Ok(())
+    }
+
+
+    // ========================================================
+    // PAUSED STATUS
+    // ========================================================
+
+    pub fn is_paused(
+        env: Env,
+    ) -> bool {
+
+        env.storage()
+            .instance()
+            .get(&DataKey::Paused)
+            .unwrap_or(false)
+    }
+
+
+    // ========================================================
+    // AUTHORIZE UPGRADE
+    // ========================================================
+
+    pub fn authorize_upgrade(
+        env: Env,
+        caller: Address,
+        target_version:
+            ContractVersion,
+    ) -> Result<(), ContractError> {
+
+        Self::require_admin(
+            &env,
+            &caller,
+        )?;
+
+        let current =
+            Self::version(
+                env.clone(),
+            )?;
+
+        let already_authorized:
+            bool =
+            env.storage()
+                .instance()
+                .get(
+                    &DataKey::UpgradeAuthorized
+                )
+                .unwrap_or(false);
+
+        if already_authorized {
+            return Err(
+                ContractError::
+                    UpgradeAlreadyAuthorized
+            );
+        }
+
+        /**
+         * No downgrade.
+         */
+        if target_version <= current {
+            return Err(
+                ContractError::
+                    DowngradeNotAllowed
+            );
+        }
+
+        /**
+         * Prevent nonsensical version jumps.
+         *
+         * A production system may allow major jumps if there
+         * are explicit migration paths. This implementation
+         * requires sequential migration.
+         */
+        if target_version.major >
+            current.major + 1
+        {
+            return Err(
+                ContractError::
+                    InvalidTargetVersion
+            );
+        }
+
+        env.storage()
+            .instance()
+            .set(
+                &DataKey::UpgradeAuthorized,
+                &true,
+            );
+
+        env.storage()
+            .instance()
+            .set(
+                &DataKey::TargetVersion,
+                &target_version,
+            );
+
+        env.storage()
+            .instance()
+            .set(
+                &DataKey::Migration,
+                &MigrationState {
+                    from_version:
+                        current.clone(),
+
+                    target_version:
+                        target_version.clone(),
+
+                    status:
+                        MigrationStatus::
+                            UpgradeAuthorized,
+
+                    step:
+                        0,
+
+                    total_steps:
+                        Self::migration_steps(
+                            &current,
+                            &target_version,
+                        ),
+
+                    started_at:
+                        0,
+
+                    completed_at:
+                        None,
+                },
+            );
+
+        emit_upgrade_authorized(
+            &env,
+            &caller,
+            &current,
+            &target_version,
+        );
+
+        Ok(())
+    }
+
+
+    // ========================================================
+    // CANCEL UPGRADE
+    // ========================================================
+
+    pub fn cancel_upgrade(
+        env: Env,
+        caller: Address,
+    ) -> Result<(), ContractError> {
+
+        Self::require_admin(
+            &env,
+            &caller,
+        )?;
+
+        let authorized:
+            bool =
+            env.storage()
+                .instance()
+                .get(
+                    &DataKey::UpgradeAuthorized
+                )
+                .unwrap_or(false);
+
+        if !authorized {
+            return Err(
+                ContractError::
+                    UpgradeNotAuthorized
+            );
+        }
+
+        env.storage()
+            .instance()
+            .set(
+                &DataKey::UpgradeAuthorized,
+                &false,
+            );
+
+        env.storage()
+            .instance()
+            .remove(
+                &DataKey::TargetVersion,
+            );
+
+        env.storage()
+            .instance()
+            .remove(
+                &DataKey::Migration,
+            );
+
+        emit_upgrade_cancelled(
+            &env,
+        );
+
+        Ok(())
+    }
+
+
+    // ========================================================
+    // START MIGRATION
+    // ========================================================
+
+    pub fn start_migration(
+        env: Env,
+        caller: Address,
+    ) -> Result<(), ContractError> {
+
+        Self::require_admin(
+            &env,
+            &caller,
+        )?;
+
+        let authorized:
+            bool =
+            env.storage()
+                .instance()
+                .get(
+                    &DataKey::UpgradeAuthorized
+                )
+                .unwrap_or(false);
+
+        if !authorized {
+            return Err(
+                ContractError::
+                    UpgradeNotAuthorized
+            );
+        }
+
+        let locked:
+            bool =
+            env.storage()
+                .instance()
+                .get(
+                    &DataKey::MigrationLock
+                )
+                .unwrap_or(false);
+
+        if locked {
+            return Err(
+                ContractError::
+                    MigrationAlreadyRunning
+            );
+        }
+
+        let mut migration:
+            MigrationState =
+            env.storage()
+                .instance()
+                .get(
+                    &DataKey::Migration
+                )
+                .ok_or(
+                    ContractError::
+                        MigrationRequired
+                )?;
+
+        migration.status =
+            MigrationStatus::Migrating;
+
+        migration.started_at =
+            env.ledger()
+                .timestamp();
+
+        env.storage()
+            .instance()
+            .set(
+                &DataKey::MigrationLock,
+                &true,
+            );
+
+        env.storage()
+            .instance()
+            .set(
+                &DataKey::Paused,
+                &true,
+            );
+
+        env.storage()
+            .instance()
+            .set(
+                &DataKey::Migration,
+                &migration,
+            );
+
+        emit_migration_started(
+            &env,
+            &migration.from_version,
+            &migration.target_version,
+        );
+
+        Ok(())
+    }
+
+
+    // ========================================================
+    // EXECUTE NEXT MIGRATION STEP
+    // ========================================================
+
+    pub fn migrate_next(
+        env: Env,
+        caller: Address,
+    ) -> Result<u32, ContractError> {
+
+        Self::require_admin(
+            &env,
+            &caller,
+        )?;
+
+        let mut migration:
+            MigrationState =
+            env.storage()
+                .instance()
+                .get(
+                    &DataKey::Migration
+                )
+                .ok_or(
+                    ContractError::
+                        MigrationNotInProgress
+                )?;
+
+        if migration.status !=
+            MigrationStatus::Migrating
+        {
+            return Err(
+                ContractError::
+                    MigrationNotInProgress
+            );
+        }
+
+        if migration.step >=
+            migration.total_steps
+        {
+            return Err(
+                ContractError::
+                    MigrationIncomplete
+            );
+        }
+
+        let next_step =
+            migration.step + 1;
+
+        /**
+         * Each migration step must be deterministic.
+         *
+         * In a real contract this section should dispatch to
+         * version-specific migration logic.
+         */
+        Self::execute_migration_step(
+            &env,
+            &migration.from_version,
+            &migration.target_version,
+            next_step,
+        )?;
+
+        migration.step =
+            next_step;
+
+        env.storage()
+            .instance()
+            .set(
+                &DataKey::Migration,
+                &migration,
+            );
+
+        emit_migration_step(
+            &env,
+            next_step,
+        );
+
+        Ok(next_step)
+    }
+
+
+    // ========================================================
+    // MIGRATION STEP DISPATCH
+    // ========================================================
+
+    fn execute_migration_step(
+        env: &Env,
+        from:
+            &ContractVersion,
+
+        to:
+            &ContractVersion,
+
+        step:
+            u32,
+    ) -> Result<(), ContractError> {
+
+        /**
+         * Example migration:
+         *
+         * v1.0.0 -> v1.1.0
+         *
+         * Step 1:
+         *     initialize newly introduced storage.
+         *
+         * Step 2:
+         *     migrate existing records.
+         *
+         * Step 3:
+         *     validate state.
+         *
+         * In a real project, replace this dispatch with the
+         * actual schema/data migration.
+         */
+
+        if from.major == 1 &&
+           from.minor == 0 &&
+           to.major == 1 &&
+           to.minor == 1
+        {
+            match step {
+
+                1 => {
+                    /**
+                     * Initialize new aggregate state.
+                     */
+                    if !env
+                        .storage()
+                        .instance()
+                        .has(
+                            &DataKey::TotalValue
+                        )
+                    {
+                        env.storage()
+                            .instance()
+                            .set(
+                                &DataKey::TotalValue,
+                                &0u128,
+                            );
+                    }
+                }
+
+                2 => {
+                    /**
+                     * Example data migration.
+                     *
+                     * This step is intentionally deterministic.
+                     */
+                    let total:
+                        u128 =
+                        env.storage()
+                            .instance()
+                            .get(
+                                &DataKey::TotalValue
+                            )
+                            .unwrap_or(0);
+
+                    env.storage()
+                        .instance()
+                        .set(
+                            &DataKey::TotalValue,
+                            &total,
+                        );
+                }
+
+                3 => {
+                    /**
+                     * Validation is performed by
+                     * validate_migration().
+                     */
+                }
+
+                _ => {
+                    return Err(
+                        ContractError::
+                            InvalidMigrationStep
+                    );
+                }
+            }
+
+            return Ok(());
+        }
+
+        /**
+         * No known migration path.
+         */
+        Err(
+            ContractError::
+                InvalidMigration
+        )
+    }
+
+
+    // ========================================================
+    // VALIDATE MIGRATION
+    // ========================================================
+
+    pub fn validate_migration(
+        env: Env,
+        caller: Address,
+    ) -> Result<(), ContractError> {
+
+        Self::require_admin(
+            &env,
+            &caller,
+        )?;
+
+        let mut migration:
+            MigrationState =
+            env.storage()
+                .instance()
+                .get(
+                    &DataKey::Migration
+                )
+                .ok_or(
+                    ContractError::
+                        MigrationNotInProgress
+                )?;
+
+        if migration.status !=
+            MigrationStatus::Migrating
+        {
+            return Err(
+                ContractError::
+                    MigrationNotInProgress
+            );
+        }
+
+        if migration.step !=
+            migration.total_steps
+        {
+            return Err(
+                ContractError::
+                    MigrationIncomplete
+            );
+        }
+
+        migration.status =
+            MigrationStatus::Validating;
+
+        env.storage()
+            .instance()
+            .set(
+                &DataKey::Migration,
+                &migration,
+            );
+
+        /**
+         * Verify the resulting state.
+         */
+        Self::validate_state(
+            &env,
+            &migration.target_version,
+        )?;
+
+        Ok(())
+    }
+
+
+    // ========================================================
+    // STATE VALIDATION
+    // ========================================================
+
+    fn validate_state(
+        env: &Env,
+        version:
+            &ContractVersion,
+    ) -> Result<(), ContractError> {
+
+        /**
+         * Example invariant:
+         *
+         * Total value must always exist.
+         */
+        if !env
+            .storage()
+            .instance()
+            .has(
+                &DataKey::TotalValue
+            )
+        {
+            return Err(
+                ContractError::
+                    ValidationFailed
+            );
+        }
+
+        /**
+         * Example version-specific validation.
+         */
+        if version.major == 0 {
+            return Err(
+                ContractError::
+                    InvalidVersion
+            );
+        }
+
+        Ok(())
+    }
+
+
+    // ========================================================
+    // COMPLETE MIGRATION
+    // ========================================================
+
+    pub fn complete_migration(
+        env: Env,
+        caller: Address,
+    ) -> Result<(), ContractError> {
+
+        Self::require_admin(
+            &env,
+            &caller,
+        )?;
+
+        let mut migration:
+            MigrationState =
+            env.storage()
+                .instance()
+                .get(
+                    &DataKey::Migration
+                )
+                .ok_or(
+                    ContractError::
+                        MigrationNotInProgress
+                )?;
+
+        if migration.status !=
+            MigrationStatus::Validating
+        {
+            return Err(
+                ContractError::
+                    MigrationNotInProgress
+            );
+        }
+
+        Self::validate_state(
+            &env,
+            &migration.target_version,
+        )?;
+
+        /**
+         * Activate the new version only after validation.
+         */
+        env.storage()
+            .instance()
+            .set(
+                &DataKey::Version,
+                &migration.target_version,
+            );
+
+        migration.status =
+            MigrationStatus::Complete;
+
+        migration.completed_at =
+            Some(
+                env.ledger()
+                    .timestamp(),
+            );
+
+        env.storage()
+            .instance()
+            .set(
+                &DataKey::Migration,
+                &migration,
+            );
+
+        env.storage()
+            .instance()
+            .set(
+                &DataKey::UpgradeAuthorized,
+                &false,
+            );
+
+        env.storage()
+            .instance()
+            .remove(
+                &DataKey::TargetVersion,
+            );
+
+        env.storage()
+            .instance()
+            .set(
+                &DataKey::MigrationLock,
+                &false,
+            );
+
+        /**
+         * Migration has completed successfully.
+         *
+         * The contract can now be unpaused.
+         */
+        env.storage()
+            .instance()
+            .set(
+                &DataKey::Paused,
+                &false,
+            );
+
+        emit_migration_complete(
+            &env,
+            &migration.target_version,
+        );
+
+        Ok(())
+    }
+
+
+    // ========================================================
+    // MIGRATION STEP COUNT
+    // ========================================================
+
+    fn migration_steps(
+        from:
+            &ContractVersion,
+
+        to:
+            &ContractVersion,
+    ) -> u32 {
+
+        /**
+         * Explicit migration map.
+         *
+         * v1.0.0 -> v1.1.0:
+         *
+         *     3 migration steps.
+         */
+        if from.major == 1 &&
+           from.minor == 0 &&
+           to.major == 1 &&
+           to.minor == 1
+        {
+            return 3;
+        }
+
+        0
+    }
+
+
+    // ========================================================
+    // EXAMPLE BUSINESS FUNCTION
+    // ========================================================
+
+    pub fn deposit(
+        env: Env,
+        user: Address,
+        amount: u128,
+    ) -> Result<(), ContractError> {
+
+        /**
+         * Business operations are disabled while paused.
+         */
+        if Self::is_paused(
+            env.clone(),
+        ) {
+            return Err(
+                ContractError::
+                    ContractPaused
+            );
+        }
+
+        user.require_auth();
+
+        let current:
+            u128 =
+            env.storage()
+                .instance()
+                .get(
+                    &DataKey::UserValue(
+                        user.clone(),
+                    ),
+                )
+                .unwrap_or(0);
+
+        let updated =
+            current
+                .checked_add(amount)
+                .ok_or(
+                    ContractError::
+                        ValidationFailed
+                )?;
+
+        env.storage()
+            .instance()
+            .set(
+                &DataKey::UserValue(
+                    user,
+                ),
+                &updated,
+            );
+
+        let total:
+            u128 =
+            env.storage()
+                .instance()
+                .get(
+                    &DataKey::TotalValue
+                )
+                .unwrap_or(0);
+
+        let new_total =
+            total
+                .checked_add(amount)
+                .ok_or(
+                    ContractError::
+                        ValidationFailed
+                )?;
+
+        env.storage()
+            .instance()
+            .set(
+                &DataKey::TotalValue,
+                &new_total,
+            );
+
+        Ok(())
+    }
+
+
+    // ========================================================
+    // USER BALANCE
+    // ========================================================
+
+    pub fn balance(
+        env: Env,
+        user: Address,
+    ) -> u128 {
+
+        env.storage()
+            .instance()
+            .get(
+                &DataKey::UserValue(
+                    user,
+                ),
+            )
+            .unwrap_or(0)
+    }
+
+
+    // ========================================================
+    // TOTAL VALUE
+    // ========================================================
+
+    pub fn total_value(
+        env: Env,
+    ) -> u128 {
+
+        env.storage()
+            .instance()
+            .get(
+                &DataKey::TotalValue
+            )
+            .unwrap_or(0)
+    }
+}
+
+
+// ============================================================
+// TEST HELPERS
+// ============================================================
+
+fn setup_contract()
+    -> (
+        Env,
+        Address,
+    )
+{
+    let env =
+        Env::default();
+
+    let admin =
+        Address::generate(
+            &env,
+        );
+
+    let contract_id =
+        env.register(
+            UpgradeableContract,
+            (),
+        );
+
+    let client =
+        UpgradeableContractClient::new(
+            &env,
+            &contract_id,
+        );
+
+    client
+        .initialize(
+            &admin,
+        )
+        .unwrap();
+
+    (
+        env,
+        admin,
+    )
+}
+
+
+// ============================================================
+// TEST: INITIAL VERSION
+// ============================================================
+
+#[test]
+fn test_initial_version() {
+
+    let (
+        env,
+        _admin,
+    ) =
+        setup_contract();
+
+    /**
+     * Re-register contract to obtain client in test.
+     */
+    let contract_id =
+        env.register(
+            UpgradeableContract,
+            (),
+        );
+
+    let client =
+        UpgradeableContractClient::new(
+            &env,
+            &contract_id,
+        );
+
+    let version =
+        client
+            .version()
+            .unwrap();
+
+    assert_eq!(
+        version,
+        ContractVersion::initial(),
+    );
+}
+
+
+// ============================================================
+// TEST: UPGRADE AUTHORIZATION
+// ============================================================
+
+#[test]
+fn test_upgrade_authorization() {
+
+    let env =
+        Env::default();
+
+    let admin =
+        Address::generate(
+            &env,
+        );
+
+    let contract_id =
+        env.register(
+            UpgradeableContract,
+            (),
+        );
+
+    let client =
+        UpgradeableContractClient::new(
+            &env,
+            &contract_id,
+        );
+
+    client
+        .initialize(
+            &admin,
+        )
+        .unwrap();
+
+    let target =
+        ContractVersion::new(
+            1,
+            1,
+            0,
+        );
+
+    client
+        .authorize_upgrade(
+            &admin,
+            &target,
+        )
+        .unwrap();
+
+    let migration =
+        client
+            .migration_state()
+            .unwrap();
+
+    assert_eq!(
+        migration.status,
+        MigrationStatus::
+            UpgradeAuthorized,
+    );
+
+    assert_eq!(
+        migration.from_version,
+        ContractVersion::initial(),
+    );
+
+    assert_eq!(
+        migration.target_version,
+        target,
+    );
+}
+
+
+// ============================================================
+// TEST: UNAUTHORIZED UPGRADE
+// ============================================================
+
+#[test]
+fn test_unauthorized_upgrade() {
+
+    let env =
+        Env::default();
+
+    let admin =
+        Address::generate(
+            &env,
+        );
+
+    let attacker =
+        Address::generate(
+            &env,
+        );
+
+    let contract_id =
+        env.register(
+            UpgradeableContract,
+            (),
+        );
+
+    let client =
+        UpgradeableContractClient::new(
+            &env,
+            &contract_id,
+        );
+
+    client
+        .initialize(
+            &admin,
+        )
+        .unwrap();
+
+    let target =
+        ContractVersion::new(
+            1,
+            1,
+            0,
+        );
+
+    let result =
+        client
+            .try_authorize_upgrade(
+                &attacker,
+                &target,
+            );
+
+    assert!(
+        result.is_err()
+    );
+}
+
+
+// ============================================================
+// TEST: DOWNGRADE
+// ============================================================
+
+#[test]
+fn test_downgrade_is_rejected() {
+
+    let env =
+        Env::default();
+
+    let admin =
+        Address::generate(
+            &env,
+        );
+
+    let contract_id =
+        env.register(
+            UpgradeableContract,
+            (),
+        );
+
+    let client =
+        UpgradeableContractClient::new(
+            &env,
+            &contract_id,
+        );
+
+    client
+        .initialize(
+            &admin,
+        )
+        .unwrap();
+
+    let target =
+        ContractVersion::new(
+            0,
+            9,
+            0,
+        );
+
+    let result =
+        client
+            .try_authorize_upgrade(
+                &admin,
+                &target,
+            );
+
+    assert!(
+        result.is_err()
+    );
+}
+
+
+// ============================================================
+// TEST: CANNOT AUTHORIZE TWICE
+// ============================================================
+
+#[test]
+fn test_duplicate_upgrade_authorization() {
+
+    let env =
+        Env::default();
+
+    let admin =
+        Address::generate(
+            &env,
+        );
+
+    let contract_id =
+        env.register(
+            UpgradeableContract,
+            (),
+        );
+
+    let client =
+        UpgradeableContractClient::new(
+            &env,
+            &contract_id,
+        );
+
+    client
+        .initialize(
+            &admin,
+        )
+        .unwrap();
+
+    let target =
+        ContractVersion::new(
+            1,
+            1,
+            0,
+        );
+
+    client
+        .authorize_upgrade(
+            &admin,
+            &target,
+        )
+        .unwrap();
+
+    let result =
+        client
+            .try_authorize_upgrade(
+                &admin,
+                &target,
+            );
+
+    assert!(
+        result.is_err()
+    );
+}
+
+
+// ============================================================
+// TEST: START MIGRATION
+// ============================================================
+
+#[test]
+fn test_start_migration() {
+
+    let env =
+        Env::default();
+
+    let admin =
+        Address::generate(
+            &env,
+        );
+
+    let contract_id =
+        env.register(
+            UpgradeableContract,
+            (),
+        );
+
+    let client =
+        UpgradeableContractClient::new(
+            &env,
+            &contract_id,
+        );
+
+    client
+        .initialize(
+            &admin,
+        )
+        .unwrap();
+
+    let target =
+        ContractVersion::new(
+            1,
+            1,
+            0,
+        );
+
+    client
+        .authorize_upgrade(
+            &admin,
+            &target,
+        )
+        .unwrap();
+
+    client
+        .start_migration(
+            &admin,
+        )
+        .unwrap();
+
+    assert!(
+        client.is_paused()
+    );
+
+    let migration =
+        client
+            .migration_state()
+            .unwrap();
+
+    assert_eq!(
+        migration.status,
+        MigrationStatus::Migrating,
+    );
+}
+
+
+// ============================================================
+// TEST: MIGRATION STEPS
+// ============================================================
+
+#[test]
+fn test_migration_steps() {
+
+    let env =
+        Env::default();
+
+    let admin =
+        Address::generate(
+            &env,
+        );
+
+    let contract_id =
+        env.register(
+            UpgradeableContract,
+            (),
+        );
+
+    let client =
+        UpgradeableContractClient::new(
+            &env,
+            &contract_id,
+        );
+
+    client
+        .initialize(
+            &admin,
+        )
+        .unwrap();
+
+    let target =
+        ContractVersion::new(
+            1,
+            1,
+            0,
+        );
+
+    client
+        .authorize_upgrade(
+            &admin,
+            &target,
+        )
+        .unwrap();
+
+    client
+        .start_migration(
+            &admin,
+        )
+        .unwrap();
+
+    let first =
+        client
+            .migrate_next(
+                &admin,
+            )
+            .unwrap();
+
+    assert_eq!(
+        first,
+        1,
+    );
+
+    let second =
+        client
+            .migrate_next(
+                &admin,
+            )
+            .unwrap();
+
+    assert_eq!(
+        second,
+        2,
+    );
+
+    let third =
+        client
+            .migrate_next(
+                &admin,
+            )
+            .unwrap();
+
+    assert_eq!(
+        third,
+        3,
+    );
+}
+
+
+// ============================================================
+// TEST: BUSINESS FUNCTIONS PAUSED
+// ============================================================
+
+#[test]
+fn test_business_function_blocked_during_migration() {
+
+    let env =
+        Env::default();
+
+    let admin =
+        Address::generate(
+            &env,
+        );
+
+    let user =
+        Address::generate(
+            &env,
+        );
+
+    let contract_id =
+        env.register(
+            UpgradeableContract,
+            (),
+        );
+
+    let client =
+        UpgradeableContractClient::new(
+            &env,
+            &contract_id,
+        );
+
+    client
+        .initialize(
+            &admin,
+        )
+        .unwrap();
+
+    client
+        .authorize_upgrade(
+            &admin,
+            &ContractVersion::new(
+                1,
+                1,
+                0,
+            ),
+        )
+        .unwrap();
+
+    client
+        .start_migration(
+            &admin,
+        )
+        .unwrap();
+
+    let result =
+        client
+            .try_deposit(
+                &user,
+                &100,
+            );
+
+    assert!(
+        result.is_err()
+    );
+}
+
+
+// ============================================================
+// TEST: INCOMPLETE MIGRATION
+// ============================================================
+
+#[test]
+fn test_incomplete_migration_cannot_complete() {
+
+    let env =
+        Env::default();
+
+    let admin =
+        Address::generate(
+            &env,
+        );
+
+    let contract_id =
+        env.register(
+            UpgradeableContract,
+            (),
+        );
+
+    let client =
+        UpgradeableContractClient::new(
+            &env,
+            &contract_id,
+        );
+
+    client
+        .initialize(
+            &admin,
+        )
+        .unwrap();
+
+    client
+        .authorize_upgrade(
+            &admin,
+            &ContractVersion::new(
+                1,
+                1,
+                0,
+            ),
+        )
+        .unwrap();
+
+    client
+        .start_migration(
+            &admin,
+        )
+        .unwrap();
+
+    let result =
+        client
+            .try_validate_migration(
+                &admin,
+            );
+
+    assert!(
+        result.is_err()
+    );
+}
+
+
+// ============================================================
+// TEST: COMPLETE MIGRATION
+// ============================================================
+
+#[test]
+fn test_complete_migration() {
+
+    let env =
+        Env::default();
+
+    let admin =
+        Address::generate(
+            &env,
+        );
+
+    let contract_id =
+        env.register(
+            UpgradeableContract,
+            (),
+        );
+
+    let client =
+        UpgradeableContractClient::new(
+            &env,
+            &contract_id,
+        );
+
+    client
+        .initialize(
+            &admin,
+        )
+        .unwrap();
+
+    let target =
+        ContractVersion::new(
+            1,
+            1,
+            0,
+        );
+
+    client
+        .authorize_upgrade(
+            &admin,
+            &target,
+        )
+        .unwrap();
+
+    client
+        .start_migration(
+            &admin,
+        )
+        .unwrap();
+
+    client
+        .migrate_next(
+            &admin,
+        )
+        .unwrap();
+
+    client
+        .migrate_next(
+            &admin,
+        )
+        .unwrap();
+
+    client
+        .migrate_next(
+            &admin,
+        )
+        .unwrap();
+
+    client
+        .validate_migration(
+            &admin,
+        )
+        .unwrap();
+
+    client
+        .complete_migration(
+            &admin,
+        )
+        .unwrap();
+
+    let version =
+        client
+            .version()
+            .unwrap();
+
+    assert_eq!(
+        version,
+        target,
+    );
+
+    assert!(
+        !client.is_paused()
+    );
+}
+
+
+// ============================================================
+// TEST: UPGRADE CANCELLATION
+// ============================================================
+
+#[test]
+fn test_cancel_upgrade() {
+
+    let env =
+        Env::default();
+
+    let admin =
+        Address::generate(
+            &env,
+        );
+
+    let contract_id =
+        env.register(
+            UpgradeableContract,
+            (),
+        );
+
+    let client =
+        UpgradeableContractClient::new(
+            &env,
+            &contract_id,
+        );
+
+    client
+        .initialize(
+            &admin,
+        )
+        .unwrap();
+
+    client
+        .authorize_upgrade(
+            &admin,
+            &ContractVersion::new(
+                1,
+                1,
+                0,
+            ),
+        )
+        .unwrap();
+
+    client
+        .cancel_upgrade(
+            &admin,
+        )
+        .unwrap();
+
+    assert!(
+        client
+            .migration_state()
+            .is_none()
+    );
+}
+
+
+// ============================================================
+// TEST: DATA PRESERVATION
+// ============================================================
+
+#[test]
+fn test_state_survives_migration() {
+
+    let env =
+        Env::default();
+
+    let admin =
+        Address::generate(
+            &env,
+        );
+
+    let user =
+        Address::generate(
+            &env,
+        );
+
+    let contract_id =
+        env.register(
+            UpgradeableContract,
+            (),
+        );
+
+    let client =
+        UpgradeableContractClient::new(
+            &env,
+            &contract_id,
+        );
+
+    client
+        .initialize(
+            &admin,
+        )
+        .unwrap();
+
+    /**
+     * Create state before upgrade.
+     */
+    client
+        .deposit(
+            &user,
+            &500,
+        )
+        .unwrap();
+
+    assert_eq!(
+        client.balance(
+            &user,
+        ),
+        500,
+    );
+
+    assert_eq!(
+        client.total_value(),
+        500,
+    );
+
+    /**
+     * Begin migration.
+     */
+    client
+        .authorize_upgrade(
+            &admin,
+            &ContractVersion::new(
+                1,
+                1,
+                0,
+            ),
+        )
+        .unwrap();
+
+    client
+        .start_migration(
+            &admin,
+        )
+        .unwrap();
+
+    client
+        .migrate_next(
+            &admin,
+        )
+        .unwrap();
+
+    client
+        .migrate_next(
+            &admin,
+        )
+        .unwrap();
+
+    client
+        .migrate_next(
+            &admin,
+        )
+        .unwrap();
+
+    client
+        .validate_migration(
+            &admin,
+        )
+        .unwrap();
+
+    client
+        .complete_migration(
+            &admin,
+        )
+        .unwrap();
+
+    /**
+     * State must remain intact.
+     */
+    assert_eq!(
+        client.balance(
+            &user,
+        ),
+        500,
+    );
+
+    assert_eq!(
+        client.total_value(),
+        500,
+    );
+}
+
+
+// ============================================================
+// PRODUCTION UPGRADE RUNBOOK
+// ============================================================
+//
+// The following operational process should accompany the
+// contract implementation.
+//
+// ------------------------------------------------------------
+//
+// PHASE 1 — PREPARATION
+//
+// 1. Create the new contract implementation.
+//
+// 2. Define a new semantic version.
+//
+// Example:
+//
+//     1.0.0 -> 1.1.0
+//
+// 3. Document every storage change.
+//
+// 4. Identify:
+//      - new fields
+//      - removed fields
+//      - renamed fields
+//      - changed types
+//      - changed invariants
+//      - changed authorization rules
+//
+// 5. Write migration code.
+//
+// 6. Write tests against:
+//      - old state
+//      - migrated state
+//      - new contract behavior
+//
+// ------------------------------------------------------------
+//
+// PHASE 2 — TESTNET
+//
+// Deploy the new contract implementation to testnet.
+//
+// Run:
+//
+//     cargo test
+//
+// Then execute the migration using realistic state.
+//
+// Verify:
+//
+//     old state
+//         ==
+//     migrated state
+//
+// for every state invariant that must remain unchanged.
+//
+// ------------------------------------------------------------
+//
+// PHASE 3 — AUTHORIZE
+//
+// The admin/multisig authorizes:
+//
+//     current version
+//             |
+//             v
+//     target version
+//
+// The authorization must be auditable.
+//
+// ------------------------------------------------------------
+//
+// PHASE 4 — PAUSE
+//
+// If the migration modifies critical state:
+//
+//     pause contract
+//
+// This prevents writes from occurring while migration is
+// executing.
+//
+// ------------------------------------------------------------
+//
+// PHASE 5 — UPGRADE
+//
+// Deploy/install the new contract implementation.
+//
+// The exact deployment mechanism depends on the Soroban
+// deployment architecture being used by the project.
+//
+// ------------------------------------------------------------
+//
+// PHASE 6 — MIGRATION
+//
+// Execute:
+//
+//     start_migration()
+//
+// Then:
+//
+//     migrate_next()
+//
+// until:
+//
+//     step == total_steps
+//
+// ------------------------------------------------------------
+//
+// PHASE 7 — VALIDATION
+//
+// Execute:
+//
+//     validate_migration()
+//
+// Verify:
+//
+//     balances
+//     ownership
+//     permissions
+//     totals
+//     configuration
+//     indexes
+//     invariants
+//
+// ------------------------------------------------------------
+//
+// PHASE 8 — ACTIVATION
+//
+// Execute:
+//
+//     complete_migration()
+//
+// This:
+//
+//     - updates the version
+//     - clears upgrade authorization
+//     - releases migration lock
+//     - unpauses the contract
+//
+// ------------------------------------------------------------
+//
+// PHASE 9 — MONITORING
+//
+// Monitor:
+//
+//     upgrade events
+//     migration events
+//     contract errors
+//     unexpected state changes
+//     authorization failures
+//
+// ------------------------------------------------------------
+//
+// ROLLBACK STRATEGY
+//
+// Smart-contract rollback is NOT equivalent to rolling back
+// an ordinary server deployment.
+//
+// Once state has been migrated, simply deploying older code
+// may not restore compatibility.
+//
+// Therefore:
+//
+//     DO NOT rely on "deploy old code" as the primary rollback.
+//
+// Instead:
+//
+//     1. Stop the migration.
+//     2. Keep the contract paused if necessary.
+//     3. Identify the corrupted/invalid state.
+//     4. Deploy a forward-fix migration.
+//     5. Validate the corrected state.
+//     6. Resume operations.
+//
+// Every migration should therefore have:
+//
+//     - pre-migration snapshot/audit
+//     - deterministic migration logic
+//     - post-migration validation
+//     - forward recovery procedure
+//
+// ------------------------------------------------------------
+//
+// VERSIONING POLICY
+//
+// PATCH:
+//
+//     1.0.0 -> 1.0.1
+//
+// Suitable for changes that do not require persistent-state
+// migration.
+//
+// MINOR:
+//
+//     1.0.0 -> 1.1.0
+//
+// Suitable for backward-compatible functionality that may
+// introduce new storage.
+//
+// MAJOR:
+//
+//     1.x.x -> 2.0.0
+//
+// Suitable for incompatible state or behavioral changes.
+//
+// Major upgrades should require:
+//
+//     - explicit migration specification
+//     - stronger governance
+//     - testnet validation
+//     - multisig authorization
+//     - post-upgrade verification
+//
+// ------------------------------------------------------------
+//
+// SECURITY REQUIREMENTS
+//
+// [x] Only authorized admin can authorize upgrades.
+//
+// [x] Unauthorized callers cannot start migrations.
+//
+// [x] Downgrades are rejected.
+//
+// [x] Duplicate upgrade authorization is rejected.
+//
+// [x] Migration execution is locked.
+//
+// [x] Contract is paused during migration.
+//
+// [x] Migration steps execute sequentially.
+//
+// [x] Incomplete migrations cannot be finalized.
+//
+// [x] State is validated before activation.
+//
+// [x] Version changes only after successful validation.
+//
+// [x] Upgrade authorization is cleared after completion.
+//
+// [x] Migration lock is cleared after completion.
+//
+// [x] Business operations are blocked while paused.
+//
+// [x] Migration events are emitted.
+//
+// [x] Existing state is preserved by the example migration.
+//
+// [x] Tests cover authorization.
+//
+// [x] Tests cover downgrade protection.
+//
+// [x] Tests cover migration execution.
+//
+// [x] Tests cover incomplete migrations.
+//
+// [x] Tests cover successful completion.
+//
+// [x] Tests cover state preservation.
+//
+// [x] Tests cover cancellation.
+//
+// ------------------------------------------------------------
+//
+// RECOMMENDED PRODUCTION GOVERNANCE
+//
+// For high-value contracts, the upgrade authority should not
+// normally be a single externally owned account.
+//
+// Prefer:
+//
+//     multisig
+//         |
+//         v
+//     upgrade proposal
+//         |
+//         v
+//     review period
+//         |
+//         v
+//     approval threshold
+//         |
+//         v
+//     upgrade execution
+//
+// For particularly sensitive contracts, consider:
+//
+//     timelock
+//     emergency pause
+//     independent migration review
+//     testnet rehearsal
+//     invariant testing
+//     post-upgrade monitoring
+//
+// ============================================================
+//
+// ACCEPTANCE CRITERIA
+//
+// [x] Contract version is explicitly stored.
+//
+// [x] Upgrade authorization is explicit.
+//
+// [x] Unauthorized upgrades are rejected.
+//
+// [x] Downgrades are rejected.
+//
+// [x] Migration state is persisted.
+//
+// [x] Migration progress is persisted.
+//
+// [x] Migration steps are deterministic.
+//
+// [x] Migration execution is serialized.
+//
+// [x] Contract pauses during migration.
+//
+// [x] State validation occurs before activation.
+//
+// [x] Contract version changes only after validation.
+//
+// [x] Upgrade authorization is cleared after success.
+//
+// [x] Migration lock is released after success.
+//
+// [x] Migration events are emitted.
+//
+// [x] Existing state is preserved.
+//
+// [x] Failed/incomplete migration cannot be marked complete.
+//
+// [x] Test coverage is included.
+//
+// [x] Production runbook is documented.
+//
+// [x] Rollback/forward-fix strategy is documented.
+//
+// [x] Semantic versioning policy is documented.
+//
+// [x] Multisig/timelock governance is recommended.
+//
+// ============================================================
