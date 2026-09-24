@@ -4,6 +4,8 @@
 
 A full-stack decentralized application (dApp) built on the **Stellar Network** using **Soroban Smart Contracts**. This marketplace allows administrators to tokenize real-world assets into fractional shares for users to purchase.
 
+**Quick help:** [FAQ](docs/FAQ.md) | [Troubleshooting](docs/troubleshooting.md)
+
 ## Walkthrough Demo
 
 [![Watch the Demo](assets/play_banner.png)](assets/marketplace_demo.webp)
