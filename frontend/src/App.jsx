@@ -21,6 +21,7 @@ import styles from './App.module.css';
 import Breadcrumbs from './components/Breadcrumbs/Breadcrumbs';
 import PriceRangeFilter from './components/PriceRangeFilter/PriceRangeFilter';
 import ConnectionStatusIndicator from './components/ConnectionStatusIndicator/ConnectionStatusIndicator';
+import ErrorBoundary from './components/ErrorBoundary/ErrorBoundary';
 import { useTheme } from './context/ThemeContext';
 
 import { useWalletStore } from './store/useWalletStore';
@@ -800,16 +801,24 @@ function App() {
       <ToastContainer />
 
       {view === 'portfolio' ? (
-        <PortfolioPage />
+        <ErrorBoundary moduleName="Portfolio Dashboard">
+          <PortfolioPage />
+        </ErrorBoundary>
       ) : view === 'admin' ? (
-        <AdminPage
-          publicKey={publicKey}
-          onDisconnect={() => setView('marketplace')}
-        />
+        <ErrorBoundary moduleName="Admin Dashboard">
+          <AdminPage
+            publicKey={publicKey}
+            onDisconnect={() => setView('marketplace')}
+          />
+        </ErrorBoundary>
       ) : view === 'history' ? (
-        <TransactionHistory />
+        <ErrorBoundary moduleName="Transaction History">
+          <TransactionHistory />
+        </ErrorBoundary>
       ) : view === 'profile' ? (
-        <ProfilePage />
+        <ErrorBoundary moduleName="Profile Dashboard">
+          <ProfilePage />
+        </ErrorBoundary>
       ) : (
         <>
       {/* Wallet errors (connection issues) */}
@@ -823,189 +832,201 @@ function App() {
             {CONTRACT_ID === 'C...' && <Alert variant="warning">{CONTRACT_NOT_CONFIGURED}</Alert>}
 
             {/* ── Asset Metadata Card ─────────────────────────────────────────── */}
-            {loadingMeta ? (
-              <Card>
-                <div className={styles.assetImageWrapper}>
-                  <Skeleton
-                    variant="rect"
-                    height="100%"
-                    style={{ borderRadius: 'var(--radius-sm)' }}
-                  />
-                </div>
-                <Skeleton
-                  variant="text"
-                  height="1.4em"
-                  width="55%"
-                  style={{ marginBottom: 'var(--spacing-xs)' }}
-                />
-                <Skeleton
-                  variant="text"
-                  height="1em"
-                  width="35%"
-                  style={{ marginBottom: 'var(--spacing-sm)' }}
-                />
-                <Skeleton variant="text" lines={3} style={{ marginBottom: 'var(--spacing-md)' }} />
-                <Skeleton variant="text" height="1.1em" width="40%" />
-              </Card>
-            ) : assetMeta ? (
-              <Card hoverable>
-                {assetMeta.imageUrl && (
+            <ErrorBoundary moduleName="Featured Asset">
+              {loadingMeta ? (
+                <Card>
                   <div className={styles.assetImageWrapper}>
-                    <OptimizedImage
-                      src={assetMeta.imageUrl}
-                      alt={assetMeta.title}
-                      eager
-                      ratio="16/9"
-                      className={styles.assetImage}
-                      sizes="(max-width: 768px) 100vw, 600px"
+                    <Skeleton
+                      variant="rect"
+                      height="100%"
+                      style={{ borderRadius: 'var(--radius-sm)' }}
                     />
                   </div>
-                )}
-                {assetMeta.assetType === 'real_estate' && assetMeta.imageUrl && (
-                  <VirtualTour imageUrl={assetMeta.imageUrl} title={assetMeta.title} />
-                )}
-                <h2 className={styles.assetTitle}>{assetMeta.title}</h2>
-                <p className={styles.assetLocation}>
-                  <svg
-                    width="14"
-                    height="14"
-                    viewBox="0 0 24 24"
-                    fill="none"
-                    stroke="currentColor"
-                    strokeWidth="2"
-                    strokeLinecap="round"
-                    strokeLinejoin="round"
-                    className={styles.svgIcon}
-                  >
-                    <path d="M21 10c0 7-9 13-9 13s-9-6-9-13a9 9 0 0 1 18 0z" />
-                    <circle cx="12" cy="10" r="3" />
-                  </svg>
-                  {assetMeta.location}
-                </p>
-                <p className={styles.assetDescription}>{assetMeta.description}</p>
-                {assetMeta.totalValuation && (
-                  <div className={styles.assetValuation}>
+                  <Skeleton
+                    variant="text"
+                    height="1.4em"
+                    width="55%"
+                    style={{ marginBottom: 'var(--spacing-xs)' }}
+                  />
+                  <Skeleton
+                    variant="text"
+                    height="1em"
+                    width="35%"
+                    style={{ marginBottom: 'var(--spacing-sm)' }}
+                  />
+                  <Skeleton variant="text" lines={3} style={{ marginBottom: 'var(--spacing-md)' }} />
+                  <Skeleton variant="text" height="1.1em" width="40%" />
+                </Card>
+              ) : assetMeta ? (
+                <Card hoverable>
+                  {assetMeta.imageUrl && (
+                    <div className={styles.assetImageWrapper}>
+                      <OptimizedImage
+                        src={assetMeta.imageUrl}
+                        alt={assetMeta.title}
+                        eager
+                        ratio="16/9"
+                        className={styles.assetImage}
+                        sizes="(max-width: 768px) 100vw, 600px"
+                      />
+                    </div>
+                  )}
+                  {assetMeta.assetType === 'real_estate' && assetMeta.imageUrl && (
+                    <VirtualTour imageUrl={assetMeta.imageUrl} title={assetMeta.title} />
+                  )}
+                  <h2 className={styles.assetTitle}>{assetMeta.title}</h2>
+                  <p className={styles.assetLocation}>
                     <svg
-                      width="16"
-                      height="16"
+                      width="14"
+                      height="14"
                       viewBox="0 0 24 24"
                       fill="none"
                       stroke="currentColor"
-                      strokeWidth="2.5"
+                      strokeWidth="2"
                       strokeLinecap="round"
                       strokeLinejoin="round"
                       className={styles.svgIcon}
                     >
-                      <line x1="12" y1="1" x2="12" y2="23" />
-                      <path d="M17 5H9.5a3.5 3.5 0 0 0 0 7h5a3.5 3.5 0 0 1 0 7H6" />
+                      <path d="M21 10c0 7-9 13-9 13s-9-6-9-13a9 9 0 0 1 18 0z" />
+                      <circle cx="12" cy="10" r="3" />
                     </svg>
-                    <span>Valuation: {assetMeta.totalValuation}</span>
-                  </div>
-                )}
-              </Card>
-            ) : null}
+                    {assetMeta.location}
+                  </p>
+                  <p className={styles.assetDescription}>{assetMeta.description}</p>
+                  {assetMeta.totalValuation && (
+                    <div className={styles.assetValuation}>
+                      <svg
+                        width="16"
+                        height="16"
+                        viewBox="0 0 24 24"
+                        fill="none"
+                        stroke="currentColor"
+                        strokeWidth="2.5"
+                        strokeLinecap="round"
+                        strokeLinejoin="round"
+                        className={styles.svgIcon}
+                      >
+                        <line x1="12" y1="1" x2="12" y2="23" />
+                        <path d="M17 5H9.5a3.5 3.5 0 0 0 0 7h5a3.5 3.5 0 0 1 0 7H6" />
+                      </svg>
+                      <span>Valuation: {assetMeta.totalValuation}</span>
+                    </div>
+                  )}
+                </Card>
+              ) : null}
+            </ErrorBoundary>
 
             {/* ── Asset Listing Grid ─────────────────────────────────────────── */}
-            <section className={`${styles.section} tour-asset-selection`}>
-              <h2 className={styles.sectionTitle}>{t('marketplace.availableAssets')}</h2>
+            <ErrorBoundary moduleName="Available Assets">
+              <section className={`${styles.section} tour-asset-selection`}>
+                <h2 className={styles.sectionTitle}>{t('marketplace.availableAssets')}</h2>
 
-              {/* Issue #373 — Price range filter sidebar */}
-              {(() => {
-                // Derive price bounds from loaded assets (assets may have a `price` field
-                // or fall back to 0 when the on-chain price is not embedded in metadata)
-                const prices = assets
-                  .map((a) => Number(a.price ?? a.pricePerShare ?? 0))
-                  .filter((p) => p > 0);
-                const absoluteMin = prices.length ? Math.min(...prices) : 0;
-                const absoluteMax = prices.length ? Math.max(...prices) : 10_000;
+                {/* Issue #373 — Price range filter sidebar */}
+                {(() => {
+                  // Derive price bounds from loaded assets (assets may have a `price` field
+                  // or fall back to 0 when the on-chain price is not embedded in metadata)
+                  const prices = assets
+                    .map((a) => Number(a.price ?? a.pricePerShare ?? 0))
+                    .filter((p) => p > 0);
+                  const absoluteMin = prices.length ? Math.min(...prices) : 0;
+                  const absoluteMax = prices.length ? Math.max(...prices) : 10_000;
 
-                // Effective filter bounds (default to full range when not set)
-                const [filterMin, filterMax] = priceRangeFilter ?? [absoluteMin, absoluteMax];
+                  // Effective filter bounds (default to full range when not set)
+                  const [filterMin, filterMax] = priceRangeFilter ?? [absoluteMin, absoluteMax];
 
-                // Client-side filtered assets (Issue #373)
-                const filteredAssets =
-                  priceRangeFilter && prices.length > 0
-                    ? assets.filter((a) => {
-                        const p = Number(a.price ?? a.pricePerShare ?? 0);
-                        // If an asset has no price data, include it so it stays visible
-                        if (p === 0) return true;
-                        return p >= filterMin && p <= filterMax;
-                      })
-                    : assets;
+                  // Client-side filtered assets (Issue #373)
+                  const filteredAssets =
+                    priceRangeFilter && prices.length > 0
+                      ? assets.filter((a) => {
+                          const p = Number(a.price ?? a.pricePerShare ?? 0);
+                          // If an asset has no price data, include it so it stays visible
+                          if (p === 0) return true;
+                          return p >= filterMin && p <= filterMax;
+                        })
+                      : assets;
 
-                return (
-                  <>
-                    {/* Show price filter only once at least one asset has price data */}
-                    {prices.length > 0 && (
-                      <PriceRangeFilter
-                        min={absoluteMin}
-                        max={absoluteMax}
-                        value={[filterMin, filterMax]}
-                        onChange={(range) => setPriceRangeFilter(range)}
-                        onClear={() => setPriceRangeFilter(null)}
+                  return (
+                    <>
+                      {/* Show price filter only once at least one asset has price data */}
+                      {prices.length > 0 && (
+                        <PriceRangeFilter
+                          min={absoluteMin}
+                          max={absoluteMax}
+                          value={[filterMin, filterMax]}
+                          onChange={(range) => setPriceRangeFilter(range)}
+                          onClear={() => setPriceRangeFilter(null)}
+                        />
+                      )}
+
+                      <AssetGrid
+                        assets={filteredAssets}
+                        loading={isFetchingAssets}
+                        error={assetsError}
+                        isEmpty={!isFetchingAssets && !assetsError && filteredAssets.length === 0}
+                        hasNextPage={hasNextPage}
+                        onLoadMore={() => fetchNextPage(API_URL)}
+                        loadingMore={isFetchingAssets}
                       />
-                    )}
-
-                    <AssetGrid
-                      assets={filteredAssets}
-                      loading={isFetchingAssets}
-                      error={assetsError}
-                      isEmpty={!isFetchingAssets && !assetsError && filteredAssets.length === 0}
-                      hasNextPage={hasNextPage}
-                      onLoadMore={() => fetchNextPage(API_URL)}
-                      loadingMore={isFetchingAssets}
-                    />
-                  </>
-                );
-              })()}
-            </section>
+                    </>
+                  );
+                })()}
+              </section>
+            </ErrorBoundary>
 
             {/* ── News & Updates Section (Issue #191) ─────────────────────────── */}
-            <Suspense fallback={<LazyFallback />}>
-              <NewsSection />
-            </Suspense>
+            <ErrorBoundary moduleName="Marketplace News">
+              <Suspense fallback={<LazyFallback />}>
+                <NewsSection />
+              </Suspense>
+            </ErrorBoundary>
 
             <div className="tour-order-book">
             {/* ── Holdings + Buy Card ─────────────────────────────────────────── */}
             {publicKey && (
-              <BuyShares
-                shares={shares}
-                loadingShares={loadingShares}
-                loadingBuy={loadingBuy}
-                onBuy={handleBuyShares}
-                acceptedTokens={acceptedTokens}
-                paymentToken={paymentToken}
-                onTokenChange={setPaymentToken}
-                availableShares={availableShares}
-                totalShares={totalShares}
-                pricePerShare={pricePerShare}
-                buyAmount={buyAmount}
-                onBuyAmountChange={setBuyAmount}
-              />
+              <ErrorBoundary moduleName="Share Purchase">
+                <BuyShares
+                  shares={shares}
+                  loadingShares={loadingShares}
+                  loadingBuy={loadingBuy}
+                  onBuy={handleBuyShares}
+                  acceptedTokens={acceptedTokens}
+                  paymentToken={paymentToken}
+                  onTokenChange={setPaymentToken}
+                  availableShares={availableShares}
+                  totalShares={totalShares}
+                  pricePerShare={pricePerShare}
+                  buyAmount={buyAmount}
+                  onBuyAmountChange={setBuyAmount}
+                />
+              </ErrorBoundary>
             )}
 
             </div>
 
             {/* ── Price Alerts (Issue #188) ─────────────────────────────────────── */}
             {CONTRACT_ID.length >= 50 && pricePerShare != null && (
-              <Suspense fallback={<LazyFallback />}>
-                <PriceAlert
-                  contractId={CONTRACT_ID}
-                  assetTitle={assetMeta?.title || 'Asset'}
-                  currentPrice={pricePerShare}
-                />
-              </Suspense>
+              <ErrorBoundary moduleName="Price Alerts">
+                <Suspense fallback={<LazyFallback />}>
+                  <PriceAlert
+                    contractId={CONTRACT_ID}
+                    assetTitle={assetMeta?.title || 'Asset'}
+                    currentPrice={pricePerShare}
+                  />
+                </Suspense>
+              </ErrorBoundary>
             )}
 
             {/* ── Investment Calculator (Issue #189) ───────────────────────────── */}
-            <Suspense fallback={<LazyFallback />}>
-              <InvestmentCalculator
-                pricePerShare={pricePerShare}
-                assetTitle={assetMeta?.title || 'Asset'}
-                totalShares={totalShares}
-                availableShares={availableShares}
-              />
-            </Suspense>
+            <ErrorBoundary moduleName="Investment Calculator">
+              <Suspense fallback={<LazyFallback />}>
+                <InvestmentCalculator
+                  pricePerShare={pricePerShare}
+                  assetTitle={assetMeta?.title || 'Asset'}
+                  totalShares={totalShares}
+                  availableShares={availableShares}
+                />
+              </Suspense>
+            </ErrorBoundary>
           </>
         )}
       </Suspense>

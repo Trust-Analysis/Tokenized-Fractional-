@@ -109,25 +109,128 @@ export default class ErrorBoundary extends Component {
       errorId: null,
       timestamp: null,
     });
+    if (this.props.onReset) {
+      this.props.onReset();
+    }
+  }
+
+  renderDefaultFallback() {
+    const { moduleName, routeName } = this.props;
+    const name = moduleName || routeName || 'Component';
+    const errorMsg = this.state.error?.message || 'An unexpected error occurred while rendering this section.';
+
+    return (
+      <div
+        role="alert"
+        aria-live="assertive"
+        data-testid="error-boundary-fallback"
+        style={{
+          padding: '1.25rem',
+          margin: '0.75rem 0',
+          borderRadius: '8px',
+          border: '1px solid var(--color-border-danger, #ef5350)',
+          backgroundColor: 'var(--color-bg-danger-subtle, rgba(239, 83, 80, 0.08))',
+          color: 'var(--color-text, #212121)',
+          display: 'flex',
+          flexDirection: 'column',
+          gap: '0.75rem',
+        }}
+      >
+        <div style={{ display: 'flex', alignItems: 'center', gap: '0.5rem' }}>
+          <span style={{ fontSize: '1.25rem', lineHeight: 1 }} aria-hidden="true">⚠️</span>
+          <strong style={{ fontSize: '1rem', fontWeight: 600 }}>
+            Unable to display {name}
+          </strong>
+        </div>
+        <p style={{ margin: 0, fontSize: '0.875rem', opacity: 0.9 }}>
+          {errorMsg}
+        </p>
+        {this.state.errorId && (
+          <small style={{ fontSize: '0.75rem', opacity: 0.7, fontFamily: 'monospace' }}>
+            Reference: {this.state.errorId}
+          </small>
+        )}
+        <div style={{ display: 'flex', gap: '0.5rem', marginTop: '0.25rem' }}>
+          <button
+            type="button"
+            onClick={this.resetError}
+            data-testid="error-boundary-reload-btn"
+            style={{
+              padding: '0.4rem 0.9rem',
+              borderRadius: '6px',
+              border: '1px solid var(--color-primary, #1976d2)',
+              backgroundColor: 'var(--color-primary, #1976d2)',
+              color: '#ffffff',
+              fontSize: '0.85rem',
+              fontWeight: 500,
+              cursor: 'pointer',
+              transition: 'background-color 0.2s',
+            }}
+          >
+            Reload {name}
+          </button>
+        </div>
+      </div>
+    );
   }
 
   render() {
     if (this.state.hasError) {
-      const Fallback = this.props.fallback;
-      return (
-        <Fallback
-          error={this.state.error}
-          componentStack={this.state.componentStack}
-          errorInfo={this.state.errorInfo}
-          errorId={this.state.errorId}
-          timestamp={this.state.timestamp}
-          severity={this.state.severity}
-          routeName={this.props.routeName}
-          resetError={this.resetError}
-        />
-      );
+      const { fallback } = this.props;
+
+      if (!fallback) {
+        return this.renderDefaultFallback();
+      }
+
+      if (typeof fallback === 'function') {
+        // May be a component class/function or a render prop
+        const FallbackComponent = fallback;
+        const fallbackProps = {
+          error: this.state.error,
+          componentStack: this.state.componentStack,
+          errorInfo: this.state.errorInfo,
+          errorId: this.state.errorId,
+          timestamp: this.state.timestamp,
+          severity: this.state.severity,
+          routeName: this.props.routeName || this.props.moduleName,
+          moduleName: this.props.moduleName || this.props.routeName,
+          resetError: this.resetError,
+        };
+
+        // If it's a class or function component, instantiate it; otherwise call it
+        try {
+          if (FallbackComponent.prototype && FallbackComponent.prototype.isReactComponent) {
+            return <FallbackComponent {...fallbackProps} />;
+          }
+          return FallbackComponent(fallbackProps);
+        } catch {
+          return <FallbackComponent {...fallbackProps} />;
+        }
+      }
+
+      // If a pre-rendered React element was passed as fallback
+      return fallback;
     }
 
     return this.props.children;
   }
+}
+
+/**
+ * Higher-Order Component to wrap any component in an ErrorBoundary
+ *
+ * @param {React.ComponentType} Component - Target component to wrap
+ * @param {Object} options - Error boundary props (moduleName, fallback, onError, etc.)
+ */
+export function withErrorBoundary(ComponentToWrap, options = {}) {
+  const displayName = ComponentToWrap.displayName || ComponentToWrap.name || 'Component';
+  function WrappedWithErrorBoundary(props) {
+    return (
+      <ErrorBoundary moduleName={options.moduleName || displayName} {...options}>
+        <ComponentToWrap {...props} />
+      </ErrorBoundary>
+    );
+  }
+  WrappedWithErrorBoundary.displayName = `WithErrorBoundary(${displayName})`;
+  return WrappedWithErrorBoundary;
 }

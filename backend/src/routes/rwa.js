@@ -17,7 +17,14 @@ import {
 } from '../services/dataService.js';
 import { fireWebhooks } from '../services/webhookService.js';
 import { cacheGet, cacheSet, cacheDel } from '../../cache.js';
-import { uploadToIPFS, getIPFSFileUrl, unpinFromIPFS } from '../../ipfs.js';
+import {
+  uploadToIPFS,
+  getIPFSFileUrl,
+  unpinFromIPFS,
+  pinJSONToIPFS,
+  pinAssetMetadataToIPFS,
+} from '../../ipfs.js';
+import { storeMetadataCidOnContract } from '../services/sorobanMetadataService.js';
 import { validateContractId, validateRwaBody, validateWebhookBody } from '../validators/rwaValidator.js';
 import { ASSET_STATUS, WEBHOOK_EVENTS } from '../config.js';
 
@@ -418,6 +425,27 @@ v1.post('/rwa', adminAuth, writeLimiter, async (req, res) => {
     createdAt:      metadata.createdAt || now,
     updatedAt:      now,
   };
+
+  // If tokenize or pinToIPFS requested during standard asset creation
+  if (metadata.tokenize === true || metadata.pinToIPFS === true) {
+    try {
+      const ipfsResult = await pinAssetMetadataToIPFS({
+        metadata: { contractId, ...data[contractId] },
+      });
+      data[contractId].metadataCid = ipfsResult.metadataCid;
+      data[contractId].metadataUri = ipfsResult.metadataUri;
+      if (ipfsResult.imageUrl) data[contractId].imageUrl = ipfsResult.imageUrl;
+
+      await storeMetadataCidOnContract({
+        contractId,
+        cid: ipfsResult.metadataCid,
+        uri: ipfsResult.metadataUri,
+      });
+    } catch (err) {
+      req.log?.warn?.({ err, contractId }, 'IPFS metadata pinning during asset creation skipped/failed');
+    }
+  }
+
   saveData(data);
 
   cacheDel('rwa:all').catch(() => {});
@@ -426,6 +454,121 @@ v1.post('/rwa', adminAuth, writeLimiter, async (req, res) => {
 
   req.log?.info({ contractId }, 'Asset created/updated');
   res.status(201).json({ contractId, ...data[contractId] });
+});
+
+// ── POST /rwa/tokenize ────────────────────────────────────────────────────────
+/**
+ * @openapi
+ * /api/v1/rwa/tokenize:
+ *   post:
+ *     tags: [Assets]
+ *     summary: Tokenize asset with immutable IPFS metadata & Soroban on-chain storage
+ *     description: Pins associated appraisals, images, and JSON metadata to IPFS and stores the resulting CID on the Soroban smart contract. Admin only.
+ *     security: [{ ApiKeyAuth: [] }]
+ */
+v1.post('/rwa/tokenize', adminAuth, writeLimiter, upload.fields([
+  { name: 'image', maxCount: 1 },
+  { name: 'appraisals', maxCount: 10 },
+]), async (req, res) => {
+  const { contractId, ...metadata } = req.body;
+
+  if (!contractId || !validateContractId(contractId)) {
+    return res.status(400).json({ error: 'Invalid contract ID. Must start with C and be at least 50 characters.' });
+  }
+
+  const validationError = validateRwaBody(metadata);
+  if (validationError) return res.status(400).json({ error: validationError });
+
+  try {
+    const imageFile = req.files?.image?.[0];
+    const appraisalFiles = req.files?.appraisals || [];
+
+    const appraisalsList = appraisalFiles.map(file => ({
+      buffer: file.buffer,
+      name: file.originalname,
+      mimeType: file.mimetype,
+      size: file.size,
+    }));
+
+    // 1. Pin image, appraisals, and JSON metadata to IPFS (Issue #516)
+    const ipfsResult = await pinAssetMetadataToIPFS({
+      metadata: { contractId, ...metadata },
+      imageBuffer: imageFile ? imageFile.buffer : null,
+      imageFileName: imageFile ? imageFile.originalname : 'image.jpg',
+      appraisals: appraisalsList,
+    });
+
+    // 2. Store resulting CID on Soroban smart contract (Issue #516)
+    const onChainResult = await storeMetadataCidOnContract({
+      contractId,
+      cid: ipfsResult.metadataCid,
+      uri: ipfsResult.metadataUri,
+    });
+
+    // 3. Save asset data with IPFS CIDs and on-chain status
+    const data = loadData();
+    const now = new Date().toISOString();
+    data[contractId] = {
+      id: metadata.id || contractId,
+      title: metadata.title,
+      location: metadata.location,
+      description: metadata.description,
+      assetType: metadata.assetType,
+      imageUrl: ipfsResult.imageUrl || metadata.imageUrl || '',
+      imageCid: ipfsResult.imageCid || null,
+      metadataCid: ipfsResult.metadataCid,
+      metadataUri: ipfsResult.metadataUri,
+      totalValuation: metadata.totalValuation || '',
+      documents: ipfsResult.documents,
+      status: ASSET_STATUS.PENDING,
+      onChainSynced: onChainResult.success,
+      submittedAt: now,
+      createdAt: metadata.createdAt || now,
+      updatedAt: now,
+    };
+    saveData(data);
+
+    cacheDel('rwa:all', cacheKey(contractId)).catch(() => {});
+    syncSearchIndex();
+    fireWebhooks(WEBHOOK_EVENTS.CREATED, { contractId, ...data[contractId] }).catch(() => {});
+
+    req.log?.info({ contractId, metadataCid: ipfsResult.metadataCid }, 'Asset tokenized with IPFS & Soroban');
+    res.status(201).json({
+      contractId,
+      metadataCid: ipfsResult.metadataCid,
+      metadataUri: ipfsResult.metadataUri,
+      onChainResult,
+      ...data[contractId],
+    });
+  } catch (err) {
+    req.log?.error({ err, contractId }, 'Tokenization failed');
+    res.status(502).json({ error: `Tokenization failed: ${err.message}` });
+  }
+});
+
+// ── GET /rwa/:contractId/ipfs-metadata ────────────────────────────────────────
+v1.get('/rwa/:contractId/ipfs-metadata', async (req, res) => {
+  const { contractId } = req.params;
+  const data = loadData();
+  const asset = data[contractId];
+  if (!asset) return res.status(404).json({ error: 'Asset metadata not found' });
+  if (!asset.metadataCid) return res.status(404).json({ error: 'Asset has not been tokenized on IPFS yet' });
+
+  const url = getIPFSFileUrl(asset.metadataCid);
+
+  if (req.query.format === 'json' || req.headers.accept?.includes('application/json')) {
+    try {
+      const response = await fetch(url, { signal: AbortSignal.timeout(10000) });
+      if (response.ok) {
+        const metadata = await response.json();
+        return res.json(metadata);
+      }
+    } catch {
+      // Fall through to redirect
+    }
+  }
+
+  res.redirect(302, url);
 });
 
 // ── DELETE /rwa/:contractId ───────────────────────────────────────────────────

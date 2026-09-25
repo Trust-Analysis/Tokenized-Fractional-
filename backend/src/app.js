@@ -16,7 +16,6 @@ import pinoHttp from 'pino-http';
 import * as Sentry from '@sentry/node';
 import swaggerUi from 'swagger-ui-express';
 import swaggerJSDoc from 'swagger-jsdoc';
-import prometheus from 'express-prom-bundle';
 import { validateEnv } from '../env.js';
 
 import {
@@ -35,6 +34,7 @@ import { apiLimiter } from './middleware/rateLimiter.js';
 import { createAdminAuth, adminAuth as legacyAdminAuth } from './middleware/auth.js';
 import {
   createTieredRateLimiter,
+  createGraphQLRateLimiter,
   initializeRedisLimiter,
   closeRedisLimiter,
   extractWalletMiddleware,
@@ -86,6 +86,7 @@ import {
   problemDetailsErrorHandler,
 } from './middleware/problemDetails.js';
 import { stitchingMetrics, getSchemaVersion, stitchingConfig } from '../graphql-stitching.js';
+import { metricsMiddleware, metricsHandler } from './services/metricsService.js';
 
 validateEnv();
 
@@ -100,22 +101,6 @@ if (SENTRY_DSN && process.env.NODE_ENV !== 'test') {
   });
   logger.info({ dsnPrefix: SENTRY_DSN.slice(0, 30) }, 'Sentry initialized');
 }
-
-// ── Prometheus metrics ────────────────────────────────────────────────────────
-// Only initialize prometheus metrics in non-test environments to avoid registry conflicts
-const metricsMiddleware =
-  NODE_ENV === 'test'
-    ? null
-    : prometheus({
-        includeMethod: true,
-        includePath: true,
-        includeStatusCode: true,
-        includeUp: true,
-        customLabels: { app: 'rwa-backend' },
-        promClient: {
-          collectDefaultMetrics: NODE_ENV === 'test' ? false : { timeout: 5000 },
-        },
-      });
 
 // ── App factory ───────────────────────────────────────────────────────────────
 export const app = express();
@@ -204,6 +189,8 @@ export async function initializeApp() {
       transactionService,
       logger,
     });
+    // Tiered rate limiting for GraphQL (Issue #464: anonymous 100 req/min, auth 1000 req/min)
+    app.use('/graphql', createGraphQLRateLimiter());
     app.use('/graphql', federatedGraphQL.middleware);
     logger.info('GraphQL Federation gateway initialized at /graphql');
 
@@ -285,22 +272,9 @@ app.use('/api/', createIPAccessControl());
 app.use('/api/', createEndpointRateLimiter());
 app.use('/graphql', createEndpointRateLimiter());
 
-// Prometheus metrics (skip in test mode to avoid metric registration conflicts)
-if (NODE_ENV !== 'test') {
-  app.use(metricsMiddleware);
-  app.get('/metrics', async (_req, res) => {
-    res.setHeader('Content-Type', metricsMiddleware.promClient.register.contentType);
-    res.send(await metricsMiddleware.promClient.register.metrics());
-  });
-} else {
-  // In test mode, return a mock metrics response
-  app.get('/metrics', async (_req, res) => {
-    res.setHeader('Content-Type', 'text/plain; charset=utf-8');
-    res.send(
-      '# HELP http_requests_total Total HTTP requests\n# TYPE http_requests_total counter\nhttp_requests_total{method="GET", status="200"} 0\n',
-    );
-  });
-}
+// Prometheus metrics for backend observability (Issue #518)
+app.use(metricsMiddleware);
+app.get('/metrics', metricsHandler);
 
 // Swagger docs — generated from JSDoc @openapi annotations + static spec (Issue #295)
 const fullSwaggerSpec = swaggerJSDoc({

@@ -27,7 +27,9 @@ import { GeoLimiter } from './src/services/geoLimiter.js';
 import { RateLimitAnalytics } from './src/services/rateLimitAnalytics.js';
 import { BillingService } from './src/services/billingService.js';
 import { createRateLimiter } from './src/middleware/rateLimiter.js';
+import { createGraphQLRateLimiter } from './src/middleware/tieredRateLimiter.js';
 import { createRateLimitAdminRoutes } from './src/routes/rateLimitAdmin.js';
+import { metricsMiddleware, metricsHandler } from './src/services/metricsService.js';
 import { applyCursorPagination, CursorError, paginationErrorHandler, SORT_FIELDS } from './src/services/cursorPagination.js';
 import { parsePaginationParams } from './src/middleware/cursorPagination.js';
 import {
@@ -411,6 +413,10 @@ if (process.env.SENTRY_DSN) {
   app.use(Sentry.Handlers.requestHandler());
   app.use(Sentry.Handlers.tracingHandler());
 }
+
+// Prometheus metrics for backend observability (Issue #518)
+app.use(metricsMiddleware);
+app.get('/metrics', metricsHandler);
 
 app.use(helmet());
 app.use(cors({ origin: CORS_ORIGINS, methods: ['GET', 'POST', 'PATCH', 'DELETE'], allowedHeaders: ['Content-Type', 'x-api-key', 'X-Request-ID'] }));
@@ -1690,6 +1696,8 @@ v1.get('/ws/stats', (req, res) => {
 // Mount the GraphQL Yoga server at /api/graphql. A deterministic ETag
 // middleware runs first so unchanged vault queries short-circuit to
 // `304 Not Modified`, bypassing the resolvers and data-layer reads.
+// Issue #464: Tiered rate limiting for GraphQL (100 req/min anon, 1000 req/min auth)
+app.use('/api/graphql', createGraphQLRateLimiter());
 app.use('/api/graphql', createETagMiddleware({ logger }));
 app.use('/api/graphql', yoga);
 
@@ -1753,7 +1761,8 @@ async function initializeApolloServer(expressApp, httpServer) {
     await server.start();
     logger.info('Apollo Server started');
 
-    // Mount GraphQL middleware at /graphql
+    // Mount GraphQL middleware at /graphql (Issue #464: Tiered rate limiting)
+    expressApp.use('/graphql', createGraphQLRateLimiter());
     expressApp.use(
       '/graphql',
       expressMiddleware(server, {

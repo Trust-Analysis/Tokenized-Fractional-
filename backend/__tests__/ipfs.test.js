@@ -16,7 +16,14 @@ global.fetch = mockFetch;
 process.env.PINATA_JWT = 'test-jwt-token';
 process.env.PINATA_GATEWAY = 'https://gateway.pinata.cloud';
 
-import { uploadToIPFS, getIPFSFileUrl, unpinFromIPFS } from '../ipfs.js';
+import {
+  uploadToIPFS,
+  getIPFSFileUrl,
+  unpinFromIPFS,
+  pinJSONToIPFS,
+  pinAssetMetadataToIPFS,
+} from '../ipfs.js';
+import { storeMetadataCidOnContract } from '../src/services/sorobanMetadataService.js';
 
 // ---------------------------------------------------------------------------
 // Helpers
@@ -140,5 +147,117 @@ describe('unpinFromIPFS', () => {
     await expect(unpinFromIPFS(FAKE_CID)).rejects.toThrow('PINATA_JWT is not configured');
 
     process.env.PINATA_JWT = original;
+  });
+});
+
+// ---------------------------------------------------------------------------
+// pinJSONToIPFS (Issue #516)
+// ---------------------------------------------------------------------------
+describe('pinJSONToIPFS', () => {
+  beforeEach(() => {
+    mockFetch.mockReset();
+  });
+
+  test('pins JSON object to Pinata and returns CID, url, and URI', async () => {
+    mockFetch.mockResolvedValueOnce(
+      mockResponse({ IpfsHash: FAKE_CID, PinSize: 250, Timestamp: '2026-01-01' })
+    );
+
+    const metadata = {
+      title: 'Luxury Villa',
+      description: 'Decentralized RWA asset',
+      location: 'Miami, FL',
+    };
+
+    const result = await pinJSONToIPFS(metadata, 'Luxury Villa');
+
+    expect(result.cid).toBe(FAKE_CID);
+    expect(result.url).toBe(`https://gateway.pinata.cloud/ipfs/${FAKE_CID}`);
+    expect(result.uri).toBe(`ipfs://${FAKE_CID}`);
+
+    const [url, options] = mockFetch.mock.calls[0];
+    expect(url).toBe('https://api.pinata.cloud/pinning/pinJSONToIPFS');
+    expect(options.method).toBe('POST');
+    const parsedBody = JSON.parse(options.body);
+    expect(parsedBody.pinataContent).toEqual(metadata);
+    expect(parsedBody.pinataOptions.cidVersion).toBe(1);
+  });
+
+  test('throws when Pinata JSON upload fails', async () => {
+    mockFetch.mockResolvedValueOnce(mockResponse({ error: 'Server error' }, 500));
+
+    await expect(
+      pinJSONToIPFS({ test: true }, 'Test')
+    ).rejects.toThrow('Pinata JSON pin failed (500)');
+  });
+});
+
+// ---------------------------------------------------------------------------
+// pinAssetMetadataToIPFS (Issue #516)
+// ---------------------------------------------------------------------------
+describe('pinAssetMetadataToIPFS', () => {
+  beforeEach(() => {
+    mockFetch.mockReset();
+  });
+
+  test('pins image, appraisals, and JSON metadata returning immutable CID', async () => {
+    const IMAGE_CID = 'bafyimagecid1234567890';
+    const APPRAISAL_CID = 'bafyappraisalcid1234567890';
+    const METADATA_CID = 'bafymetadatacid1234567890';
+
+    // 1st call: pin image
+    mockFetch.mockResolvedValueOnce(mockResponse({ IpfsHash: IMAGE_CID }));
+    // 2nd call: pin appraisal document
+    mockFetch.mockResolvedValueOnce(mockResponse({ IpfsHash: APPRAISAL_CID }));
+    // 3rd call: pin JSON metadata
+    mockFetch.mockResolvedValueOnce(mockResponse({ IpfsHash: METADATA_CID }));
+
+    const result = await pinAssetMetadataToIPFS({
+      metadata: {
+        contractId: 'CAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA',
+        title: 'Penthouse Suite',
+        location: 'Paris, France',
+        totalValuation: '$2,500,000',
+      },
+      imageBuffer: Buffer.from('image bytes'),
+      imageFileName: 'villa.png',
+      appraisals: [
+        { buffer: Buffer.from('appraisal pdf'), name: 'certified_appraisal.pdf' },
+      ],
+    });
+
+    expect(result.metadataCid).toBe(METADATA_CID);
+    expect(result.metadataUri).toBe(`ipfs://${METADATA_CID}`);
+    expect(result.imageCid).toBe(IMAGE_CID);
+    expect(result.documents.length).toBe(1);
+    expect(result.documents[0].cid).toBe(APPRAISAL_CID);
+    expect(result.canonicalMetadata.image).toBe(`ipfs://${IMAGE_CID}`);
+  });
+});
+
+// ---------------------------------------------------------------------------
+// storeMetadataCidOnContract (Issue #516)
+// ---------------------------------------------------------------------------
+describe('storeMetadataCidOnContract', () => {
+  test('stores resulting CID for Soroban smart contract', async () => {
+    const CONTRACT_ID = 'CAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA';
+    const result = await storeMetadataCidOnContract({
+      contractId: CONTRACT_ID,
+      cid: FAKE_CID,
+    });
+
+    expect(result.success).toBe(true);
+    expect(result.contractId).toBe(CONTRACT_ID);
+    expect(result.cid).toBe(FAKE_CID);
+    expect(result.uri).toBe(`ipfs://${FAKE_CID}`);
+  });
+
+  test('validates inputs', async () => {
+    await expect(storeMetadataCidOnContract({ contractId: '', cid: FAKE_CID })).rejects.toThrow(
+      'Valid contractId is required'
+    );
+    await expect(storeMetadataCidOnContract({ contractId: 'C123', cid: '' })).rejects.toThrow(
+      'IPFS CID or URI is required'
+    );
   });
 });
