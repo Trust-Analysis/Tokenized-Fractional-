@@ -66,6 +66,16 @@ const cache = new InMemoryCache({
             return [...existing, ...incoming];
           },
         },
+        getOrderHistory: {
+          keyArgs: ['assetId'],
+          merge(existing, incoming) {
+            if (!existing) return incoming;
+            return {
+              ...incoming,
+              orders: [...(existing.orders || []), ...(incoming.orders || [])],
+            };
+          },
+        },
       },
     },
     Order: {

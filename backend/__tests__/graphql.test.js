@@ -219,3 +219,68 @@ describe('GraphQL Error Handling', () => {
     expect(res.status).toBe(400);
   });
 });
+
+describe('Issue #616: getOrderHistory resolver with limit and cursor', () => {
+  test('POST /api/graphql - query getOrderHistory with limit argument', async () => {
+    const query = `
+      query {
+        getOrderHistory(limit: 5) {
+          orders {
+            id
+            price
+            amount
+            type
+          }
+          pageInfo {
+            hasNextPage
+            hasPreviousPage
+            startCursor
+            endCursor
+          }
+          totalCount
+        }
+      }
+    `;
+    const res = await request(app)
+      .post('/api/graphql')
+      .send({ query });
+    expect(res.status).toBe(200);
+    expect(res.body.data.getOrderHistory.orders.length).toBe(5);
+    expect(res.body.data.getOrderHistory.pageInfo.hasNextPage).toBe(true);
+    expect(res.body.data.getOrderHistory.pageInfo.endCursor).toBeDefined();
+  });
+
+  test('POST /api/graphql - query getOrderHistory with cursor pagination', async () => {
+    // 1. Fetch first page
+    const query1 = `
+      query {
+        getOrderHistory(limit: 3) {
+          orders { id }
+          pageInfo { endCursor hasNextPage }
+        }
+      }
+    `;
+    const res1 = await request(app).post('/api/graphql').send({ query: query1 });
+    const cursor = res1.body.data.getOrderHistory.pageInfo.endCursor;
+    const firstPageIds = res1.body.data.getOrderHistory.orders.map((o) => o.id);
+
+    // 2. Fetch second page with cursor
+    const query2 = `
+      query($cursor: String) {
+        getOrderHistory(limit: 3, cursor: $cursor) {
+          orders { id }
+          pageInfo { hasNextPage hasPreviousPage }
+        }
+      }
+    `;
+    const res2 = await request(app)
+      .post('/api/graphql')
+      .send({ query: query2, variables: { cursor } });
+    expect(res2.status).toBe(200);
+    const secondPageIds = res2.body.data.getOrderHistory.orders.map((o) => o.id);
+    expect(secondPageIds.length).toBe(3);
+    // Ensure distinct paginated items
+    expect(firstPageIds.some((id) => secondPageIds.includes(id))).toBe(false);
+  });
+});
+

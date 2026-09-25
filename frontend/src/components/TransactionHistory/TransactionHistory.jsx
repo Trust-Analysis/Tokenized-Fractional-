@@ -5,6 +5,7 @@ import Skeleton from '../Skeleton/Skeleton';
 import Button from '../Button/Button';
 import Badge from '../Badge/Badge';
 import { useWalletStore } from '../../store/useWalletStore';
+import { formatOrderTimestamp } from '../../utils/i18nFormatters';
 import styles from './TransactionHistory.module.css';
 
 const HORIZON_URL = 'https://horizon-testnet.stellar.org';
@@ -14,7 +15,7 @@ const NETWORK_PASSPHRASE = import.meta.env.VITE_NETWORK_PASSPHRASE || '';
 const EXPLORER_NETWORK = NETWORK_PASSPHRASE === 'Public Global Stellar Network ; September 2015' ? 'public' : 'testnet';
 
 function formatDate(iso) {
-  return new Date(iso).toLocaleString(undefined, {
+  return formatOrderTimestamp(iso, undefined, {
     month: 'short',
     day: 'numeric',
     hour: '2-digit',

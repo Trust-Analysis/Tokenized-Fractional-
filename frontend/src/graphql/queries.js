@@ -108,3 +108,29 @@ export function buildAssetsVariables({ first = 20, after = null, assetType = nul
   if (search) filter.search = search;
   return { filter };
 }
+
+// Issue #616: Infinite Scrolling for Order Book History
+export const GET_ORDER_HISTORY = `
+  query GetOrderHistory($assetId: ID, $limit: Int, $cursor: String) {
+    getOrderHistory(assetId: $assetId, limit: $limit, cursor: $cursor) {
+      orders {
+        id
+        assetId
+        userId
+        type
+        amount
+        price
+        status
+        createdAt
+        txHash
+      }
+      pageInfo {
+        hasNextPage
+        hasPreviousPage
+        startCursor
+        endCursor
+      }
+      totalCount
+    }
+  }
+`;
