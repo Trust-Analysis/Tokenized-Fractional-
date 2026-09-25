@@ -87,6 +87,26 @@ export const typeDefs = `#graphql
     remaining: Float!
   }
 
+  """Order History Item"""
+  type OrderHistoryItem {
+    id: ID!
+    assetId: String
+    userId: String
+    type: String
+    amount: Float
+    price: Float
+    status: String
+    createdAt: String
+    txHash: String
+  }
+
+  """Paginated order history connection"""
+  type OrderHistoryConnection {
+    orders: [OrderHistoryItem!]!
+    pageInfo: PageInfo!
+    totalCount: Int!
+  }
+
   type Query {
     """Retrieve a single asset by contract ID (cost: 1)"""
     asset(contractId: ID!): Asset
@@ -96,6 +116,9 @@ export const typeDefs = `#graphql
 
     """Retrieve complexity analysis for the current query (cost: 0)"""
     queryComplexity: ComplexityInfo!
+
+    """Retrieve order book history with cursor-based pagination (Issue #616)"""
+    getOrderHistory(assetId: ID, limit: Int, cursor: String): OrderHistoryConnection!
   }
 `;
 
@@ -198,6 +221,51 @@ export const resolvers = {
         fieldCount: 0,
         maxAllowed: parseFloat(process.env.GRAPHQL_MAX_COMPLEXITY || '100'),
         remaining: parseFloat(process.env.GRAPHQL_MAX_COMPLEXITY || '100'),
+      };
+    },
+
+    getOrderHistory: (_, { assetId, limit = 20, cursor }) => {
+      const pageSize = Math.min(100, Math.max(1, limit || 20));
+      const startIndex = decodeCursor(cursor);
+
+      const data = loadData();
+      let orders = [];
+
+      if (Array.isArray(data.orders)) {
+        orders = data.orders;
+      } else {
+        const targetAsset = assetId || 'default-asset';
+        orders = Array.from({ length: 60 }, (_, i) => ({
+          id: `order-${targetAsset}-${i + 1}`,
+          assetId: targetAsset,
+          userId: `user-${(i % 5) + 1}`,
+          type: i % 2 === 0 ? 'buy' : 'sell',
+          amount: (i + 1) * 10,
+          price: 100 + (i * 1.5),
+          status: 'completed',
+          createdAt: new Date(Date.now() - i * 60000).toISOString(),
+          txHash: `0x${Buffer.from(`tx-${targetAsset}-${i}`).toString('hex').padEnd(64, '0')}`,
+        }));
+      }
+
+      if (assetId) {
+        orders = orders.filter((o) => o.assetId === assetId);
+      }
+
+      const totalCount = orders.length;
+      const sliced = orders.slice(startIndex, startIndex + pageSize);
+      const hasNextPage = startIndex + pageSize < totalCount;
+      const hasPreviousPage = startIndex > 0;
+
+      return {
+        orders: sliced,
+        pageInfo: {
+          hasNextPage,
+          hasPreviousPage,
+          startCursor: sliced.length > 0 ? encodeCursor(startIndex) : null,
+          endCursor: sliced.length > 0 ? encodeCursor(startIndex + sliced.length - 1) : null,
+        },
+        totalCount,
       };
     },
   },

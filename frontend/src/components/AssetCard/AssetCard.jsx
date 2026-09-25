@@ -1,9 +1,10 @@
-import React, { useState, memo } from 'react';
+import React, { useState, memo, useMemo } from 'react';
 import OptimizedImage from '../OptimizedImage/OptimizedImage';
 import Card from '../Card/Card';
 import PriceHistoryModal from '../PriceHistoryChart/PriceHistoryModal';
 import { useComparisonStore } from '../../store/useComparisonStore';
 import { useFavoritesStore } from '../../store/useFavoritesStore';
+import { formatLocalCurrency } from '../../utils/i18nFormatters';
 import PulsingDot from '../PulsingDot/PulsingDot';
 import LiveBadge from '../LiveBadge/LiveBadge';
 import styles from './AssetCard.module.css';
@@ -59,6 +60,19 @@ function AssetCard({ asset, isLive = false }) {
     e.stopPropagation();
     toggleFavorite(asset);
   };
+
+  const displayValuation = useMemo(() => {
+    if (!totalValuation) return '';
+    if (typeof totalValuation === 'string' && totalValuation.trim().startsWith('$')) {
+      const numeric = parseFloat(totalValuation.replace(/[^0-9.-]+/g, ''));
+      if (!isNaN(numeric)) {
+        return formatLocalCurrency(numeric, 'USD');
+      }
+    } else if (typeof totalValuation === 'number') {
+      return formatLocalCurrency(totalValuation, 'USD');
+    }
+    return totalValuation;
+  }, [totalValuation]);
 
   // ── Price History ───────────────────────────────────────────────────────
   const handleOpenPriceHistory = (e) => {
@@ -228,13 +242,13 @@ function AssetCard({ asset, isLive = false }) {
             </p>
           )}
 
-          {totalValuation && (
+          {displayValuation && (
             <div className={styles.valuationBadge}>
               <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round" className={styles.icon} aria-hidden="true">
                 <line x1="12" y1="1" x2="12" y2="23"></line>
                 <path d="M17 5H9.5a3.5 3.5 0 0 0 0 7h5a3.5 3.5 0 0 1 0 7H6"></path>
               </svg>
-              <span className={styles.valuationAmount}>{totalValuation}</span>
+              <span className={styles.valuationAmount}>{displayValuation}</span>
             </div>
           )}
 
@@ -319,9 +333,9 @@ function AssetCard({ asset, isLive = false }) {
               <div className={styles.modalDetails}>
                 {assetType && <p><strong>Type:</strong> {assetType}</p>}
                 {location && <p><strong>Location:</strong> {location}</p>}
-                {totalValuation && (
+                {displayValuation && (
                   <p className={styles.modalValuation}>
-                    <strong>Valuation:</strong> {totalValuation}
+                    <strong>Valuation:</strong> {displayValuation}
                   </p>
                 )}
                 {contractId && (

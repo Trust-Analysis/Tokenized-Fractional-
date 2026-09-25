@@ -17,6 +17,7 @@ import { GET_ORDER_BOOK } from '../../graphql/queries';
 import Card from '../Card/Card';
 import VirtualList from '../VirtualList/VirtualList';
 import OrderBookSkeleton from '../Skeleton/OrderBookSkeleton';
+import { formatOrderTimestamp } from '../../utils/i18nFormatters';
 import styles from './OrderBook.module.css';
 
 const ORDER_ROW_HEIGHT = 56;
@@ -121,7 +122,7 @@ function OrderRow({ order, type }) {
 
       <div className={styles.orderMeta}>
         <span className={styles.orderTime}>
-          {new Date(order.createdAt).toLocaleTimeString()}
+          {formatOrderTimestamp(order.createdAt)}
         </span>
         {order.txHash && (
           <a

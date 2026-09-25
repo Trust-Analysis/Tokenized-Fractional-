@@ -2,6 +2,7 @@ import React, { useState, useEffect, useCallback, useRef, useMemo } from 'react'
 import Badge from '../Badge/Badge';
 import Button from '../Button/Button';
 import Input from '../Input/Input';
+import { formatOrderTimestamp, getSafeLocale } from '../../utils/i18nFormatters';
 import styles from './TransactionHistoryDashboard.module.css';
 
 // ---------------------------------------------------------------------------
@@ -82,24 +83,27 @@ function generateMockTransactions(publicKey) {
 // Formatting helpers
 // ---------------------------------------------------------------------------
 function formatTimestamp(isoString) {
-  const date = new Date(isoString);
-  return date.toLocaleString('en-US', {
+  return formatOrderTimestamp(isoString, undefined, {
     month: 'short',
     day: 'numeric',
     year: 'numeric',
     hour: '2-digit',
     minute: '2-digit',
-    hour12: false,
-    timeZone: 'UTC',
-    timeZoneName: 'short',
   });
 }
 
 function formatAmount(amount) {
-  return new Intl.NumberFormat('en-US', {
-    minimumFractionDigits: 2,
-    maximumFractionDigits: 7,
-  }).format(amount);
+  try {
+    return new Intl.NumberFormat(getSafeLocale(), {
+      minimumFractionDigits: 2,
+      maximumFractionDigits: 7,
+    }).format(amount);
+  } catch {
+    return new Intl.NumberFormat('en-US', {
+      minimumFractionDigits: 2,
+      maximumFractionDigits: 7,
+    }).format(amount);
+  }
 }
 
 function formatTypeLabel(type) {
