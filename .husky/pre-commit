@@ -1,3 +1,41 @@
 #!/usr/bin/env sh
+# Pre-commit hook — issue #722
+#
+# 1. Scans the *staged* content for secrets with gitleaks.
+# 2. Then runs lint-staged, as before.
+#
+# The gitleaks step is advisory when the binary is not installed so that
+# contributors are not forced to install a Go toolchain just to commit;
+# CI (.github/workflows/gitleaks.yml) is the authoritative gate on every PR.
+# Once installed locally the scan is enforced. See CONTRIBUTING.md
+# ("Local secret scanning") for install instructions and the opt-out.
+
+cd "$(git rev-parse --show-toplevel)" || exit 1
+
+if [ "$SKIP_GITLEAKS" = "1" ]; then
+  echo "gitleaks: skipped (SKIP_GITLEAKS=1)."
+elif command -v gitleaks >/dev/null 2>&1; then
+  if ! gitleaks git \
+    --staged \
+    --no-banner \
+    --config .gitleaks.toml \
+    --redact \
+    --verbose
+  then
+    echo ""
+    echo "Commit aborted: gitleaks found a secret in the staged changes."
+    echo "  - Remove the secret, then commit again. If it was already pushed,"
+    echo "    rotate/revoke it: removing the line does not un-leak a secret."
+    echo "  - False positive? Add '// gitleaks:allow' on the line, or extend"
+    echo "    .gitleaks.toml with the exact placeholder value."
+    echo "  - To bypass once: SKIP_GITLEAKS=1 git commit ..."
+    exit 1
+  fi
+else
+  echo "gitleaks: not installed - local scan skipped."
+  echo "  Install: https://github.com/gitleaks/gitleaks#installing"
+  echo "  CI still blocks secrets on every pull request."
+fi
+
 # Run lint-staged to lint and format only staged files
 npx lint-staged

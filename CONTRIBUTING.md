@@ -10,6 +10,7 @@ Thank you for your interest in contributing! This document outlines the process 
 - [Code Style Guidelines](#code-style-guidelines)
 - [Branch Naming Conventions](#branch-naming-conventions)
 - [Pull Request Process](#pull-request-process)
+- [Local Secret Scanning](#local-secret-scanning)
 - [Testing](#testing)
 - [Reporting Bugs](#reporting-bugs)
 - [Requesting Features](#requesting-features)
@@ -217,6 +218,126 @@ Closes #XX
 
 ## Screenshots (if applicable)
 ```
+
+---
+
+## Local Secret Scanning
+
+`backend/.env.example` and `frontend/.env.example` are templates — the real `.env` files stay on
+your machine and must never be committed. Three layers guard against committing one by accident.
+
+### 1. CI (always on, no setup)
+
+[`.github/workflows/gitleaks.yml`](.github/workflows/gitleaks.yml) runs
+[gitleaks](https://github.com/gitleaks/gitleaks) over the **full commit history on every pull
+request**, to any base branch, and on pushes to `main`/`dev`. It fails the PR when it finds a
+secret. The same job also fails if a real `.env` file is tracked in git — only
+`.env.example`, `.env.template`, and `.env.sample` are allowed.
+
+CI is the authoritative gate. Even with no local tooling, a secret cannot merge.
+
+### 2. Pre-commit hook (optional, recommended)
+
+The [husky](https://typicode.github.io/husky/) pre-commit hook already runs for everyone via
+`npm install` (the root `prepare` script installs it). It scans **staged** content with gitleaks
+before each commit, so a secret is caught before it ever reaches a branch.
+
+The scan is **skipped with a warning** if gitleaks is not installed, so it never blocks
+contributors who have not set it up. To enable it locally:
+
+```bash
+# macOS / Linux
+brew install gitleaks
+
+# Windows (PowerShell)
+winget install Gitleaks.Gitleaks
+
+# or any platform — download the release binary and put it on your PATH
+# https://github.com/gitleaks/gitleaks/releases
+```
+
+Then verify it is wired up:
+
+```bash
+gitleaks version
+```
+
+To check everything currently staged without committing:
+
+```bash
+gitleaks git --staged --config .gitleaks.toml --redact
+```
+
+**Opting out.** If gitleaks blocks a commit you know is safe, bypass it for that one commit:
+
+```bash
+SKIP_GITLEAKS=1 git commit -m "..."
+```
+
+CI still scans the branch, so this only skips the local convenience check.
+
+### 3. GitHub secret scanning and push protection (repository setting)
+
+This layer is **mostly already active** and is *not* controlled by any file in the repository —
+so nothing in a pull request can change it, which is why it is documented rather than configured
+here.
+
+- **Secret scanning is already on.** GitHub runs it automatically on public repositories, and this
+  repository is public, so leaks in the existing history already raise alerts in the Security tab.
+- **Push protection is already on for your own pushes.** Account-level push protection is enabled
+  by default for pushes to any public repository on GitHub.com, so contributors are already blocked
+  from pushing a known secret here.
+- **Repository/organization-level push protection is the one to confirm.** This is the layer that
+  also files an alert when someone deliberately bypasses a block, and it is not guaranteed to be on
+  for an existing org-owned public repository. A maintainer with admin access should confirm it:
+
+**Settings → Code security and analysis → Secret scanning → Enable**
+**Settings → Code security and analysis → Secret scanning and push protection → Enable**
+
+Check the current state without changing it:
+
+```bash
+gh api repos/Trust-Analysis/Tokenized-Fractional- --jq .security_and_analysis
+```
+
+Enable both, for a maintainer with `admin` scope on the repo:
+
+```bash
+curl -X PUT -H "Accept: application/vnd.github+json" \
+  -H "Authorization: Bearer $GITHUB_TOKEN" \
+  https://api.github.com/repos/Trust-Analysis/Tokenized-Fractional- \
+  -d '{"security_and_analysis":{"secret_scanning":{"status":"enabled"},"secret_scanning_push_protection":{"status":"enabled"}}}'
+```
+
+Push protection blocks a push before the secret reaches the history, which is the strongest of the
+three layers — and it is the only one that fires *before* a commit lands, rather than after. Note
+that on private repositories these features require GitHub Secret Protection, which costs money;
+gitleaks in CI is free either way.
+
+### If a secret is committed
+
+Removing the line does **not** un-leak a secret, because it stays in the history. Rotate or revoke
+the credential first, then remove the file. Force-pushing a rewritten history is a last resort —
+coordinate with maintainers, because it invalidates other people's clones.
+
+### False positives
+
+`.gitleaks.toml` holds narrowly-scoped allowlists for the placeholder values this repository
+intentionally commits (doc examples such as `YOUR_API_KEY`, and the public Stellar contract ID
+documented in the analytics docs). If gitleaks flags something legitimate:
+
+- **One line** — append `// gitleaks:allow` (or `# gitleaks:allow`) to that line.
+- **A value used across files** — add the exact literal to a `[[allowlists]]` block in
+  `.gitleaks.toml`.
+
+Do not add broad path or directory allowlists. The placeholder entries in `.gitleaks.toml` are keyed
+to exact literal strings, so a real credential that merely resembles a placeholder is still
+reported.
+
+There is exactly one exception, and it is deliberate: the `private-key` rule is allowlisted for
+`backend/__tests__/cache-tls.test.js`, which carries a throwaway PEM. The trade-off is that real key
+material committed specifically inside that one file would not be reported — so do not put anything
+sensitive in it. Everywhere else in the tree, a real private key is still caught.
 
 ---
 
