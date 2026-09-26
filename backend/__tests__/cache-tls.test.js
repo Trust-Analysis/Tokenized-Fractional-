@@ -148,7 +148,7 @@ describe('buildTlsOptions()', () => {
   });
 
   test('reads client key file into a Buffer when REDIS_TLS_KEY is set', () => {
-    const keyPath = tmpCertFile('rwa-test-client.key', '-----BEGIN RSA PRIVATE KEY-----\nFAKE\n-----END RSA PRIVATE KEY-----\n');
+    const keyPath = tmpCertFile('rwa-test-client.key', '-----BEGIN RSA PRIVATE KEY-----\nFAKE\n-----END RSA PRIVATE KEY-----\n'); // gitleaks:allow
     try {
       const result = withEnv(
         { REDIS_TLS: 'true', REDIS_TLS_KEY: keyPath },
@@ -166,7 +166,7 @@ describe('buildTlsOptions()', () => {
   test('builds a complete mTLS config when all options are set', () => {
     const caPath   = tmpCertFile('rwa-test-ca-full.crt');
     const certPath = tmpCertFile('rwa-test-cert-full.crt');
-    const keyPath  = tmpCertFile('rwa-test-key-full.key', '-----BEGIN RSA PRIVATE KEY-----\nFAKE\n-----END RSA PRIVATE KEY-----\n');
+    const keyPath  = tmpCertFile('rwa-test-key-full.key', '-----BEGIN RSA PRIVATE KEY-----\nFAKE\n-----END RSA PRIVATE KEY-----\n'); // gitleaks:allow
     try {
       const result = withEnv(
         {

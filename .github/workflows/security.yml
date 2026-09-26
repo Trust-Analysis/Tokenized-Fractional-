@@ -63,7 +63,13 @@ jobs:
         run: npm install --save-dev eslint-plugin-security
         working-directory: backend
       - name: Run security linting
-        run: npx eslint --plugin security --rule 'security/detect-object-injection: warn' src/
+        # Block scalar: the rule selector below contains ": ", which is not
+        # valid inside a plain YAML scalar and made this workflow file
+        # unparseable — taking every job in this file (including the
+        # TruffleHog secret scan) down with it.
+        run: >-
+          npx eslint --plugin security
+          --rule 'security/detect-object-injection: warn' src/
         working-directory: backend
         continue-on-error: true
 
