@@ -11,6 +11,10 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### Fixed
+
+- **Render Node.js runtime pin** - `render.yaml` now sets `NODE_VERSION` to 20.18.0 on all four services, and the `engines.node` ranges in `backend/package.json` / `frontend/package.json` are upper-bounded (`>=20.18.0 <21.0.0`) so the build and runtime environment can no longer drift when Render changes its default Node version (#723)
+
 ## [0.1.0] - 2026-06-28
 
 ### Added

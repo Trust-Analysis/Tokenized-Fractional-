@@ -113,7 +113,7 @@ graph TB
 
 ## Prerequisites
 
-- Node.js (v18 or higher)
+- Node.js 20.18.0 (pinned in `.nvmrc` / `.node-version`; CI and the Render Blueprint pin the same version — any 20.x >= 20.18.0 works locally)
 - Rust
 - Soroban CLI (`cargo install --locked soroban-cli`)
 - Freighter Wallet browser extension
