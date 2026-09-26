@@ -991,9 +991,14 @@ impl RwaMarketplace {
         let admin: Address = env.storage().instance().get(&DataKey::Admin)
             .expect("Contract not initialized: admin");
 
-        let client = token::TokenClient::new(&env, &payment_token);
-        client.transfer(&buyer, &admin, &total_cost);
-
+        // Checks-Effects-Interactions (closes #633): update contract state
+        // *before* the external token transfer below. The reentrancy guard
+        // at the top of this function already blocks a recursive re-entry
+        // into buy_shares itself, but CEI ordering is the standard mitigation
+        // for the broader class of bug this guards against - if the
+        // configured payment_token can invoke a callback (or a future token
+        // integration does), on-chain state must already reflect the pending
+        // purchase before control could pass back, not after.
         let new_available = checked_sub_u32(available, shares);
         env.storage()
             .instance()
@@ -1003,6 +1008,11 @@ impl RwaMarketplace {
         env.storage()
             .persistent()
             .set(&DataKey::Balance(buyer.clone()), &new_balance);
+
+        // Interaction: external token transfer happens last, after every
+        // state effect above has already been committed.
+        let client = token::TokenClient::new(&env, &payment_token);
+        client.transfer(&buyer, &admin, &total_cost);
 
         // Register as new holder only on first purchase or if not registered yet
         Self::register_holder(&env, buyer.clone());
