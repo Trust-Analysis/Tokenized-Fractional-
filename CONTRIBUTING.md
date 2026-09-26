@@ -26,7 +26,7 @@ Be respectful, collaborative, and constructive. Harassment, offensive comments, 
 
 ### Prerequisites
 
-- **Node.js** v18 or higher
+- **Node.js** 20.18.0 (pinned in `.nvmrc` / `.node-version`; CI and the Render Blueprint pin the same version)
 - **Rust** (latest stable) for smart contract development
 - **Soroban CLI** — `cargo install --locked soroban-cli`
 - **Freighter Wallet** browser extension (for frontend testing)
