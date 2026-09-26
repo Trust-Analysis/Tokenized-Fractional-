@@ -12,6 +12,7 @@
     "build:sdk": "npm --prefix sdk run build",
     "typecheck:sdk": "npm --prefix sdk run typecheck",
     "lint:backend": "cd backend && npm run lint --if-present",
+    "test": "python3 -m unittest discover -s tests -v",
     "test:backend": "cd backend && npm test",
     "test:frontend": "cd frontend && npm run test:e2e --if-present",
     "loadtest:install": "npm --prefix load-test install",

@@ -49,11 +49,31 @@ jobs:
           restore-keys: |
             ${{ runner.os }}-cargo-
 
+      # Issue #748: the fuzz tests live in contracts/src/lib.rs in the modules
+      #   fuzz_fractional_math, fuzz_order_book_transitions, fuzz_dividend_distribution
+      # (the `property_tests` module holds proptest cases named `test_*`, not
+      # `fuzz_*`). The `fuzz_` filter below matches those modules by name; if
+      # the modules are ever renamed or moved, update the filter AND this
+      # comment. The zero-match guard in the step makes a stale filter fail
+      # the build instead of silently running zero tests.
       - name: Run fuzz tests (proptest)
-        run: cargo test --lib property_tests::fuzz_ -- --test-threads=1
+        shell: bash
         working-directory: contracts
         env:
-          PROPTEST_CASES: 50
+          # proptest reads the PROPTEST_CASES environment variable to set the
+          # number of cases generated per property test.
+          PROPTEST_CASES: "50"
+        run: |
+          set -euo pipefail
+          # Guard: `cargo test` exits 0 even when the filter matches zero
+          # tests, so verify the filter matches real tests before running.
+          matched=$(cargo test --lib fuzz_ -- --list 2>/dev/null | grep -c ': test$' || true)
+          echo "Fuzz filter matched ${matched} test(s)"
+          if [ "${matched}" -eq 0 ]; then
+            echo "::error::Fuzz test filter 'fuzz_' matched zero tests. The filter must name the modules that actually contain the fuzz tests (see comment above)."
+            exit 1
+          fi
+          cargo test --lib fuzz_ -- --test-threads=1
 
       - name: Run all contract tests
         run: cargo test --workspace --verbose
