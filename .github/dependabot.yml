@@ -1,0 +1,130 @@
+# Dependabot configuration — issue #721
+#
+# Every directory below holds a committed lockfile, which is what both
+# Dependabot and `npm audit` need in order to resolve a dependency tree:
+#
+#   /            root tooling (husky, lint-staged, commitlint, prettier)
+#   /backend     the API service
+#   /frontend    the web client
+#   /sdk         published client SDK
+#   /load-test   k6 load-test harness
+#   /contracts   Rust/Soroban smart contract (cargo)
+#
+# `backend/gateway` and `backend/services/{assets,transactions,users}` have a
+# package.json but NO lockfile, so they cannot be scanned or updated by
+# Dependabot. Adding lockfiles for them is tracked separately.
+#
+# Notes on the two things that are easy to get wrong here:
+#
+#   * Groups. A single direct dependency can pull in a large advisory cluster —
+#     `mjml` alone accounts for 28 of the backend's high findings — so without
+#     grouping Dependabot would open a long tail of near-duplicate PRs. Updates
+#     are grouped per directory, with majors isolated so a risky bump gets its
+#     own review.
+#   * `versioning-strategy`. Contracts are audited by auditors and are deployed
+#     as immutable WASM, so the schedule stays weekly like everything else, but
+#     the registry is pinned to crates.io explicitly to keep a lockfile-only
+#     workspace unambiguous.
+version: 2
+
+updates:
+  - package-ecosystem: npm
+    directory: /backend
+    schedule:
+      interval: weekly
+      day: monday
+      time: "06:00"
+      timezone: Etc/UTC
+    open-pull-requests-limit: 10
+    groups:
+      backend-minor-patch:
+        applies-to: version-updates
+        update-types: ["minor", "patch"]
+      backend-major:
+        applies-to: version-updates
+        update-types: ["major"]
+    commit-message:
+      prefix: "chore(deps-backend)"
+
+  - package-ecosystem: npm
+    directory: /frontend
+    schedule:
+      interval: weekly
+      day: monday
+      time: "06:00"
+      timezone: Etc/UTC
+    open-pull-requests-limit: 10
+    groups:
+      frontend-minor-patch:
+        applies-to: version-updates
+        update-types: ["minor", "patch"]
+      frontend-major:
+        applies-to: version-updates
+        update-types: ["major"]
+    commit-message:
+      prefix: "chore(deps-frontend)"
+
+  - package-ecosystem: npm
+    directory: /
+    schedule:
+      interval: weekly
+      day: monday
+      time: "06:00"
+      timezone: Etc/UTC
+    open-pull-requests-limit: 5
+    groups:
+      tooling:
+        applies-to: version-updates
+    commit-message:
+      prefix: "chore(deps-tooling)"
+
+  - package-ecosystem: npm
+    directory: /sdk
+    schedule:
+      interval: weekly
+      day: monday
+      time: "06:00"
+      timezone: Etc/UTC
+    open-pull-requests-limit: 5
+    groups:
+      sdk-minor-patch:
+        applies-to: version-updates
+        update-types: ["minor", "patch"]
+    commit-message:
+      prefix: "chore(deps-sdk)"
+
+  - package-ecosystem: npm
+    directory: /load-test
+    schedule:
+      interval: weekly
+      day: monday
+      time: "06:00"
+      timezone: Etc/UTC
+    open-pull-requests-limit: 5
+    groups:
+      load-test:
+        applies-to: version-updates
+    commit-message:
+      prefix: "chore(deps-load-test)"
+
+  # The Soroban marketplace contract plus the `nft` and `multi_asset` members
+  # of the workspace. `contracts/vault` is a separate crate that is NOT listed
+  # in the workspace `members` and has no Cargo.lock, so neither Dependabot nor
+  # `cargo audit` can see it — see the triage notes in CONTRIBUTING.md.
+  - package-ecosystem: cargo
+    directory: /contracts
+    schedule:
+      interval: weekly
+      day: monday
+      time: "06:00"
+      timezone: Etc/UTC
+    open-pull-requests-limit: 5
+    groups:
+      contracts-minor-patch:
+        applies-to: version-updates
+        update-types: ["minor", "patch"]
+      contracts-major:
+        applies-to: version-updates
+        update-types: ["major"]
+    commit-message:
+      prefix: "chore(deps-contracts)"

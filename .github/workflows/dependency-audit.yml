@@ -1,0 +1,80 @@
+# Dependency vulnerability scanning — issue #721
+#
+# Two gates, one per ecosystem:
+#
+#   npm   -> scripts/check-dependency-audit.mjs, a ratchet over
+#            .github/dependency-audit-baseline.json
+#   cargo -> `cargo audit` over the contracts workspace
+#
+# Both FAIL the build. See CONTRIBUTING.md ("Dependency vulnerability triage")
+# for the baseline model, the remediation order and the exception policy.
+#
+# This replaces the old `dependency-audit` job in security.yml, which set
+# `continue-on-error: true` on every step and so could never fail anything.
+
+name: Dependency Audit
+
+on:
+  pull_request:
+  push:
+    branches: [main, dev]
+  schedule:
+    # Weekly, Monday 06:17 UTC — deliberately off the hour so this does not
+    # pile onto GitHub's scheduled-job spike at :00.
+    - cron: '17 6 * * 1'
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  npm-audit:
+    name: npm audit (high/critical)
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '20'
+
+      # No `npm ci` on purpose: `npm audit` resolves the dependency tree from
+      # package-lock.json alone, so this stays fast and cannot be broken by an
+      # unrelated install failure in a workspace we are not auditing.
+      - name: Enforce the npm dependency-audit baseline
+        run: node scripts/check-dependency-audit.mjs
+
+  cargo-audit:
+    name: cargo audit (contracts)
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Cache cargo-audit binary
+        uses: actions/cache@v4
+        with:
+          path: |
+            ~/.cargo/bin
+            ~/.cargo/registry
+          key: cargo-audit-0.22.2-${{ runner.os }}
+
+      - name: Install cargo-audit
+        run: cargo install cargo-audit --version 0.22.2 --locked
+
+      - name: Audit contract dependencies
+        working-directory: contracts
+        # RUSTSEC-2024-0436 (`paste`, unmaintained) is ignored on purpose: the
+        # crate is archived with no patched release — 1.0.15 is both the newest
+        # and the only version — and it is a transitive build-time dependency of
+        # soroban-sdk, so we cannot fix it from this repository. Ignoring it
+        # keeps it out of the log and stops it from being re-reviewed every run;
+        # once soroban-sdk drops it, the entry can be deleted from this line.
+        #
+        # Note this is not what makes the gate meaningful. cargo audit only
+        # fails on vulnerabilities (severity error/warn); informational notices
+        # such as unmaintained/unsound are reported but do not fail the build
+        # unless --deny warnings is passed. This workflow deliberately does not
+        # pass --deny warnings, so it fails on real vulnerabilities and stays
+        # green on advisory-only noise. Revisit that choice if the project later
+        # wants unmaintained crates to be blocking.
+        run: cargo audit --ignore RUSTSEC-2024-0436

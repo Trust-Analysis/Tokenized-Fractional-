@@ -10,6 +10,7 @@ Thank you for your interest in contributing! This document outlines the process 
 - [Code Style Guidelines](#code-style-guidelines)
 - [Branch Naming Conventions](#branch-naming-conventions)
 - [Pull Request Process](#pull-request-process)
+- [Dependency Vulnerability Triage](#dependency-vulnerability-triage)
 - [Testing](#testing)
 - [Reporting Bugs](#reporting-bugs)
 - [Requesting Features](#requesting-features)
@@ -217,6 +218,95 @@ Closes #XX
 
 ## Screenshots (if applicable)
 ```
+
+---
+
+## Dependency Vulnerability Triage
+
+`npm audit` and `cargo audit` run in CI on every push and pull request, via
+`.github/workflows/dependency-audit.yml`. The gate fails on any **high** or **critical** finding
+that is not already recorded in `.github/dependency-audit-baseline.json`, and on any **Rust**
+vulnerability (advisory severity `error` or `warn`).
+
+### The baseline is a ratchet, not a waiver
+
+The repository inherited 64 high/critical npm findings before this check existed. Recording them
+means CI goes green while the backlog is worked down, instead of going permanently red and being
+ignored. The baseline is deliberately one-directional:
+
+| Change | Result |
+| --- | --- |
+| New high/critical finding introduced | **CI fails** |
+| Existing finding fixed | CI fails until the baseline is updated (it refuses stale entries) |
+| Baseline entry deleted by hand | Allowed — fewer findings always passes |
+
+So the baseline can only shrink over time. After any dependency upgrade, refresh it with:
+
+```bash
+node scripts/check-dependency-audit.mjs --update
+```
+
+Commit the resulting JSON alongside your lockfile changes.
+
+### Current backlog
+
+All 64 findings are fixable today; none are unfixable or ignored. Grouped by the single upgrade
+that clears them:
+
+| Upgrade | Findings | Project |
+| --- | --- | --- |
+| `mjml` → 5.4.1 | 31 | `backend` |
+| in-range (`npm audit fix`) | 21 | root, `backend`, `frontend` |
+| `@jest/globals` → 29.7.0 | 6 | `backend` |
+| `nodemailer` → 10.0.10 | 1 | `backend` |
+| `vitest` → 5.0.2, `@vitest/coverage-v8` → 5.0.2, `jspdf` → 4.2.1 | 3 (**critical**) | `frontend` |
+| `vite` → 8.3.1 | 1 | `frontend` |
+| `@faker-js/faker` → 10.6.0 | 1 | `load-test` |
+
+Per project: `backend` 45, `frontend` 16, root 2, `load-test` 1, `sdk` 0.
+
+### Suggested triage order
+
+1. **Critical first.** The three `frontend` criticals (`vitest`, `@vitest/coverage-v8`, `jspdf`) are
+   dev/build-time only, but bump them out of the way early.
+2. **Highest leverage first.** `mjml` alone clears 31 findings — nearly half the backlog — from one
+   dependency.
+3. **Then `npm audit fix`** for the 21 in-range findings, which needs no manifest changes.
+4. **The long tail** (`@jest/globals`, `nodemailer`, `vite`, `@faker-js/faker`) individually.
+5. **Rust.** One advisory exists for `paste` 1.0.15 (pulled in transitively by
+   `rwa-marketplace`): `RUSTSEC-2024-0436`, unmaintained, with no patched release — 1.0.15 is both
+   the newest and the only version. It is passed to `cargo audit --ignore`, mostly to keep the log
+   clean; the crate is archived and cannot be fixed from this repository. Delete the `--ignore` once
+   `rwa-marketplace` updates or is replaced.
+
+Note that `cargo audit` only fails on vulnerabilities. Informational notices such as unmaintained or
+unsound are reported but do not fail the build, because this workflow does not pass
+`--deny warnings`. If the project later wants unmaintained crates to be blocking, add
+`--deny warnings` to the cargo step.
+
+### Requesting an exception
+
+Prefer fixing the finding. If a high/critical finding genuinely cannot be fixed right now, it has to
+be recorded deliberately — the ratchet makes omission impossible:
+
+- Add the advisory to `.github/dependency-audit-baseline.json` via `--update`, and state the reason
+  in a GitHub issue or PR comment in the same PR. A baseline entry with no stated justification
+  should be rejected in review.
+- Do **not** add `continue-on-error: true` to the audit job, and do not lower the npm severity
+  threshold. Both disable the gate for everyone, including future findings.
+- An exception needs a follow-up issue to remove it. If there is none, the finding is not "accepted",
+  it is deferred, and should be described that way.
+
+### Known coverage gaps
+
+The audit and Dependabot config only see projects that have a lockfile. These are currently invisible
+to both:
+
+- `contracts/vault` — not a member of the `contracts` Cargo workspace and has no `Cargo.lock`.
+- `backend/gateway`, `backend/services/*` — have `package.json` files but no lockfiles.
+
+Adding a lockfile to any of these is a prerequisite for them being covered, and should be a separate
+change so the newly visible findings can be baselined deliberately.
 
 ---
 
