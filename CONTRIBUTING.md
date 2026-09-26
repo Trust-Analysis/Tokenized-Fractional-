@@ -276,16 +276,31 @@ SKIP_GITLEAKS=1 git commit -m "..."
 
 CI still scans the branch, so this only skips the local convenience check.
 
-### 3. GitHub push protection (repository setting)
+### 3. GitHub secret scanning and push protection (repository setting)
 
-GitHub's own secret scanning and push protection should also be enabled for the repository. This
-is a **repository setting rather than a file in the repo**, so a maintainer with admin access must
-turn it on:
+This layer is **mostly already active** and is *not* controlled by any file in the repository —
+so nothing in a pull request can change it, which is why it is documented rather than configured
+here.
+
+- **Secret scanning is already on.** GitHub runs it automatically on public repositories, and this
+  repository is public, so leaks in the existing history already raise alerts in the Security tab.
+- **Push protection is already on for your own pushes.** Account-level push protection is enabled
+  by default for pushes to any public repository on GitHub.com, so contributors are already blocked
+  from pushing a known secret here.
+- **Repository/organization-level push protection is the one to confirm.** This is the layer that
+  also files an alert when someone deliberately bypasses a block, and it is not guaranteed to be on
+  for an existing org-owned public repository. A maintainer with admin access should confirm it:
 
 **Settings → Code security and analysis → Secret scanning → Enable**
 **Settings → Code security and analysis → Secret scanning and push protection → Enable**
 
-(Equivalent API calls, for a maintainer with `admin` scope on the repo:
+Check the current state without changing it:
+
+```bash
+gh api repos/Trust-Analysis/Tokenized-Fractional- --jq .security_and_analysis
+```
+
+Enable both, for a maintainer with `admin` scope on the repo:
 
 ```bash
 curl -X PUT -H "Accept: application/vnd.github+json" \
@@ -294,11 +309,10 @@ curl -X PUT -H "Accept: application/vnd.github+json" \
   -d '{"security_and_analysis":{"secret_scanning":{"status":"enabled"},"secret_scanning_push_protection":{"status":"enabled"}}}'
 ```
 
-)
-
 Push protection blocks a push before the secret reaches the history, which is the strongest of the
-three layers. Note that on public repositories secret scanning is free; on private repositories
-GitHub may charge for it — gitleaks in CI is free either way.
+three layers — and it is the only one that fires *before* a commit lands, rather than after. Note
+that on private repositories these features require GitHub Secret Protection, which costs money;
+gitleaks in CI is free either way.
 
 ### If a secret is committed
 
@@ -316,8 +330,14 @@ documented in the analytics docs). If gitleaks flags something legitimate:
 - **A value used across files** — add the exact literal to a `[[allowlists]]` block in
   `.gitleaks.toml`.
 
-Do not add broad path or directory allowlists. The allowlist entries in `.gitleaks.toml` are
-deliberately keyed to exact placeholder strings so that a real credential is never suppressed.
+Do not add broad path or directory allowlists. The placeholder entries in `.gitleaks.toml` are keyed
+to exact literal strings, so a real credential that merely resembles a placeholder is still
+reported.
+
+There is exactly one exception, and it is deliberate: the `private-key` rule is allowlisted for
+`backend/__tests__/cache-tls.test.js`, which carries a throwaway PEM. The trade-off is that real key
+material committed specifically inside that one file would not be reported — so do not put anything
+sensitive in it. Everywhere else in the tree, a real private key is still caught.
 
 ---
 
