@@ -1,0 +1,454 @@
+{
+  "schema": 1,
+  "note": "Accepted pre-existing high/critical npm findings. Enforced as a ratchet by scripts/check-dependency-audit.mjs: new entries are rejected, and stale entries (no longer reproducible) also fail so this list can only shrink. Regenerate with: node scripts/check-dependency-audit.mjs --update",
+  "findings": {
+    ".::fast-uri::GHSA-5jgf-p345-68v8+GHSA-7p8r-x3mc-p8w7+GHSA-f65p-4m7j-42xc+GHSA-fph4-wmhf-6fwf+GHSA-jqff-g426-hqxp+GHSA-v2hh-gcrm-f6hx": {
+      "severity": "high",
+      "project": ".",
+      "package": "fast-uri",
+      "direct": false,
+      "fix": "in-range"
+    },
+    ".::js-yaml::GHSA-2883-xcg3-v3hh+GHSA-5p4m-2wfm-xmqj": {
+      "severity": "high",
+      "project": ".",
+      "package": "js-yaml",
+      "direct": false,
+      "fix": "in-range"
+    },
+    "/backend::@babel/core::via:json5": {
+      "severity": "high",
+      "project": "/backend",
+      "package": "@babel/core",
+      "direct": false,
+      "fix": "upgrade-to @jest/globals@29.7.0"
+    },
+    "/backend::@jest/expect::via:jest-snapshot": {
+      "severity": "high",
+      "project": "/backend",
+      "package": "@jest/expect",
+      "direct": false,
+      "fix": "upgrade-to @jest/globals@29.7.0"
+    },
+    "/backend::@jest/globals::via:@jest/expect": {
+      "severity": "high",
+      "project": "/backend",
+      "package": "@jest/globals",
+      "direct": true,
+      "fix": "upgrade-to @jest/globals@29.7.0"
+    },
+    "/backend::@jest/transform::via:@babel/core": {
+      "severity": "high",
+      "project": "/backend",
+      "package": "@jest/transform",
+      "direct": false,
+      "fix": "upgrade-to @jest/globals@29.7.0"
+    },
+    "/backend::brace-expansion::GHSA-3jxr-9vmj-r5cp+GHSA-mh99-v99m-4gvg+GHSA-rgw5-rvv9-x895": {
+      "severity": "high",
+      "project": "/backend",
+      "package": "brace-expansion",
+      "direct": false,
+      "fix": "in-range"
+    },
+    "/backend::browserslist::GHSA-73wf-gq98-2v4g+GHSA-c83g-rgw3-j3cx": {
+      "severity": "high",
+      "project": "/backend",
+      "package": "browserslist",
+      "direct": false,
+      "fix": "in-range"
+    },
+    "/backend::fast-uri::GHSA-5jgf-p345-68v8+GHSA-7p8r-x3mc-p8w7+GHSA-f65p-4m7j-42xc+GHSA-fph4-wmhf-6fwf+GHSA-jqff-g426-hqxp": {
+      "severity": "high",
+      "project": "/backend",
+      "package": "fast-uri",
+      "direct": false,
+      "fix": "in-range"
+    },
+    "/backend::html-minifier::GHSA-pfq8-rq6v-vf5m": {
+      "severity": "high",
+      "project": "/backend",
+      "package": "html-minifier",
+      "direct": false,
+      "fix": "upgrade-to mjml@5.4.1"
+    },
+    "/backend::jest-snapshot::via:@babel/core+via:@jest/transform": {
+      "severity": "high",
+      "project": "/backend",
+      "package": "jest-snapshot",
+      "direct": false,
+      "fix": "upgrade-to @jest/globals@29.7.0"
+    },
+    "/backend::jest::via:html-minifier+via:mjml-core+via:mjml-migrate": {
+      "severity": "high",
+      "project": "/backend",
+      "package": "jest",
+      "direct": true,
+      "fix": "in-range"
+    },
+    "/backend::js-yaml::GHSA-2883-xcg3-v3hh+GHSA-5p4m-2wfm-xmqj": {
+      "severity": "high",
+      "project": "/backend",
+      "package": "js-yaml",
+      "direct": false,
+      "fix": "in-range"
+    },
+    "/backend::json5::via:mjml-core": {
+      "severity": "high",
+      "project": "/backend",
+      "package": "json5",
+      "direct": false,
+      "fix": "upgrade-to @jest/globals@29.7.0"
+    },
+    "/backend::mjml-accordion::via:mjml-core": {
+      "severity": "high",
+      "project": "/backend",
+      "package": "mjml-accordion",
+      "direct": false,
+      "fix": "upgrade-to mjml@5.4.1"
+    },
+    "/backend::mjml-body::via:mjml-core": {
+      "severity": "high",
+      "project": "/backend",
+      "package": "mjml-body",
+      "direct": false,
+      "fix": "upgrade-to mjml@5.4.1"
+    },
+    "/backend::mjml-button::via:mjml-core": {
+      "severity": "high",
+      "project": "/backend",
+      "package": "mjml-button",
+      "direct": false,
+      "fix": "upgrade-to mjml@5.4.1"
+    },
+    "/backend::mjml-carousel::via:mjml-core": {
+      "severity": "high",
+      "project": "/backend",
+      "package": "mjml-carousel",
+      "direct": false,
+      "fix": "upgrade-to mjml@5.4.1"
+    },
+    "/backend::mjml-cli::via:html-minifier+via:mjml-core+via:mjml-migrate": {
+      "severity": "high",
+      "project": "/backend",
+      "package": "mjml-cli",
+      "direct": false,
+      "fix": "upgrade-to mjml@5.4.1"
+    },
+    "/backend::mjml-column::via:mjml-core": {
+      "severity": "high",
+      "project": "/backend",
+      "package": "mjml-column",
+      "direct": false,
+      "fix": "upgrade-to mjml@5.4.1"
+    },
+    "/backend::mjml-core::via:html-minifier+via:mjml-migrate": {
+      "severity": "high",
+      "project": "/backend",
+      "package": "mjml-core",
+      "direct": false,
+      "fix": "upgrade-to mjml@5.4.1"
+    },
+    "/backend::mjml-divider::via:mjml-core": {
+      "severity": "high",
+      "project": "/backend",
+      "package": "mjml-divider",
+      "direct": false,
+      "fix": "upgrade-to mjml@5.4.1"
+    },
+    "/backend::mjml-group::via:mjml-core": {
+      "severity": "high",
+      "project": "/backend",
+      "package": "mjml-group",
+      "direct": false,
+      "fix": "upgrade-to mjml@5.4.1"
+    },
+    "/backend::mjml-head-attributes::via:mjml-core": {
+      "severity": "high",
+      "project": "/backend",
+      "package": "mjml-head-attributes",
+      "direct": false,
+      "fix": "upgrade-to mjml@5.4.1"
+    },
+    "/backend::mjml-head-breakpoint::via:mjml-core": {
+      "severity": "high",
+      "project": "/backend",
+      "package": "mjml-head-breakpoint",
+      "direct": false,
+      "fix": "upgrade-to mjml@5.4.1"
+    },
+    "/backend::mjml-head-font::via:mjml-core": {
+      "severity": "high",
+      "project": "/backend",
+      "package": "mjml-head-font",
+      "direct": false,
+      "fix": "upgrade-to mjml@5.4.1"
+    },
+    "/backend::mjml-head-html-attributes::via:mjml-core": {
+      "severity": "high",
+      "project": "/backend",
+      "package": "mjml-head-html-attributes",
+      "direct": false,
+      "fix": "upgrade-to mjml@5.4.1"
+    },
+    "/backend::mjml-head-preview::via:mjml-core": {
+      "severity": "high",
+      "project": "/backend",
+      "package": "mjml-head-preview",
+      "direct": false,
+      "fix": "upgrade-to mjml@5.4.1"
+    },
+    "/backend::mjml-head-style::via:mjml-core": {
+      "severity": "high",
+      "project": "/backend",
+      "package": "mjml-head-style",
+      "direct": false,
+      "fix": "upgrade-to mjml@5.4.1"
+    },
+    "/backend::mjml-head-title::via:mjml-core": {
+      "severity": "high",
+      "project": "/backend",
+      "package": "mjml-head-title",
+      "direct": false,
+      "fix": "upgrade-to mjml@5.4.1"
+    },
+    "/backend::mjml-head::via:mjml-core": {
+      "severity": "high",
+      "project": "/backend",
+      "package": "mjml-head",
+      "direct": false,
+      "fix": "upgrade-to mjml@5.4.1"
+    },
+    "/backend::mjml-hero::via:mjml-core": {
+      "severity": "high",
+      "project": "/backend",
+      "package": "mjml-hero",
+      "direct": false,
+      "fix": "upgrade-to mjml@5.4.1"
+    },
+    "/backend::mjml-image::via:mjml-core": {
+      "severity": "high",
+      "project": "/backend",
+      "package": "mjml-image",
+      "direct": false,
+      "fix": "upgrade-to mjml@5.4.1"
+    },
+    "/backend::mjml-migrate::via:mjml-core": {
+      "severity": "high",
+      "project": "/backend",
+      "package": "mjml-migrate",
+      "direct": false,
+      "fix": "upgrade-to mjml@5.4.1"
+    },
+    "/backend::mjml-navbar::via:mjml-core": {
+      "severity": "high",
+      "project": "/backend",
+      "package": "mjml-navbar",
+      "direct": false,
+      "fix": "upgrade-to mjml@5.4.1"
+    },
+    "/backend::mjml-preset-core::via:mjml-accordion+via:mjml-body+via:mjml-button+via:mjml-carousel+via:mjml-column+via:mjml-divider+via:mjml-group+via:mjml-head+via:mjml-head-attributes+via:mjml-head-breakpoint+via:mjml-head-font+via:mjml-head-html-attributes+via:mjml-head-preview+via:mjml-head-style+via:mjml-head-title+via:mjml-hero+via:mjml-image+via:mjml-navbar+via:mjml-raw+via:mjml-section+via:mjml-social+via:mjml-spacer+via:mjml-table+via:mjml-text+via:mjml-wrapper": {
+      "severity": "high",
+      "project": "/backend",
+      "package": "mjml-preset-core",
+      "direct": false,
+      "fix": "upgrade-to mjml@5.4.1"
+    },
+    "/backend::mjml-raw::via:mjml-core": {
+      "severity": "high",
+      "project": "/backend",
+      "package": "mjml-raw",
+      "direct": false,
+      "fix": "upgrade-to mjml@5.4.1"
+    },
+    "/backend::mjml-section::via:mjml-core": {
+      "severity": "high",
+      "project": "/backend",
+      "package": "mjml-section",
+      "direct": false,
+      "fix": "upgrade-to mjml@5.4.1"
+    },
+    "/backend::mjml-social::via:mjml-core": {
+      "severity": "high",
+      "project": "/backend",
+      "package": "mjml-social",
+      "direct": false,
+      "fix": "upgrade-to mjml@5.4.1"
+    },
+    "/backend::mjml-spacer::via:mjml-core": {
+      "severity": "high",
+      "project": "/backend",
+      "package": "mjml-spacer",
+      "direct": false,
+      "fix": "upgrade-to mjml@5.4.1"
+    },
+    "/backend::mjml-table::via:mjml-core": {
+      "severity": "high",
+      "project": "/backend",
+      "package": "mjml-table",
+      "direct": false,
+      "fix": "upgrade-to mjml@5.4.1"
+    },
+    "/backend::mjml-text::via:mjml-core": {
+      "severity": "high",
+      "project": "/backend",
+      "package": "mjml-text",
+      "direct": false,
+      "fix": "upgrade-to mjml@5.4.1"
+    },
+    "/backend::mjml-wrapper::via:mjml-core+via:mjml-section": {
+      "severity": "high",
+      "project": "/backend",
+      "package": "mjml-wrapper",
+      "direct": false,
+      "fix": "upgrade-to mjml@5.4.1"
+    },
+    "/backend::mjml::GHSA-45h5-66jx-r2wf+via:mjml-cli+via:mjml-core+via:mjml-migrate+via:mjml-preset-core": {
+      "severity": "high",
+      "project": "/backend",
+      "package": "mjml",
+      "direct": true,
+      "fix": "upgrade-to mjml@5.4.1"
+    },
+    "/backend::multer::GHSA-535w-7cp7-47q4+GHSA-qfvm-cv95-jqjf+GHSA-qvfw-j98x-7q72+GHSA-wc9g-mqfw-jrwm": {
+      "severity": "high",
+      "project": "/backend",
+      "package": "multer",
+      "direct": true,
+      "fix": "in-range"
+    },
+    "/backend::nodemailer::GHSA-268h-hp4c-crq3+GHSA-2x7j-588g-ccc2+GHSA-8m3c-c648-2xjj+GHSA-c7w3-x93f-qmm8+GHSA-cc9r-2j5m-2m83+GHSA-mm7p-fcc7-pg87+GHSA-p6gq-j5cr-w38f+GHSA-r7g4-qg5f-qqm2+GHSA-rcmh-qjqh-p98v+GHSA-vvjj-xcjg-gr5g+GHSA-wmmp-3585-3rmp+GHSA-wqvq-jvpq-h66f": {
+      "severity": "high",
+      "project": "/backend",
+      "package": "nodemailer",
+      "direct": true,
+      "fix": "upgrade-to nodemailer@10.0.10"
+    },
+    "/backend::validator::GHSA-9965-vmph-33xx+GHSA-vghf-hv5q-vc2g": {
+      "severity": "high",
+      "project": "/backend",
+      "package": "validator",
+      "direct": false,
+      "fix": "in-range"
+    },
+    "/frontend::@remix-run/router::GHSA-2j2x-hqr9-3h42+GHSA-2w69-qvjg-hvjx": {
+      "severity": "high",
+      "project": "/frontend",
+      "package": "@remix-run/router",
+      "direct": false,
+      "fix": "in-range"
+    },
+    "/frontend::@vitest/coverage-v8::via:vitest": {
+      "severity": "critical",
+      "project": "/frontend",
+      "package": "@vitest/coverage-v8",
+      "direct": true,
+      "fix": "upgrade-to @vitest/coverage-v8@5.0.2"
+    },
+    "/frontend::axios::GHSA-42h9-826w-cgv3+GHSA-7q8q-rj6j-mhjq+GHSA-f4gw-2p7v-4548+GHSA-gcfj-64vw-6mp9+GHSA-hcpx-6fm6-wx23+GHSA-jqh4-m9w3-8hp9+GHSA-mmx7-hfxf-jppx+GHSA-mwf2-3pr3-8698+GHSA-pmv8-rq9r-6j72+GHSA-xj6q-8x83-jv6g": {
+      "severity": "high",
+      "project": "/frontend",
+      "package": "axios",
+      "direct": false,
+      "fix": "in-range"
+    },
+    "/frontend::brace-expansion::GHSA-3jxr-9vmj-r5cp+GHSA-mh99-v99m-4gvg+GHSA-rgw5-rvv9-x895": {
+      "severity": "high",
+      "project": "/frontend",
+      "package": "brace-expansion",
+      "direct": false,
+      "fix": "in-range"
+    },
+    "/frontend::browserslist::GHSA-73wf-gq98-2v4g+GHSA-c83g-rgw3-j3cx": {
+      "severity": "high",
+      "project": "/frontend",
+      "package": "browserslist",
+      "direct": false,
+      "fix": "in-range"
+    },
+    "/frontend::fast-uri::GHSA-5jgf-p345-68v8+GHSA-7p8r-x3mc-p8w7+GHSA-f65p-4m7j-42xc+GHSA-fph4-wmhf-6fwf+GHSA-jqff-g426-hqxp+GHSA-v2hh-gcrm-f6hx": {
+      "severity": "high",
+      "project": "/frontend",
+      "package": "fast-uri",
+      "direct": false,
+      "fix": "in-range"
+    },
+    "/frontend::js-yaml::GHSA-2883-xcg3-v3hh+GHSA-5p4m-2wfm-xmqj": {
+      "severity": "high",
+      "project": "/frontend",
+      "package": "js-yaml",
+      "direct": false,
+      "fix": "in-range"
+    },
+    "/frontend::jspdf::GHSA-67pg-wm7f-q7fj+GHSA-7x6v-j9x4-qf24+GHSA-8mvj-3j78-4qmw+GHSA-95fx-jjr5-f39c+GHSA-9vjf-qc39-jprp+GHSA-cjw8-79x6-5cj4+GHSA-f8cm-6447-x5h2+GHSA-p5xg-68wr-hm3m+GHSA-pqxr-3g65-p328+GHSA-vm32-vv63-w422+GHSA-w532-jxjh-hjhj+GHSA-wfv2-pwc8-crg5+via:dompurify": {
+      "severity": "critical",
+      "project": "/frontend",
+      "package": "jspdf",
+      "direct": true,
+      "fix": "upgrade-to jspdf@4.2.1"
+    },
+    "/frontend::nanoid::GHSA-28wg-ghj8-5hjv+GHSA-2v37-7h3g-55p8": {
+      "severity": "high",
+      "project": "/frontend",
+      "package": "nanoid",
+      "direct": false,
+      "fix": "in-range"
+    },
+    "/frontend::postcss::GHSA-fxqj-rqcc-2cmp+GHSA-r28c-9q8g-f849": {
+      "severity": "high",
+      "project": "/frontend",
+      "package": "postcss",
+      "direct": false,
+      "fix": "in-range"
+    },
+    "/frontend::react-router-dom::via:@remix-run/router+via:react-router": {
+      "severity": "high",
+      "project": "/frontend",
+      "package": "react-router-dom",
+      "direct": true,
+      "fix": "in-range"
+    },
+    "/frontend::react-router::GHSA-2j2x-hqr9-3h42+GHSA-337j-9hxr-rhxg+GHSA-9jcx-v3wj-wh4m+GHSA-wrjc-x8rr-h8h6+via:@remix-run/router": {
+      "severity": "high",
+      "project": "/frontend",
+      "package": "react-router",
+      "direct": false,
+      "fix": "in-range"
+    },
+    "/frontend::smol-toml::GHSA-7w5x-hrqm-74c2": {
+      "severity": "high",
+      "project": "/frontend",
+      "package": "smol-toml",
+      "direct": false,
+      "fix": "in-range"
+    },
+    "/frontend::storybook::GHSA-8452-54wp-rmv6+GHSA-mjf5-7g4m-gx5w": {
+      "severity": "high",
+      "project": "/frontend",
+      "package": "storybook",
+      "direct": true,
+      "fix": "in-range"
+    },
+    "/frontend::vite::GHSA-4w7w-66w2-5vf9+GHSA-fx2h-pf6j-xcff+GHSA-v6wh-96g9-6wx3+via:esbuild": {
+      "severity": "high",
+      "project": "/frontend",
+      "package": "vite",
+      "direct": true,
+      "fix": "upgrade-to vite@8.3.1"
+    },
+    "/frontend::vitest::GHSA-5xrq-8626-4rwp+GHSA-82fw-gwwq-j7x9+via:@vitest/mocker+via:vite+via:vite-node": {
+      "severity": "critical",
+      "project": "/frontend",
+      "package": "vitest",
+      "direct": true,
+      "fix": "upgrade-to vitest@5.0.2"
+    },
+    "/load-test::@faker-js/faker::GHSA-qxc2-j82w-r537": {
+      "severity": "high",
+      "project": "/load-test",
+      "package": "@faker-js/faker",
+      "direct": true,
+      "fix": "upgrade-to @faker-js/faker@10.6.0"
+    }
+  }
+}

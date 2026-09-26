@@ -13,10 +13,11 @@ Index of the operational scripts in this directory: what each one does, required
 | `test-ssl-renewal.sh` | Verifies the SSL auto-renewal cron job is configured correctly and that a renewal actually succeeds. | Same domain configuration as `setup-ssl.sh`. | `./scripts/test-ssl-renewal.sh` |
 | `update-price-history.sh` | Regenerates `PRICE_HISTORY_GIT_SUMMARY.md` incrementally, diffing against the last-parsed commit (tracked in `.price-history-last-commit`) instead of re-walking full history. | None required. | `./scripts/update-price-history.sh` |
 | `invalidate-cdn-cache.mjs` | Invalidates CDN cache entries after a deploy (Cloudflare by default). | `CDN_PROVIDER` (optional, defaults to `cloudflare`), `CDN_INVALIDATION_URLS` (required — URLs/paths to invalidate), plus the provider's own API credentials. | `node scripts/invalidate-cdn-cache.mjs` |
+| `check-dependency-audit.mjs` | Fails if `npm audit` reports any high/critical finding that is not already in `.github/dependency-audit-baseline.json`, or if the baseline has gone stale. Pass `--update` to rewrite the baseline after fixing or changing dependencies. Runs in the `dependency-audit` CI workflow. | None. Must be run from the repo root. | `node scripts/check-dependency-audit.mjs` |
 
 ## Windows vs. macOS/Linux
 
-`setup.ps1` is the Windows-oriented script (PowerShell); every other script here is Bash and targets macOS/Linux. Windows contributors should run `setup.ps1` for initial setup; the remaining operational scripts (deploy, SSL, benchmarking, CDN) are ops/CI tooling normally run from a Linux CI runner or a Linux/macOS workstation, not from a contributor's Windows machine directly. See also #739 for the broader platform-support documentation this indexes into.
+`setup.ps1` is the Windows-oriented script (PowerShell); the `.sh` scripts here are Bash and target macOS/Linux. The `.mjs` scripts (`invalidate-cdn-cache.mjs`, `check-dependency-audit.mjs`) are plain Node with no shell dependency, so they run unchanged on Windows, macOS and Linux. Windows contributors should run `setup.ps1` for initial setup; the remaining operational scripts (deploy, SSL, benchmarking, CDN) are ops/CI tooling normally run from a Linux CI runner or a Linux/macOS workstation, not from a contributor's Windows machine directly. See also #739 for the broader platform-support documentation this indexes into.
 
 ## Adding a new script
 
