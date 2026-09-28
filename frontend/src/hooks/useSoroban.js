@@ -157,6 +157,12 @@ export function useSorobanWrite(fnName) {
     try {
       if (import.meta.env.VITE_MOCK_WALLET === "true") {
         await new Promise(resolve => setTimeout(resolve, 800));
+        // Issue #794: deterministic failure path so the visual-regression suite
+        // can screenshot the error state. Read at call time (not baked in at
+        // build time) so a single build can exercise both branches.
+        if (localStorage.getItem("mock_tx_failure") === "true") {
+          throw new Error("mock transaction rejected (mock_tx_failure)");
+        }
         if (fnName === "buy_shares") {
           let buyAmount = 1;
           if (args[1] && typeof args[1].u32 === "function") {

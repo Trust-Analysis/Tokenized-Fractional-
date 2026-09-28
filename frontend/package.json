@@ -20,6 +20,8 @@
     "deploy": "npm run build && echo 'Build complete — Render auto-deploys via render.yaml'",
     "test:e2e": "cypress run",
     "test:e2e:ui": "playwright test --ui",
+    "test:visual": "playwright test --config playwright.visual.config.js",
+    "test:visual:update": "playwright test --config playwright.visual.config.js --update-snapshots",
     "lint": "eslint . --ext .js,.jsx",
     "lint:ci": "eslint . --ext .js,.jsx --max-warnings=0",
     "lint:fix": "eslint . --ext .js,.jsx --fix",
