@@ -28,6 +28,7 @@ import { createRateLimiter } from './src/middleware/rateLimiter.js';
 import { createGraphQLRateLimiter } from './src/middleware/tieredRateLimiter.js';
 import { createRateLimitAdminRoutes } from './src/routes/rateLimitAdmin.js';
 import { metricsMiddleware, metricsHandler } from './src/services/metricsService.js';
+import { readDiskUsage, resolveDataDirectory } from './src/utils/diskUsage.js';
 import { applyCursorPagination, CursorError, paginationErrorHandler, SORT_FIELDS } from './src/services/cursorPagination.js';
 import { parsePaginationParams } from './src/middleware/cursorPagination.js';
 import {
@@ -573,7 +574,7 @@ app.use('/api/admin/rate-limits', rateLimitAdminRoutes);
  *   get:
  *     tags: [Health]
  *     summary: System health check
- *     description: Returns overall system status, timestamp, and dependency health (storage, Redis). Returns 503 degraded status if Redis is configured but unreachable.
+ *     description: Returns overall system status, timestamp, and dependency health (storage, Redis, disk). The disk entry reports free space on the volume holding DATA_FILE as an informational signal only — it never changes the HTTP status. Returns 503 degraded status if Redis is configured but unreachable. See docs/disk-usage-monitoring.md.
  *     responses:
  *       200:
  *         description: System is healthy
@@ -595,6 +596,22 @@ app.get('/health', async (_req, res) => {
   const deps = {
     storage: { status: 'ok' },
     redis: { status: 'not_configured' },
+  };
+
+  // Issue #801: report free space on the volume holding DATA_FILE.
+  //
+  // Informational only — this deliberately does NOT influence the HTTP status.
+  // Render restarts an instance whose health check fails, and restarting
+  // mid-fill-up is more likely to lose the pending write than to reclaim space.
+  // Alerting lives in scripts/check-disk-usage.js and the disk_usage_ratio
+  // gauge; the procedure is in docs/disk-usage-monitoring.md.
+  const diskUsage = await readDiskUsage(resolveDataDirectory(__dirname));
+  deps.disk = {
+    status: diskUsage.status,
+    usedPercent: diskUsage.usedPercent,
+    available: diskUsage.available,
+    thresholds: diskUsage.thresholds,
+    ...(diskUsage.message && { message: diskUsage.message }),
   };
 
   // Check Redis if configured

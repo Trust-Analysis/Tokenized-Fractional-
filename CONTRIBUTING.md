@@ -10,6 +10,7 @@ Thank you for your interest in contributing! This document outlines the process 
 - [Code Style Guidelines](#code-style-guidelines)
 - [Branch Naming Conventions](#branch-naming-conventions)
 - [Pull Request Process](#pull-request-process)
+- [Operational Runbooks](#operational-runbooks)
 - [Local Secret Scanning](#local-secret-scanning)
 - [Testing](#testing)
 - [Internationalization (i18n)](#internationalization-i18n)
@@ -221,6 +222,24 @@ Closes #XX
 
 ## Screenshots (if applicable)
 ```
+
+---
+
+## Operational Runbooks
+
+Some changes are only reviewable alongside the procedure they affect. These are
+the runbooks the code refers to:
+
+| Runbook | Covers |
+|---|---|
+| [docs/disk-usage-monitoring.md](docs/disk-usage-monitoring.md) | Disk-usage thresholds, the alert signals, and the response procedure for a filling volume holding `DATA_FILE`. |
+| [docs/blue-green-deployment.md](docs/blue-green-deployment.md) | Deploying and rolling back the Render backend and static frontend. |
+| [docs/cloudwatch-incident-runbook.md](docs/cloudwatch-incident-runbook.md) | Incident triage from alarms. |
+| [docs/troubleshooting.md](docs/troubleshooting.md) | What an operator or user should check first, including the public status page. |
+
+If your change introduces a new failure mode that a human has to act on, add the
+response steps to the relevant runbook in the same pull request. An alert with
+no documented response is a page that nobody can action.
 
 ---
 

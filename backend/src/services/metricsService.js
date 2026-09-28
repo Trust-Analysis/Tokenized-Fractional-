@@ -9,11 +9,16 @@
  * - Error rates (counters & status tracking)
  * - Active WebSocket connections (gauge)
  * - Database connection pool utilization (gauges)
+ * - Disk usage on the volume holding DATA_FILE (gauge, issue #801)
  */
+
+import { dirname, resolve } from 'node:path';
+import { fileURLToPath } from 'node:url';
 
 import prometheus from 'express-prom-bundle';
 import { wsManager } from '../../websocket.js';
 import { getPoolStats } from './database.js';
+import { readDiskUsageSync, resolveDataDirectory } from '../utils/diskUsage.js';
 
 const promClient = prometheus.promClient;
 const register = promClient.register;
@@ -99,6 +104,60 @@ export const dbPoolConnections = getOrRegister(promClient.Gauge, {
       this.set({ state: 'used' }, 0);
       this.set({ state: 'free' }, 0);
       this.set({ state: 'pending' }, 0);
+    }
+  },
+});
+
+// ── 5. Disk usage (issue #801) ───────────────────────────────────────────────
+// The backend writes `data.json` to the instance's local disk. Scraping the
+// ratio here means the existing Prometheus/Grafana stack can alert on it with a
+// rule of its own, without the backend polling in the background: `collect()`
+// runs only when /metrics is scraped.
+//
+// BACKEND_ROOT is two levels up from this file (backend/src/services).
+const BACKEND_ROOT = resolve(dirname(fileURLToPath(import.meta.url)), '..', '..');
+
+/**
+ * Disk usage ratio (used / total) for the volume holding DATA_FILE.
+ *
+ * Reports 0 when the filesystem cannot be measured. That is deliberate — a
+ * gauge that throws would fail the whole /metrics scrape and take every other
+ * metric down with it — but it does mean a monitoring rule should treat "ratio
+ * == 0 unexpectedly" as a measurement failure. The `available` bytes and the
+ * explicit status are surfaced on GET /health for that case.
+ */
+export const diskUsageRatio = getOrRegister(promClient.Gauge, {
+  name: 'disk_usage_ratio',
+  help: 'Disk usage ratio (used / total) for the volume holding DATA_FILE',
+  collect() {
+    try {
+      const usage = readDiskUsageSync(resolveDataDirectory(BACKEND_ROOT));
+      if (usage.status === 'unknown' || !usage.totalBytes) {
+        this.set(0);
+      } else {
+        this.set(usage.usedBytes / usage.totalBytes);
+      }
+    } catch {
+      this.set(0);
+    }
+  },
+});
+
+/**
+ * Bytes available to the backend on the volume holding DATA_FILE.
+ *
+ * `bavail` semantics: space an unprivileged process can actually write to, not
+ * the total free space including the root-reserved blocks.
+ */
+export const diskAvailableBytes = getOrRegister(promClient.Gauge, {
+  name: 'disk_available_bytes',
+  help: 'Bytes available to this process on the volume holding DATA_FILE',
+  collect() {
+    try {
+      const usage = readDiskUsageSync(resolveDataDirectory(BACKEND_ROOT));
+      this.set(usage.availableBytes || 0);
+    } catch {
+      this.set(0);
     }
   },
 });
