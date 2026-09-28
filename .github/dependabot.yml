@@ -1,4 +1,20 @@
-# Dependabot configuration — issue #721
+# Dependabot configuration — issue #721, rescoped by issue #800
+#
+# SCOPE: security updates only.
+#
+# Renovate (see renovate.json) now owns routine *version* updates for npm and
+# cargo. Every entry below keeps its directory, schedule and grouping so that
+# security PRs still arrive grouped and reviewable, but
+# `open-pull-requests-limit: 0` switches version updates off in this file.
+# GitHub documents that as the supported way to keep security updates while
+# excluding version updates:
+#   https://docs.github.com/code-security/dependabot/dependabot-security-updates/configuring-dependabot-security-updates
+#
+# Why not let both bots open version updates: they would raise competing PRs for
+# the same bump, double the review queue, and race each other to rewrite the
+# same lockfile. One tool per job — Renovate for routine bumps, Dependabot for
+# security — is the point of the split, and it is what issue #800 asked for.
+# The weekly review cadence is documented in docs/dependency-updates.md.
 #
 # Every directory below holds a committed lockfile, which is what both
 # Dependabot and `npm audit` need in order to resolve a dependency tree:
@@ -21,10 +37,9 @@
 #     grouping Dependabot would open a long tail of near-duplicate PRs. Updates
 #     are grouped per directory, with majors isolated so a risky bump gets its
 #     own review.
-#   * `versioning-strategy`. Contracts are audited by auditors and are deployed
-#     as immutable WASM, so the schedule stays weekly like everything else, but
-#     the registry is pinned to crates.io explicitly to keep a lockfile-only
-#     workspace unambiguous.
+#   * `applies-to`. Each group is scoped to `security-updates` so it still
+#     groups the security PRs that this file is responsible for, and does not
+#     silently claim the version-update PRs that Renovate now opens.
 version: 2
 
 updates:
@@ -35,13 +50,13 @@ updates:
       day: monday
       time: "06:00"
       timezone: Etc/UTC
-    open-pull-requests-limit: 10
+    open-pull-requests-limit: 0
     groups:
-      backend-minor-patch:
-        applies-to: version-updates
+      backend-security-minor-patch:
+        applies-to: security-updates
         update-types: ["minor", "patch"]
-      backend-major:
-        applies-to: version-updates
+      backend-security-major:
+        applies-to: security-updates
         update-types: ["major"]
     commit-message:
       prefix: "chore(deps-backend)"
@@ -53,13 +68,13 @@ updates:
       day: monday
       time: "06:00"
       timezone: Etc/UTC
-    open-pull-requests-limit: 10
+    open-pull-requests-limit: 0
     groups:
-      frontend-minor-patch:
-        applies-to: version-updates
+      frontend-security-minor-patch:
+        applies-to: security-updates
         update-types: ["minor", "patch"]
-      frontend-major:
-        applies-to: version-updates
+      frontend-security-major:
+        applies-to: security-updates
         update-types: ["major"]
     commit-message:
       prefix: "chore(deps-frontend)"
@@ -71,10 +86,10 @@ updates:
       day: monday
       time: "06:00"
       timezone: Etc/UTC
-    open-pull-requests-limit: 5
+    open-pull-requests-limit: 0
     groups:
-      tooling:
-        applies-to: version-updates
+      tooling-security:
+        applies-to: security-updates
     commit-message:
       prefix: "chore(deps-tooling)"
 
@@ -85,10 +100,10 @@ updates:
       day: monday
       time: "06:00"
       timezone: Etc/UTC
-    open-pull-requests-limit: 5
+    open-pull-requests-limit: 0
     groups:
-      sdk-minor-patch:
-        applies-to: version-updates
+      sdk-security-minor-patch:
+        applies-to: security-updates
         update-types: ["minor", "patch"]
     commit-message:
       prefix: "chore(deps-sdk)"
@@ -100,10 +115,10 @@ updates:
       day: monday
       time: "06:00"
       timezone: Etc/UTC
-    open-pull-requests-limit: 5
+    open-pull-requests-limit: 0
     groups:
-      load-test:
-        applies-to: version-updates
+      load-test-security:
+        applies-to: security-updates
     commit-message:
       prefix: "chore(deps-load-test)"
 
@@ -118,13 +133,13 @@ updates:
       day: monday
       time: "06:00"
       timezone: Etc/UTC
-    open-pull-requests-limit: 5
+    open-pull-requests-limit: 0
     groups:
-      contracts-minor-patch:
-        applies-to: version-updates
+      contracts-security-minor-patch:
+        applies-to: security-updates
         update-types: ["minor", "patch"]
-      contracts-major:
-        applies-to: version-updates
+      contracts-security-major:
+        applies-to: security-updates
         update-types: ["major"]
     commit-message:
       prefix: "chore(deps-contracts)"

@@ -10,6 +10,7 @@ Thank you for your interest in contributing! This document outlines the process 
 - [Code Style Guidelines](#code-style-guidelines)
 - [Branch Naming Conventions](#branch-naming-conventions)
 - [Pull Request Process](#pull-request-process)
+- [Dependency Updates](#dependency-updates)
 - [Local Secret Scanning](#local-secret-scanning)
 - [Testing](#testing)
 - [Internationalization (i18n)](#internationalization-i18n)
@@ -221,6 +222,29 @@ Closes #XX
 
 ## Screenshots (if applicable)
 ```
+
+---
+
+## Dependency Updates
+
+There is one tool per job, and it matters which is which:
+
+| Job | Tool | Configuration |
+|---|---|---|
+| Routine version bumps (npm + cargo) | Renovate | [`renovate.json`](renovate.json) |
+| Security advisories | Dependabot | [`.github/dependabot.yml`](.github/dependabot.yml) |
+| Auditing the current tree for known vulnerabilities | `check-dependency-audit.mjs`, `cargo audit` | [`.github/workflows/dependency-audit.yml`](.github/workflows/dependency-audit.yml) |
+
+Neither bot merges anything by itself. Dependency pull requests are gated on the
+`Dependency Update Gate` workflow, which fails when a manifest and its lockfile
+move out of step. The weekly review cadence, the grouping rules and what to do
+when a bump is declined are in
+[docs/dependency-updates.md](docs/dependency-updates.md).
+
+**Before hand-editing a manifest, run the install command in that directory and
+commit the regenerated lockfile in the same commit.** A pull request that bumps
+`package.json` without updating `package-lock.json` fails the gate, and that is
+the single most common dependency-PR mistake.
 
 ---
 
