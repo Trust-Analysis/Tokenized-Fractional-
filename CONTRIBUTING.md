@@ -10,6 +10,7 @@ Thank you for your interest in contributing! This document outlines the process 
 - [Code Style Guidelines](#code-style-guidelines)
 - [Branch Naming Conventions](#branch-naming-conventions)
 - [Pull Request Process](#pull-request-process)
+- [Review and Merge Requirements](#review-and-merge-requirements)
 - [Local Secret Scanning](#local-secret-scanning)
 - [Testing](#testing)
 - [Internationalization (i18n)](#internationalization-i18n)
@@ -221,6 +222,30 @@ Closes #XX
 
 ## Screenshots (if applicable)
 ```
+
+---
+
+## Review and Merge Requirements
+
+`main` is a protected branch (issue #798). You cannot push to it directly, and a pull request
+cannot be merged until **all** of the following are true:
+
+1. **CI is green** — every required status check has passed on the latest commit. That set
+   includes TruffleHog and gitleaks secret scanning, CodeQL, security linting, `npm audit`,
+   `cargo audit`, and the Soroban fuzz/Wasm checks. The exact list, and why path-filtered
+   workflows are deliberately *not* required, is in
+   [docs/branch-protection.md](docs/branch-protection.md).
+2. **At least one approval** from a maintainer who did not author the change. An approval is
+   dismissed when new commits are pushed, so re-request a review after a review-driven rewrite.
+3. **Every review conversation is resolved.**
+4. **The branch is up to date with `main`** and has a linear history (no merge commits). Rebase
+   rather than merge.
+
+Force-pushes to `main` and deleting `main` are disabled, and the rules apply to maintainers as
+well as to external contributors. Merge your own pull request only after it has been approved.
+
+The desired settings are version-controlled in `.github/branch-protection.json`; apply or verify
+them with `./scripts/branch-protection.sh apply` / `check` using a token that has admin access.
 
 ---
 
