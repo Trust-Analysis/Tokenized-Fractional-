@@ -98,6 +98,7 @@ graph TB
 - [Jenkins Integration Pipeline](docs/jenkins.md)
 - [Contract Resource Benchmarks](docs/contract-benchmarks.md)
 - [Architecture Overview & Diagrams](docs/architecture.md)
+- [Infrastructure Inventory & IaC Boundary](docs/infrastructure.md) — What is managed by `render.yaml` / Terraform, what is still provisioned by hand, and how to apply the database
 - [Architecture Decision Records (ADRs)](docs/adr/README.md) — Technical decisions and rationale
 - [Security Best Practices Guide](docs/security.md) — Security guidelines, audit checklist, and incident response
 - [Observability Guide](docs/OBSERVABILITY.md) — Structured logging, request IDs, secret redaction, Sentry alerting, and the ELK log pipeline
