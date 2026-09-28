@@ -1,0 +1,72 @@
+# CODEOWNERS — issue #799
+#
+# Why this file exists
+# -------------------
+# Reviews of pull requests touching the highest-risk parts of this repository
+# were previously routed to nobody in particular: the only bindings were the
+# reviewer's own judgement. That is fine for `docs/` and less fine for
+# `contracts/`, which custodies real payment-token funds once deployed and is
+# effectively immutable afterwards, or for the backend's authentication and
+# rate-limiting code.
+#
+# How matching works
+# ------------------
+# Rules are evaluated top to bottom and the LAST matching pattern wins, so the
+# broad catch-all appears first and the specific, highest-risk paths last.
+#
+# A pattern that ends in `/` matches a directory and everything below it, so
+# `/contracts/` covers `contracts/**` (the pattern named in issue #799).
+#
+# Routing a reviewer is not the same as *requiring* one. GitHub only makes these
+# approvals blocking when branch protection enables "Require review from Code
+# Owners" — see docs/code-ownership.md for the exact settings and the
+# admin steps that turn this file into an enforced control.
+
+# ── Default owner: everything not matched by a more specific rule below ──────
+*                                   @Fatimasanusi
+
+# ── Build, release and dependency automation ─────────────────────────────────
+/.github/workflows/                 @Fatimasanusi
+/.github/dependabot.yml             @Fatimasanusi
+/renovate.json                      @Fatimasanusi
+/package.json                       @Fatimasanusi
+/commitlint.config.js               @Fatimasanusi
+
+# ── Infrastructure as code and deployment topology ───────────────────────────
+/render.yaml                        @Fatimasanusi
+/terraform/                         @Fatimasanusi
+/k8s/                               @Fatimasanusi
+/nginx/                             @Fatimasanusi
+/docker-compose.yml                 @Fatimasanusi
+/Jenkinsfile                        @Fatimasanusi
+
+# ── Smart contracts ──────────────────────────────────────────────────────────
+# Highest-risk path in the repository: deployed bytecode is immutable and the
+# marketplace contract moves real funds. Changes here carry financial risk that
+# no test suite fully retires, so they require a domain reviewer.
+/contracts/                         @Fatimasanusi @Khadeejaarh
+
+# ── Backend authentication, authorisation and secret handling ────────────────
+/backend/auth.js                    @Fatimasanusi @Khadeejaarh
+/backend/authMiddleware.js          @Fatimasanusi @Khadeejaarh
+/backend/env.js                     @Fatimasanusi @Khadeejaarh
+/backend/bootstrap-api-key.js       @Fatimasanusi @Khadeejaarh
+/backend/index.js                   @Fatimasanusi @Khadeejaarh
+/backend/src/middleware/            @Fatimasanusi @Khadeejaarh
+/backend/src/routes/                @Fatimasanusi @Khadeejaarh
+/backend/src/validators/            @Fatimasanusi
+/backend/src/config/                @Fatimasanusi
+
+# ── Frontend code that constructs and signs contract transactions ────────────
+/frontend/src/hooks/useSoroban.js       @Fatimasanusi @Khadeejaarh
+/frontend/src/context/FreighterWalletContext.jsx  @Fatimasanusi @Khadeejaarh
+/frontend/src/store/useWalletStore.js   @Fatimasanusi @Khadeejaarh
+/frontend/src/machines/                 @Fatimasanusi @Khadeejaarh
+
+# ── Security policy and the checks that enforce it ───────────────────────────
+/SECURITY.md                        @Fatimasanusi @Khadeejaarh
+/.github/CODEOWNERS                 @Fatimasanusi
+/.gitleaks.toml                     @Fatimasanusi
+/.github/workflows/security.yml     @Fatimasanusi
+/.github/workflows/dependency-audit.yml  @Fatimasanusi
+/.github/dependency-audit-baseline.json  @Fatimasanusi
