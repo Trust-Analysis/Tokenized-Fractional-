@@ -14,6 +14,65 @@ This policy covers security vulnerabilities in:
 - **Backend API** (`backend/`) — Express.js off-chain metadata service.
 - **Frontend** (`frontend/`) — React + Vite dApp interacting with Freighter wallet and Soroban RPC.
 
+## Smart Contract Audit Status
+
+**Status: UNAUDITED** (as of 2026-09-28).
+
+The Soroban contract in `contracts/` has **not** been reviewed by an
+independent third party. There is no audit report to link to. The contract
+custodies payment-token balances and holds an admin key that can pause trading,
+change the price, raise the share supply and withdraw tokens, so an unreviewed
+defect in that logic is a direct financial risk.
+
+| Component | Audit status |
+| --- | --- |
+| Smart contract (`contracts/`) | **Unaudited** — no independent review has been performed |
+| Backend API (`backend/`) | Not separately audited |
+| Frontend (`frontend/`) | Not separately audited |
+
+### Mainnet risk disclaimer
+
+> **Do not deploy this contract to Stellar mainnet to custody real user funds
+> while it is unaudited.** An unaudited contract may contain a fund-loss or
+> access-control defect. Anyone evaluating a mainnet deployment — issuers,
+> operators, or forks of this repository — should treat that as a known,
+> accepted risk only after their own independent review, and should start with
+> a capped-value or testnet pilot rather than full production value.
+
+This disclaimer is removed only when an audit report is published **and** its
+findings have been remediated (see below).
+
+### Audit plan
+
+- [ ] Freeze the contract's public interface for the audit window.
+- [ ] Engage an independent auditor with Soroban/Rust experience.
+- [ ] Give the auditor the fund-handling and admin surface: `buy_shares`,
+      `transfer_admin` / `accept_admin`, `pause` / `unpause`,
+      `emergency_withdraw`, `update_price`, `increase_total_shares` and the
+      price oracle fallback.
+- [ ] Remediate every high/critical finding and re-verify the fixes.
+- [ ] Publish the report and update this section.
+
+When the status changes, replace **UNAUDITED** with **AUDITED**, link the report
+next to the table above, and keep the disclaimer until the findings are closed.
+
+### Re-audit policy
+
+An audit is a snapshot of one revision, not a permanent guarantee. A **re-audit
+(or written sign-off from the original auditor) is required** before merging any
+of the following into `contracts/`:
+
+1. A change to how payment tokens move — `buy_shares`, fees, or the transfer/
+   mint path.
+2. A change to the admin surface or the two-step admin transfer.
+3. A change to the storage layout, keys, or `init`/migration behaviour.
+4. A change to oracle handling or the `update_price` fallback.
+5. A new external dependency in the contract's trust boundary.
+6. A fix for a previously reported security finding.
+
+The re-audit is tracked as an issue against the pull request that makes the
+change, and this section is updated in the same pull request that closes it.
+
 ## Reporting a Vulnerability
 
 **Please do not open a public GitHub issue for security vulnerabilities.**

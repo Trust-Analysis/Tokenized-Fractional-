@@ -4,6 +4,31 @@
 
 A full-stack decentralized application (dApp) built on the **Stellar Network** using **Soroban Smart Contracts**. This marketplace allows administrators to tokenize real-world assets into fractional shares for users to purchase.
 
+> [!WARNING]
+> **The smart contract has not been independently audited.** It custodies real
+> payment-token funds and holds a privileged admin key. Do not deploy it to
+> Stellar mainnet with real user funds until an independent audit has been
+> completed and its findings remediated. See
+> [Smart Contract Audit Status](#security--audit-status) below.
+
+## Security & Audit Status
+
+The Soroban contract in `contracts/` is **unaudited**: no independent third
+party has reviewed it. That is a material risk — the contract custodies
+payment-token balances and an admin key that can pause trading, change the
+price, raise the share supply and withdraw tokens.
+
+| Component | Audit status |
+| --- | --- |
+| Smart contract (`contracts/`) | **Unaudited** — no independent review performed |
+| Backend API (`backend/`) | Not separately audited |
+| Frontend (`frontend/`) | Not separately audited |
+
+The current status, the mainnet risk disclaimer and the policy for re-auditing
+after significant contract changes are maintained in
+[SECURITY.md](SECURITY.md#smart-contract-audit-status). If you are evaluating a
+mainnet deployment, read that before funding the contract.
+
 ## Walkthrough Demo
 
 [![Watch the Demo](assets/play_banner.png)](assets/marketplace_demo.webp)
@@ -99,6 +124,7 @@ graph TB
 - [Contract Resource Benchmarks](docs/contract-benchmarks.md)
 - [Architecture Overview & Diagrams](docs/architecture.md)
 - [Architecture Decision Records (ADRs)](docs/adr/README.md) — Technical decisions and rationale
+- [Security Policy & Audit Status](SECURITY.md) — Vulnerability reporting, current smart-contract audit status, mainnet risk disclaimer, and re-audit policy
 - [Security Best Practices Guide](docs/security.md) — Security guidelines, audit checklist, and incident response
 - [Observability Guide](docs/OBSERVABILITY.md) — Structured logging, request IDs, secret redaction, Sentry alerting, and the ELK log pipeline
 - [Performance Benchmarks](docs/performance.md) — Gas costs, API latency, frontend metrics
