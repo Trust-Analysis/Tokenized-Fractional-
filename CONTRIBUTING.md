@@ -10,6 +10,7 @@ Thank you for your interest in contributing! This document outlines the process 
 - [Code Style Guidelines](#code-style-guidelines)
 - [Branch Naming Conventions](#branch-naming-conventions)
 - [Pull Request Process](#pull-request-process)
+- [Code Ownership and Review](#code-ownership-and-review)
 - [Local Secret Scanning](#local-secret-scanning)
 - [Testing](#testing)
 - [Internationalization (i18n)](#internationalization-i18n)
@@ -221,6 +222,29 @@ Closes #XX
 
 ## Screenshots (if applicable)
 ```
+
+---
+
+## Code Ownership and Review
+
+Some paths are reviewed by named maintainers before they can be merged, because
+the consequences of a mistake there are not caught by a test suite. If a pull
+request touches any of them, GitHub automatically requests the listed reviewer.
+
+| Area | Paths |
+|---|---|
+| Smart contracts | `contracts/` |
+| Backend auth, authorisation and secret handling | `backend/auth.js`, `backend/authMiddleware.js`, `backend/env.js`, `backend/index.js`, `backend/src/middleware/`, `backend/src/routes/` |
+| Frontend transaction construction | `frontend/src/hooks/useSoroban.js`, `frontend/src/context/FreighterWalletContext.jsx`, `frontend/src/store/useWalletStore.js` |
+| Supply-chain automation and infrastructure | `.github/dependabot.yml`, `renovate.json`, the `render.yaml` / `terraform/` / `k8s/` / `nginx/` deployment topology |
+
+The assignments live in [`.github/CODEOWNERS`](.github/CODEOWNERS); the rules,
+the ordering semantics (the **last** matching pattern wins) and the branch
+protection settings that make the approvals *required* rather than merely
+requested are documented in [docs/code-ownership.md](docs/code-ownership.md).
+
+If you are adding a path that carries financial or security risk, add a rule
+there rather than widening the default.
 
 ---
 
