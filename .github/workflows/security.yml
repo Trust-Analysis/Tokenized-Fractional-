@@ -75,14 +75,20 @@ jobs:
       - name: Install dependencies
         run: npm ci
         working-directory: backend
+      # backend/package.json sets "type": "module" with no babel transform, so
+      # jest can only load the ESM test files under --experimental-vm-modules.
+      # The backend's own `npm test` script passes that flag; calling `npx jest`
+      # directly (as this step did) did not, so the suite failed to parse with
+      # "Cannot use import statement outside a module" before running a single
+      # assertion. Reuse the package script so the two cannot drift apart.
       - name: Run SQL injection test suite (strict mode)
-        run: npx jest --forceExit __tests__/sqlInjection.test.js --verbose
+        run: npm test -- __tests__/sqlInjection.test.js --verbose
         working-directory: backend
         env:
           SQL_INJECTION_BLOCK_POLICY: strict
           NODE_ENV: test
       - name: Run SQL injection test suite (warn mode coverage)
-        run: npx jest --forceExit __tests__/sqlInjection.test.js --verbose
+        run: npm test -- __tests__/sqlInjection.test.js --verbose
         working-directory: backend
         env:
           SQL_INJECTION_BLOCK_POLICY: warn

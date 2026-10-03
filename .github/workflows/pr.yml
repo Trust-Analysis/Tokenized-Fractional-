@@ -22,7 +22,14 @@ jobs:
           path: ./
           base: "${{ github.event.pull_request.base.sha || 'HEAD^' }}"
           head: "${{ github.event.pull_request.head.sha || 'HEAD' }}"
-          extra_args: --debug --only-verified=false
+          # `--only-verified` is a boolean flag, so `--only-verified=false` is not
+          # a way to turn it off: the action interpolates extra_args unquoted, so
+          # the CLI received a bare `false` token and aborted with
+          # "unexpected false" before scanning anything. Omitting the flag
+          # already means "report unverified findings too", which is what this
+          # job wants. See the sibling `secret-scanning` job in security.yml,
+          # which passes `--only-verified` bare and works.
+          extra_args: --debug
 
   # Issue #514: Fuzz testing for Soroban smart contracts
   fuzz-tests:
@@ -87,10 +94,17 @@ jobs:
       - name: Checkout repository
         uses: actions/checkout@v4
 
+      # soroban-sdk 26's build script hard-fails on `wasm32-unknown-unknown`
+      # for Rust 1.82+: that target enables reference-types and multi-value,
+      # which the Soroban Environment does not support yet, so build.rs panics
+      # with "Rust compiler 1.82+ with target 'wasm32-unknown-unknown' is
+      # unsupported ... use 'wasm32v1-none' available with Rust 1.84+". The
+      # `stable` toolchain above is 1.84+, so wasm32v1-none is available and is
+      # the target Soroban actually supports.
       - name: Install Rust toolchain with wasm target
         uses: dtolnay/rust-toolchain@stable
         with:
-          targets: wasm32-unknown-unknown
+          targets: wasm32v1-none
 
       - name: Cache cargo registry & build
         uses: actions/cache@v4
@@ -104,5 +118,5 @@ jobs:
             ${{ runner.os }}-cargo-wasm-
 
       - name: Build contracts (release wasm)
-        run: cargo build --workspace --release --target wasm32-unknown-unknown --verbose
+        run: cargo build --workspace --release --target wasm32v1-none --verbose
         working-directory: contracts

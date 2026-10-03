@@ -52,6 +52,12 @@ jobs:
 
       # `npm ci` fails when package.json and package-lock.json disagree, and
       # --dry-run makes that a pure assertion with no install side effects.
+      # --ignore-scripts is required as well: --dry-run still runs the root
+      # project's lifecycle scripts, and the root package.json has
+      # `prepare: husky`. husky is not installed under --dry-run, so the step
+      # died on "'husky' is not recognized" and reported the perfectly
+      # in-sync root lockfile as "out of sync". Skipping scripts keeps this a
+      # pure manifest-vs-lockfile assertion, which is what the check is for.
       # Only the five directories that actually commit a lockfile are checked;
       # backend/gateway and backend/services/{assets,transactions,users} have a
       # package.json but no lockfile (see .github/dependabot.yml), so `npm ci`
@@ -63,7 +69,7 @@ jobs:
           failed=0
           for dir in . backend frontend sdk load-test; do
             echo "::group::npm ci --dry-run in ${dir}"
-            if (cd "${dir}" && npm ci --dry-run --no-audit --no-fund); then
+            if (cd "${dir}" && npm ci --dry-run --no-audit --no-fund --ignore-scripts); then
               echo "${dir}: package-lock.json is in sync"
             else
               echo "::error file=${dir}/package-lock.json::lockfile is out of sync with ${dir}/package.json — run 'npm install' in ${dir} and commit the result"

@@ -2,38 +2,10 @@
   "schema": 1,
   "note": "Accepted pre-existing high/critical npm findings. Enforced as a ratchet by scripts/check-dependency-audit.mjs: new entries are rejected, and stale entries (no longer reproducible) also fail so this list can only shrink. Regenerate with: node scripts/check-dependency-audit.mjs --update",
   "findings": {
-    ".::fast-uri::GHSA-5jgf-p345-68v8+GHSA-7p8r-x3mc-p8w7+GHSA-f65p-4m7j-42xc+GHSA-fph4-wmhf-6fwf+GHSA-jqff-g426-hqxp+GHSA-v2hh-gcrm-f6hx": {
-      "severity": "high",
-      "project": ".",
-      "package": "fast-uri",
-      "direct": false,
-      "fix": "in-range"
-    },
     ".::js-yaml::GHSA-2883-xcg3-v3hh+GHSA-5p4m-2wfm-xmqj": {
       "severity": "high",
       "project": ".",
       "package": "js-yaml",
-      "direct": false,
-      "fix": "in-range"
-    },
-    "/backend::brace-expansion::GHSA-3jxr-9vmj-r5cp+GHSA-mh99-v99m-4gvg+GHSA-rgw5-rvv9-x895": {
-      "severity": "high",
-      "project": "/backend",
-      "package": "brace-expansion",
-      "direct": false,
-      "fix": "in-range"
-    },
-    "/backend::browserslist::GHSA-73wf-gq98-2v4g+GHSA-c83g-rgw3-j3cx": {
-      "severity": "high",
-      "project": "/backend",
-      "package": "browserslist",
-      "direct": false,
-      "fix": "in-range"
-    },
-    "/backend::fast-uri::GHSA-5jgf-p345-68v8+GHSA-7p8r-x3mc-p8w7+GHSA-f65p-4m7j-42xc+GHSA-fph4-wmhf-6fwf+GHSA-jqff-g426-hqxp": {
-      "severity": "high",
-      "project": "/backend",
-      "package": "fast-uri",
       "direct": false,
       "fix": "in-range"
     },
@@ -43,13 +15,6 @@
       "package": "html-minifier",
       "direct": false,
       "fix": "upgrade-to mjml@5.4.1"
-    },
-    "/backend::js-yaml::GHSA-2883-xcg3-v3hh+GHSA-5p4m-2wfm-xmqj": {
-      "severity": "high",
-      "project": "/backend",
-      "package": "js-yaml",
-      "direct": false,
-      "fix": "in-range"
     },
     "/backend::mjml-accordion::via:mjml-core": {
       "severity": "high",
@@ -261,20 +226,6 @@
       "direct": true,
       "fix": "upgrade-to mjml@5.4.1"
     },
-    "/backend::multer::GHSA-535w-7cp7-47q4+GHSA-qfvm-cv95-jqjf+GHSA-qvfw-j98x-7q72+GHSA-wc9g-mqfw-jrwm": {
-      "severity": "high",
-      "project": "/backend",
-      "package": "multer",
-      "direct": true,
-      "fix": "in-range"
-    },
-    "/backend::nodemailer::GHSA-268h-hp4c-crq3+GHSA-2x7j-588g-ccc2+GHSA-8m3c-c648-2xjj+GHSA-c7w3-x93f-qmm8+GHSA-cc9r-2j5m-2m83+GHSA-mm7p-fcc7-pg87+GHSA-p6gq-j5cr-w38f+GHSA-r7g4-qg5f-qqm2+GHSA-rcmh-qjqh-p98v+GHSA-vvjj-xcjg-gr5g+GHSA-wmmp-3585-3rmp+GHSA-wqvq-jvpq-h66f": {
-      "severity": "high",
-      "project": "/backend",
-      "package": "nodemailer",
-      "direct": true,
-      "fix": "upgrade-to nodemailer@10.0.11"
-    },
     "/frontend::@remix-run/router::GHSA-2j2x-hqr9-3h42+GHSA-2w69-qvjg-hvjx": {
       "severity": "high",
       "project": "/frontend",
@@ -307,13 +258,6 @@
       "severity": "high",
       "project": "/frontend",
       "package": "browserslist",
-      "direct": false,
-      "fix": "in-range"
-    },
-    "/frontend::fast-uri::GHSA-5jgf-p345-68v8+GHSA-7p8r-x3mc-p8w7+GHSA-f65p-4m7j-42xc+GHSA-fph4-wmhf-6fwf+GHSA-jqff-g426-hqxp+GHSA-v2hh-gcrm-f6hx": {
-      "severity": "high",
-      "project": "/frontend",
-      "package": "fast-uri",
       "direct": false,
       "fix": "in-range"
     },
