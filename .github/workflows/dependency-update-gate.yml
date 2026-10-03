@@ -1,0 +1,132 @@
+# Dependency Update Gate — issue #800
+#
+# Renovate raises routine version bumps (renovate.json); Dependabot raises
+# security updates (.github/dependabot.yml). Renovate is configured with
+# `automerge: false`, so nothing lands without a green check and a human merge.
+# This workflow is the "green check" half of that contract, and
+# docs/dependency-updates.md is the review cadence.
+#
+# Two jobs, deliberately different in kind:
+#
+#   lockfile-integrity      BLOCKING. Runs on every pull request and is the job
+#                           to mark as a required status check. It answers the
+#                           one question that is specific to automated
+#                           dependency pull requests: did the manifest and its
+#                           lockfile move together? This is the failure mode
+#                           that a bot produces and a human rarely does.
+#
+#   dependency-test-suite   ADVISORY (continue-on-error). Runs the project's
+#                           test suites, but only on pull requests opened by a
+#                           dependency bot, because that is where a bad bump
+#                           would land. It is advisory on purpose — see the
+#                           comment on the job for the four pre-existing
+#                           failures that keep it red today, and remove
+#                           `continue-on-error` once they are fixed.
+#
+# The test-suites job is scoped with `if:` rather than the workflow being
+# scoped, so that lockfile-integrity still reports on every pull request. A
+# required check that only reports for some pull requests leaves all the others
+# waiting on a status that never arrives.
+
+name: Dependency Update Gate
+
+on:
+  pull_request:
+    branches: [main, dev]
+
+permissions:
+  contents: read
+
+jobs:
+  lockfile-integrity:
+    name: Lockfile integrity (npm + cargo)
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+
+      - name: Setup Node
+        uses: actions/setup-node@v4
+        with:
+          node-version: '20'
+
+      # `npm ci` fails when package.json and package-lock.json disagree, and
+      # --dry-run makes that a pure assertion with no install side effects.
+      # Only the five directories that actually commit a lockfile are checked;
+      # backend/gateway and backend/services/{assets,transactions,users} have a
+      # package.json but no lockfile (see .github/dependabot.yml), so `npm ci`
+      # cannot run there at all.
+      - name: Every npm lockfile matches its package.json
+        shell: bash
+        run: |
+          set -uo pipefail
+          failed=0
+          for dir in . backend frontend sdk load-test; do
+            echo "::group::npm ci --dry-run in ${dir}"
+            if (cd "${dir}" && npm ci --dry-run --no-audit --no-fund); then
+              echo "${dir}: package-lock.json is in sync"
+            else
+              echo "::error file=${dir}/package-lock.json::lockfile is out of sync with ${dir}/package.json — run 'npm install' in ${dir} and commit the result"
+              failed=1
+            fi
+            echo "::endgroup::"
+          done
+          exit "${failed}"
+
+      - name: Install Rust toolchain
+        uses: dtolnay/rust-toolchain@stable
+
+      # `--locked` makes cargo refuse to touch the lockfile and fail if it would
+      # have to. This is the cargo equivalent of `npm ci`: a dependency bump that
+      # edited Cargo.toml without regenerating Cargo.lock fails here.
+      - name: Cargo.lock is up to date
+        working-directory: contracts
+        run: cargo metadata --locked --format-version 1 > /dev/null
+
+  dependency-test-suite:
+    name: Dependency PR test suite (advisory)
+    needs: lockfile-integrity
+    # Only dependency bots. `github.actor` covers PRs opened by the bot itself;
+    # the head-branch prefix covers PRs it pushes to after a rebase.
+    if: >-
+      github.actor == 'dependabot[bot]' ||
+      github.actor == 'renovate[bot]' ||
+      github.actor == 'mend[bot]' ||
+      startsWith(github.head_ref, 'dependabot/') ||
+      startsWith(github.head_ref, 'renovate/')
+    # ADVISORY, on purpose. Three of the four suites below are red on `main`
+    # today, for reasons unrelated to any dependency bump:
+    #
+    #   1. backend: __tests__/assetMetadataValidation.test.js cannot load —
+    #      src/middleware/assetMetadataValidation.js:193 has a syntax error.
+    #   2. backend: __tests__/rateLimiter.test.js cannot load — `supertest` is
+    #      imported but is not a declared dependency.
+    #   3. root:    tests/test_issue_748.py errors — it expects the pr.yml fuzz
+    #      step to contain `cargo test --lib <FILTER>`, but pr.yml now runs
+    #      `cargo test fuzz_`.
+    #
+    # Until those are fixed, making this job required would block every
+    # dependency pull request forever. It still runs and still reports, so the
+    # signal is not lost. Delete this `continue-on-error` line — and fix the
+    # three items above — to turn it into a real gate.
+    continue-on-error: true
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+
+      - name: Setup Node
+        uses: actions/setup-node@v4
+        with:
+          node-version: '20'
+
+      - name: Root test suite (Python)
+        run: python3 -m unittest discover -s tests -v
+
+      - name: Backend test suite (Jest)
+        working-directory: backend
+        run: npm install --no-audit --no-fund && npm test
+
+      - name: Frontend test suite (Vitest)
+        working-directory: frontend
+        run: npm install --no-audit --no-fund && npm test

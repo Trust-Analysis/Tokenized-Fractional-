@@ -1,0 +1,108 @@
+name: Pull Request Quality & Security
+
+on:
+  pull_request:
+    branches: [ main, dev ]
+  push:
+    branches: [ main, dev ]
+
+jobs:
+  secret-scan:
+    name: TruffleHog Secret Scanning
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+
+      - name: Run TruffleHog OSS
+        uses: trufflesecurity/trufflehog@main
+        with:
+          path: ./
+          base: "${{ github.event.pull_request.base.sha || 'HEAD^' }}"
+          head: "${{ github.event.pull_request.head.sha || 'HEAD' }}"
+          extra_args: --debug --only-verified=false
+
+  # Issue #514: Fuzz testing for Soroban smart contracts
+  fuzz-tests:
+    name: Soroban Fuzz Tests (proptest)
+    runs-on: ubuntu-latest
+    # Issue #668: scope contract checks to pull requests touching contracts/
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+
+      - name: Install Rust toolchain
+        uses: dtolnay/rust-toolchain@stable
+
+      - name: Cache cargo registry & build
+        uses: actions/cache@v4
+        with:
+          path: |
+            ~/.cargo/registry
+            ~/.cargo/git
+            contracts/target
+          key: ${{ runner.os }}-cargo-${{ hashFiles('contracts/Cargo.lock') }}
+          restore-keys: |
+            ${{ runner.os }}-cargo-
+
+      # Issue #748: the fuzz tests live in contracts/src/lib.rs in the modules
+      #   fuzz_fractional_math, fuzz_order_book_transitions, fuzz_dividend_distribution
+      # (the `property_tests` module holds proptest cases named `test_*`, not
+      # `fuzz_*`). The `fuzz_` filter below matches those modules by name; if
+      # the modules are ever renamed or moved, update the filter AND this
+      # comment. The zero-match guard in the step makes a stale filter fail
+      # the build instead of silently running zero tests.
+      - name: Run fuzz tests (proptest)
+        shell: bash
+        working-directory: contracts
+        env:
+          # proptest reads the PROPTEST_CASES environment variable to set the
+          # number of cases generated per property test.
+          PROPTEST_CASES: "50"
+        run: |
+          set -euo pipefail
+          # Guard: `cargo test` exits 0 even when the filter matches zero
+          # tests, so verify the filter matches real tests before running.
+          matched=$(cargo test fuzz_ -- --list 2>&1 | grep -c ': test$' || true)
+          echo "Fuzz filter matched ${matched} test(s)"
+          if [ "${matched}" -eq 0 ]; then
+            echo "::error::Fuzz test filter 'fuzz_' matched zero tests. The filter must name the modules that actually contain the fuzz tests (see comment above)."
+            exit 1
+          fi
+          cargo test fuzz_ -- --test-threads=1
+
+      - name: Run all contract tests
+        run: cargo test --workspace --verbose
+        working-directory: contracts
+
+  # Issue #668: Build contracts to WebAssembly on pull requests touching
+  # contracts/. This verifies the release Wasm artifacts compile with the
+  # exact target used to build `contracts/nft` and the marketplace contract.
+  contract-wasm-build:
+    name: Contracts WebAssembly Build
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+
+      - name: Install Rust toolchain with wasm target
+        uses: dtolnay/rust-toolchain@stable
+        with:
+          targets: wasm32-unknown-unknown
+
+      - name: Cache cargo registry & build
+        uses: actions/cache@v4
+        with:
+          path: |
+            ~/.cargo/registry
+            ~/.cargo/git
+            contracts/target
+          key: ${{ runner.os }}-cargo-wasm-${{ hashFiles('contracts/Cargo.lock') }}
+          restore-keys: |
+            ${{ runner.os }}-cargo-wasm-
+
+      - name: Build contracts (release wasm)
+        run: cargo build --workspace --release --target wasm32-unknown-unknown --verbose
+        working-directory: contracts

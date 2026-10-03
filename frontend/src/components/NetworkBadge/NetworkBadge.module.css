@@ -1,0 +1,79 @@
+.badge {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.35rem;
+  padding: 0.25rem 0.6rem;
+  border-radius: var(--radius-circle, 9999px);
+  border: 1px solid transparent;
+  font-size: var(--font-size-xs, 0.75rem);
+  font-weight: var(--font-weight-bold, 700);
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+  line-height: 1.2;
+  white-space: nowrap;
+  width: max-content;
+  transition:
+    background-color var(--transition-normal, 0.3s ease),
+    border-color var(--transition-normal, 0.3s ease),
+    color var(--transition-normal, 0.3s ease);
+}
+
+.badge svg {
+  width: 14px;
+  height: 14px;
+  flex-shrink: 0;
+  fill: none;
+  stroke: currentColor;
+  stroke-width: 2;
+  stroke-linecap: round;
+  stroke-linejoin: round;
+}
+
+.label {
+  display: inline-block;
+}
+
+/*
+ * Testnet — loud amber warning treatment so a testnet deployment can never be
+ * mistaken for the real marketplace.
+ */
+.testnet {
+  background-color: var(--warning-bg);
+  border-color: var(--warning-border);
+  color: var(--warning-text);
+  box-shadow: inset 0 0 0 1px var(--warning-border);
+}
+
+/*
+ * Mainnet — neutral cyan/info treatment. Deliberately not green: this app will
+ * move real value on mainnet, so the badge must read as "production", not as
+ * "all good / safe".
+ */
+.mainnet {
+  background-color: var(--info-bg);
+  border-color: var(--info-border);
+  color: var(--info-text);
+}
+
+/*
+ * Unknown — neutral, dashed border signals an unsupported configuration.
+ */
+.unknown {
+  background-color: var(--bg-surface-hover);
+  border-color: var(--border-color-hover);
+  border-style: dashed;
+  color: var(--text-secondary);
+}
+
+@media (max-width: 480px) {
+  .badge {
+    gap: 0.25rem;
+    padding: 0.2rem 0.45rem;
+    font-size: 0.65rem;
+  }
+
+  .badge svg {
+    width: 12px;
+    height: 12px;
+  }
+}

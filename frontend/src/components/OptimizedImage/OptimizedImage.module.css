@@ -1,0 +1,69 @@
+/* Copyright (c) 2026 Tokenized Fractional RWA Marketplace Contributors */
+/* SPDX-License-Identifier: MIT */
+
+.wrapper {
+  position: relative;
+  overflow: hidden;
+  background: var(--color-surface-elevated, #141824);
+  border-radius: var(--radius-sm, 0.5rem);
+  display: inline-block;
+  width: 100%;
+}
+
+.placeholder {
+  position: absolute;
+  inset: 0;
+  width: 100%;
+  height: 100%;
+  object-fit: cover;
+  filter: blur(20px);
+  transform: scale(1.1);
+  opacity: 0.8;
+  transition: opacity 0.4s ease;
+  z-index: 0;
+}
+
+.image {
+  position: relative;
+  width: 100%;
+  height: 100%;
+  object-fit: cover;
+  display: block;
+  opacity: 0;
+  transition: opacity 0.4s ease-in-out;
+  z-index: 1;
+}
+
+.image.loaded {
+  opacity: 1;
+}
+
+.shimmer {
+  position: absolute;
+  inset: 0;
+  background: linear-gradient(
+    90deg,
+    transparent 0%,
+    rgba(255, 255, 255, 0.06) 50%,
+    transparent 100%
+  );
+  background-size: 200% 100%;
+  animation: shimmerSlide 1.5s infinite;
+  z-index: 2;
+}
+
+@keyframes shimmerSlide {
+  0%   { background-position: -200% 0; }
+  100% { background-position: 200% 0; }
+}
+
+.errorFallback {
+  position: absolute;
+  inset: 0;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  color: var(--color-text-muted, #6b7280);
+  background: var(--color-surface, #0f1117);
+  z-index: 1;
+}

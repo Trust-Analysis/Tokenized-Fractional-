@@ -1,0 +1,31 @@
+{
+  "description": "Baseline latency/throughput for the Tokenized Fractional order-matching fan-out and trade-confirmation endpoints (GitHub issue #524).",
+  "instructions": "Regenerate against a live deployment with: node load-test/helpers/run-baseline.js",
+  "status": "INITIAL_REFERENCE — capture against a live backend to refresh",
+  "generatedAt": "2026-08-30T00:00:00.000Z",
+  "baseUrl": "http://localhost:3001",
+  "run": {
+    "scenario": "trade-orders",
+    "users": 1000,
+    "durationSec": 210,
+    "artilleryVersion": "2.x"
+  },
+  "metrics": {
+    "http": {
+      "endpoint": "POST /api/v1/notify/share-purchased",
+      "requestsCompleted": null,
+      "requestRatePerSecond": null,
+      "latencyMs": { "mean": null, "p50": null, "p95": null, "p99": null, "max": null },
+      "successRatePct": null,
+      "errors": null
+    },
+    "websocket": {
+      "endpoint": "ws://localhost:3001/ws",
+      "peakConnections": 1000,
+      "messagesReceived": null,
+      "receiveRatePerSecond": null,
+      "handshakeLatencyMs": { "mean": null, "p99": null }
+    }
+  },
+  "referenceNotes": "These fields are intentionally null until a baseline run is executed against a deployed environment (the CI and local backend are not part of this commit). The schema defines the exact metrics the suite produces. Initial single-request reference figures are documented in docs/performance.md (e.g. /api/rwa GET 15-30ms, p99 < 500ms at 500 req/s)."
+}

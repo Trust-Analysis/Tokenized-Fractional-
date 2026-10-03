@@ -1,0 +1,26 @@
+{
+  "name": "@trust-analysis/tokenized-fractional-sdk",
+  "version": "0.1.0",
+  "private": true,
+  "description": "Typed REST and Soroban SDK for the Tokenized Fractional RWA Marketplace",
+  "type": "module",
+  "main": "./dist/index.js",
+  "types": "./dist/index.d.ts",
+  "exports": {
+    ".": {
+      "types": "./dist/index.d.ts",
+      "import": "./dist/index.js"
+    }
+  },
+  "scripts": {
+    "build": "tsc -p tsconfig.json",
+    "typecheck": "tsc -p tsconfig.json --noEmit"
+  },
+  "peerDependencies": {
+    "@stellar/stellar-sdk": ">=16"
+  },
+  "devDependencies": {
+    "@stellar/stellar-sdk": "^16.0.0",
+    "typescript": "^5.6.0"
+  }
+}

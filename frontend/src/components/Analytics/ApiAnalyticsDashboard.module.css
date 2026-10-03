@@ -1,0 +1,96 @@
+/* Copyright (c) 2026 Tokenized Fractional RWA Marketplace Contributors */
+/* SPDX-License-Identifier: MIT */
+
+.dashboard {
+  padding: 1.5rem;
+  background: var(--bg-primary, #0b0f19);
+  color: var(--text-main, #f3f4f6);
+  border-radius: 12px;
+  font-family: system-ui, -apple-system, sans-serif;
+}
+
+.titleBar {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  margin-bottom: 1.5rem;
+  border-bottom: 1px solid #1f2937;
+  padding-bottom: 1rem;
+}
+
+.titleBar h2 {
+  color: #38bdf8;
+  margin: 0;
+  font-size: 1.6rem;
+}
+
+.metricsGrid {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(220px, 1fr));
+  gap: 1rem;
+  margin-bottom: 1.5rem;
+}
+
+.metricCard {
+  background: #111827;
+  border: 1px solid #1f2937;
+  padding: 1.2rem;
+  border-radius: 8px;
+}
+
+.metricTitle {
+  font-size: 0.85rem;
+  color: #9ca3af;
+  margin-bottom: 0.4rem;
+}
+
+.metricValue {
+  font-size: 1.6rem;
+  font-weight: 700;
+  color: #f9fafb;
+}
+
+.exportGroup {
+  display: flex;
+  gap: 0.75rem;
+}
+
+.btnExport {
+  background: #0284c7;
+  color: white;
+  border: none;
+  padding: 0.5rem 1rem;
+  border-radius: 6px;
+  cursor: pointer;
+  font-weight: 600;
+  transition: background 0.2s ease;
+}
+
+.btnExport:hover {
+  background: #0369a1;
+}
+
+.section {
+  background: #111827;
+  border: 1px solid #1f2937;
+  border-radius: 8px;
+  padding: 1.25rem;
+  margin-bottom: 1.5rem;
+}
+
+.anomalyBox {
+  background: rgba(239, 68, 68, 0.1);
+  border: 1px solid #ef4444;
+  color: #f87171;
+  padding: 1rem;
+  border-radius: 6px;
+  margin-bottom: 1rem;
+}
+
+.forecastBox {
+  background: rgba(59, 130, 246, 0.1);
+  border: 1px solid #3b82f6;
+  color: #60a5fa;
+  padding: 1rem;
+  border-radius: 6px;
+}
