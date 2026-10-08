@@ -60,7 +60,7 @@
       ]
     },
     "health-ignores-rpc": {
-      "verdict": "UNGRACEFUL",
+      "verdict": "GRACEFUL",
       "evidence": "index.js:595-598 declares only storage and redis as dependencies; the Soroban RPC is never probed.",
       "followUp": [
         "Report Soroban RPC reachability from /health (#843)"

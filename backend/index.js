@@ -696,34 +696,66 @@ async function checkStorageHealth() {
   }
 }
 
-// Enhanced health check endpoint
-app.get("/health", async (req, res) => {
-  const storageHealth = await checkStorageHealth();
-  const isHealthy = storageHealth.status === "ok";
+// Soroban RPC health probe helper with bounded timeout
+async function checkSorobanRpcHealth() {
+  const rpcUrl = process.env.SOROBAN_RPC_URL;
+  if (!rpcUrl) {
+    return { status: 'not_configured' };
+  }
+  try {
+    const controller = new AbortController();
+    const timeout = setTimeout(() => controller.abort(), 2000);
+    const resp = await fetch(rpcUrl, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ jsonrpc: '2.0', id: 1, method: 'getHealth' }),
+      signal: controller.signal
+    });
+    clearTimeout(timeout);
+    if (!resp.ok) {
+      return { status: 'error', error: 'HTTP ' + resp.status };
+    }
+    const data = await resp.json();
+    return { status: 'ok', rpcHealth: data.result?.status || 'ok' };
+  } catch (err) {
+    return { status: 'error', error: err.name === 'AbortError' ? 'timeout' : (err.message || String(err)) };
+  }
+}
 
-  const healthResponse = {
-    status: isHealthy ? "ok" : "degraded",
+// Enhanced health check endpoint
+app.get('/health', async (req, res) => {
+  const storageHealth = await checkStorageHealth();
+  const sorobanRpcHealth = await checkSorobanRpcHealth();
+
+  const isHealthy = storageHealth.status === 'ok' &&
+    (sorobanRpcHealth.status === 'ok' || sorobanRpcHealth.status === 'not_configured');
+
+  const baseResponse = {
+    status: isHealthy ? 'ok' : 'degraded',
     timestamp: new Date().toISOString(),
+    service: {
+      name: typeof serviceName !== 'undefined' ? serviceName : (process.env.SERVICE_NAME || 'rwa-marketplace'),
+      deploymentColor: typeof deploymentColor !== 'undefined' ? deploymentColor : (process.env.DEPLOYMENT_COLOR || 'blue'),
+      buildId: typeof buildId !== 'undefined' ? buildId : (process.env.BUILD_ID || 'development'),
+    },
     dependencies: {
-      storage: storageHealth
+      storage: storageHealth,
+      sorobanRpc: sorobanRpcHealth,
     }
   };
 
-  res.status(isHealthy ? 200 : 503).json(healthResponse);
-});
-
+  if (!isHealthy) {
+    // RFC 7807 problem document shape
+    return res.status(503).json({
+      type: 'https://api.example.com/errors/service-degraded',
+      title: 'Service Degraded',
+      status: 503,
+      detail: 'One or more required dependencies are unhealthy or unreachable',
+      ...baseResponse
+    });
   }
 
-  res.json({
-    status: 'ok',
-    timestamp: new Date().toISOString(),
-    service: {
-      name: serviceName,
-      deploymentColor,
-      buildId,
-    },
-    dependencies: deps,
-  });
+  res.status(200).json(baseResponse);
 });
 
 /**
