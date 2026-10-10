@@ -1,0 +1,41 @@
+/* Copyright (c) 2026 Tokenized Fractional RWA Marketplace Contributors */
+/* SPDX-License-Identifier: MIT */
+
+.container {
+  width: 100%;
+  position: relative;
+  scrollbar-width: thin;
+  scrollbar-color: var(--color-border, #2a3041) transparent;
+  outline: none;
+}
+
+.container:focus-visible {
+  outline: 2px solid var(--color-primary, #4a9eff);
+  outline-offset: -2px;
+}
+
+.container::-webkit-scrollbar {
+  width: 8px;
+}
+
+.container::-webkit-scrollbar-track {
+  background: transparent;
+}
+
+.container::-webkit-scrollbar-thumb {
+  background: var(--color-border, #2a3041);
+  border-radius: 4px;
+}
+
+.container::-webkit-scrollbar-thumb:hover {
+  background: var(--color-text-muted, #6b7280);
+}
+
+.inner {
+  width: 100%;
+  position: relative;
+}
+
+.content {
+  width: 100%;
+}

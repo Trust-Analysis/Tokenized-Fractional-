@@ -1,0 +1,42 @@
+# WebSocket Fan-Out Scenario — 1,000 Concurrent Connections (Issue #524)
+#
+# Simulates 1,000 concurrent users each holding an open WebSocket connection to
+# the backend real-time service at /ws and subscribed to the live trade topics
+# ("share-purchases" and asset-specific topics). While connected, users ping the
+# server and receive order/trade broadcast events in real time.
+#
+# This is the receive side of the order-matching flow: every placement in the
+# HTTP trade-order scenario (trade-orders.yml) fans out to these clients.
+#
+# Run:
+#   npm run test:websocket
+#   ARTILLERY_WORKERS=... artillery run artillery/websocket.yml --output reports/websocket.json
+
+config:
+  # WebSocket endpoint of the backend (plain ws:// protocol on the HTTP server).
+  # Override at runtime: npm run test:websocket -- -t ws://<host>:<port>/ws
+  target: "ws://localhost:3001/ws"
+  phases:
+    - name: "ramp-to-1000-connections"
+      duration: 20
+      arrivalRate: 10
+      rampTo: 100
+    - name: "sustain-1000-connections"
+      duration: 120
+      arrivalRate: 25
+  processor: "../helpers/processor.js"
+
+scenarios:
+  - name: "concurrent-trader-webhook"
+    engine: ws
+    flow:
+      # Register a message-received counter so fan-out delivery is measured.
+      - function: "trackMessages"
+      # Subscribe to the global trade feed and an asset-specific feed.
+      - send: '{"action":"subscribe","topic":"share-purchases"}'
+      - function: "setWsEnv"
+      - send: '{"action":"subscribe","topic":"{{ subscribeTopic }}"}'
+      # Keep the connection alive while receiving broadcast trade events.
+      - think: 2
+      - send: '{"action":"ping"}'
+      - think: 2

@@ -1,0 +1,190 @@
+/**
+ * AssetSkeleton styling — Loading placeholders for asset data.
+ *
+ * Features:
+ *   - Matches the shimmer animation from Skeleton component
+ *   - Responsive grid layout
+ *   - Dark and light theme support
+ *   - Proper spacing and typography
+ */
+
+.container {
+  display: flex;
+  flex-direction: column;
+  gap: 1.5rem;
+  width: 100%;
+}
+
+/* Card wrapper for consistent styling */
+.card {
+  background: var(--color-bg-elevated, #fff);
+  border: 1px solid var(--color-border, #e0e0e0);
+  border-radius: var(--radius-md, 12px);
+  padding: 1.5rem;
+  box-shadow: 0 2px 8px rgba(0, 0, 0, 0.08);
+}
+
+/* ── Asset Metadata Card ──────────────────────────────────────────────── */
+
+.imageWrapper {
+  width: 100%;
+  height: 200px;
+  margin-bottom: 1rem;
+  border-radius: var(--radius-sm, 6px);
+  overflow: hidden;
+}
+
+.titleSection {
+  margin-bottom: 1rem;
+}
+
+.locationSection {
+  display: flex;
+  align-items: center;
+  gap: 0.5rem;
+  margin-bottom: 1rem;
+}
+
+.locationIcon {
+  flex-shrink: 0;
+  font-size: 1rem;
+}
+
+.descriptionSection {
+  margin-bottom: 1.5rem;
+}
+
+.valuationSection {
+  display: flex;
+  align-items: center;
+  gap: 0.75rem;
+  padding-top: 1rem;
+  border-top: 1px solid var(--color-border, #e0e0e0);
+}
+
+.valuationIcon {
+  flex-shrink: 0;
+  font-size: 1rem;
+}
+
+/* ── Price Section ────────────────────────────────────────────────────── */
+
+.priceHeader {
+  margin-bottom: 1rem;
+}
+
+.priceValue {
+  padding: 1rem 0;
+}
+
+/* ── Holdings + Buy Section ───────────────────────────────────────────── */
+
+.holdingsRow {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  margin-bottom: 1rem;
+  gap: 1rem;
+}
+
+.holdingsRow > span:first-child {
+  flex: 1;
+  max-width: 60%;
+}
+
+.holdingsRow > span:last-child {
+  flex-shrink: 0;
+}
+
+.divider {
+  height: 1px;
+  background: var(--color-border, #e0e0e0);
+  margin: 1rem 0;
+}
+
+.buyHeader {
+  margin-bottom: 1rem;
+}
+
+.buyRow {
+  display: flex;
+  gap: 1rem;
+  margin-bottom: 1rem;
+}
+
+.inputPlaceholder {
+  flex: 1;
+  min-width: 0;
+}
+
+.buttonPlaceholder {
+  flex-shrink: 0;
+}
+
+.loadingHint {
+  padding-top: 0.5rem;
+  opacity: 0.7;
+}
+
+/* ── Dark theme ──────────────────────────────────────────────────────── */
+
+[data-theme='dark'] .card {
+  background: var(--color-bg-elevated, #1e1e1e);
+  border-color: var(--color-border, #333);
+  box-shadow: 0 2px 8px rgba(0, 0, 0, 0.3);
+}
+
+[data-theme='dark'] .valuationSection {
+  border-top-color: var(--color-border, #333);
+}
+
+[data-theme='dark'] .divider {
+  background: var(--color-border, #333);
+}
+
+/* ── Mobile responsive ───────────────────────────────────────────────── */
+
+@media (max-width: 768px) {
+  .container {
+    gap: 1rem;
+  }
+
+  .card {
+    padding: 1rem;
+  }
+
+  .imageWrapper {
+    height: 150px;
+  }
+
+  .buyRow {
+    flex-direction: column;
+  }
+
+  .buttonPlaceholder {
+    width: 100%;
+  }
+}
+
+@media (max-width: 480px) {
+  .container {
+    gap: 0.75rem;
+  }
+
+  .card {
+    padding: 0.75rem;
+  }
+
+  .imageWrapper {
+    height: 120px;
+  }
+
+  .holdingsRow {
+    flex-direction: column;
+    align-items: flex-start;
+  }
+
+  .holdingsRow > span:first-child {
+    max-width: 100%;
+  }
+}

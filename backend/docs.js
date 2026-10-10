@@ -1,0 +1,482 @@
+const options = {
+  definition: {
+    openapi: '3.0.0',
+    info: {
+      title: 'RWA Marketplace — Off-chain Metadata API',
+      version: '2.0.0',
+      description:
+        'Backend API for managing real-world asset (RWA) metadata in the Tokenized Fractional RWA Marketplace. ' +
+        'Supports listing, creating, updating, and deleting asset metadata that is linked to on-chain Soroban smart contracts.\n\n' +
+        '## Caching (conditional GETs)\n\n' +
+        '`GET /api/v1/rwa` and `GET /api/v1/rwa/{contractId}` are read-only and return an `ETag` validator (the detail endpoint also returns `Last-Modified`) together with `Cache-Control: public, max-age=30..60, stale-while-revalidate` headers. Send `If-None-Match` with the returned ETag and the server answers `304 Not Modified` while the asset is unchanged, avoiding a full re-read.\n\n' +
+        '## API Versioning\n\n' +
+        'All routes are available under two prefixes:\n\n' +
+        '- **`/api/v1/rwa`** — versioned path (preferred, use in new integrations)\n' +
+        '- **`/api/rwa`** — legacy path (backward-compatible alias, defaults to v1)',
+    },
+    servers: [
+      { url: 'http://localhost:3001', description: 'Development' },
+    ],
+    components: {
+      securitySchemes: {
+        GraphQLTier: {
+    type: 'apiKey',
+    in: 'header',
+    name: 'x-user-tier',
+    description: 'User tier for GraphQL complexity limits: basic, standard, premium, admin',
+  },
+  ApiKeyAuth: {
+          type: 'apiKey',
+          in: 'header',
+          name: 'x-api-key',
+          description: 'Admin API key for write operations.',
+        },
+      },
+      schemas: {
+        Asset: {
+          type: 'object',
+          properties: {
+            contractId: { type: 'string', description: 'Soroban contract ID (starts with C)' },
+            title: { type: 'string', example: 'Luxury Apartment Complex' },
+            location: { type: 'string', example: 'New York, USA' },
+            description: { type: 'string', example: 'A premium residential property in downtown Manhattan.' },
+            assetType: { type: 'string', example: 'real_estate' },
+            imageUrl: { type: 'string', format: 'uri', example: 'https://example.com/image.jpg' },
+            totalValuation: { type: 'string', example: '$5,000,000' },
+            documents: { type: 'array', items: { type: 'string' } },
+            status: { type: 'string', enum: ['pending', 'approved', 'rejected'], description: 'Verification status' },
+            submittedAt: { type: 'string', format: 'date-time', description: 'When the asset was submitted for review' },
+            reviewedAt: { type: 'string', format: 'date-time', description: 'When the asset was reviewed by an admin' },
+            reviewedBy: { type: 'string', description: 'Admin who reviewed the asset' },
+            createdAt: { type: 'string', format: 'date-time' },
+            updatedAt: { type: 'string', format: 'date-time' },
+          },
+        },
+        AssetInput: {
+          type: 'object',
+          required: ['contractId', 'title', 'location', 'description', 'assetType'],
+          properties: {
+            contractId: { type: 'string' },
+            title: { type: 'string' },
+            location: { type: 'string' },
+            description: { type: 'string' },
+            assetType: { type: 'string' },
+            imageUrl: { type: 'string', format: 'uri' },
+            totalValuation: { type: 'string' },
+          },
+        },
+        Error: {
+          type: 'object',
+          properties: { error: { type: 'string' } },
+        },
+        HealthResponse: {
+          type: 'object',
+          properties: {
+            status: { type: 'string', example: 'ok' },
+            timestamp: { type: 'string', format: 'date-time' },
+            dependencies: {
+              type: 'object',
+              properties: {
+                storage: { type: 'object', properties: { status: { type: 'string' } } },
+                redis: { type: 'object', properties: { status: { type: 'string' } } },
+              },
+            },
+          },
+        },
+        PaginatedAssets: {
+          type: 'object',
+          properties: {
+            data: { type: 'array', items: { $ref: '#/components/schemas/Asset' } },
+            pagination: {
+              type: 'object',
+              properties: {
+                total: { type: 'integer' },
+                page: { type: 'integer' },
+                limit: { type: 'integer' },
+                totalPages: { type: 'integer' },
+              },
+            },
+          },
+        },
+        Webhook: {
+          type: 'object',
+          properties: {
+            id: { type: 'string', description: 'Unique webhook ID (wh_...)', example: 'wh_abc123def456' },
+            url: { type: 'string', format: 'uri', description: 'URL to call on events' },
+            events: { type: 'array', items: { type: 'string', enum: ['asset.created', 'asset.updated', 'asset.deleted', 'asset.approved', 'asset.rejected'] }, description: 'Events to subscribe to' },
+            secret: { type: 'string', description: 'Optional secret for HMAC signing' },
+            active: { type: 'boolean', description: 'Whether the webhook is active' },
+            createdAt: { type: 'string', format: 'date-time' },
+            updatedAt: { type: 'string', format: 'date-time' },
+            lastSuccessAt: { type: 'string', format: 'date-time', nullable: true },
+            lastFailureAt: { type: 'string', format: 'date-time', nullable: true },
+            failureCount: { type: 'integer', description: 'Consecutive failure count' },
+          },
+        },
+        WebhookInput: {
+          type: 'object',
+          required: ['url', 'events'],
+          properties: {
+            url: { type: 'string', format: 'uri', description: 'URL to call on events' },
+            events: { type: 'array', items: { type: 'string', enum: ['asset.created', 'asset.updated', 'asset.deleted', 'asset.approved', 'asset.rejected'] }, description: 'Events to subscribe to' },
+            secret: { type: 'string', description: 'Optional secret for HMAC signing' },
+            active: { type: 'boolean', description: 'Whether the webhook is active (default true)' },
+          },
+        },
+      },
+    },
+    paths: {
+      '/health': {
+        get: {
+          tags: ['Health'],
+          summary: 'Health check',
+          description: 'Returns the server status and dependency health.',
+          responses: {
+            '200': {
+              description: 'Server is healthy',
+              content: { 'application/json': { schema: { $ref: '#/components/schemas/HealthResponse' } } },
+            },
+            '503': {
+              description: 'Dependency degraded (e.g. Redis unreachable)',
+              content: { 'application/json': { schema: { $ref: '#/components/schemas/HealthResponse' } } },
+            },
+          },
+        },
+      },
+      // ── Versioned paths (/api/v1/rwa) ──────────────────────────────────────
+      '/api/v1/rwa': {
+        get: {
+          tags: ['Assets — v1 (versioned)'],
+          summary: 'List all asset metadata',
+          description: 'Returns a paginated, filterable list of all RWA assets.',
+          parameters: [
+            { in: 'query', name: 'page', schema: { type: 'integer', default: 1 }, description: 'Page number' },
+            { in: 'query', name: 'limit', schema: { type: 'integer', default: 20 }, description: 'Items per page (max 100)' },
+            { in: 'query', name: 'assetType', schema: { type: 'string' }, description: 'Filter by asset type (case-insensitive)' },
+            { in: 'query', name: 'search', schema: { type: 'string' }, description: 'Full-text search on title and description' },
+          ],
+          responses: {
+            '200': {
+              description: 'Paginated list of assets',
+              content: { 'application/json': { schema: { $ref: '#/components/schemas/PaginatedAssets' } } },
+            },
+          },
+        },
+        post: {
+          tags: ['Assets — v1 (versioned)'],
+          summary: 'Create asset metadata',
+          description: 'Create-only. A POST for an existing `contractId` returns **409 Conflict**; use `PATCH /api/v1/rwa/{contractId}` to update. Requires admin API key via `x-api-key` header.',
+          security: [{ ApiKeyAuth: [] }],
+          requestBody: {
+            required: true,
+            content: { 'application/json': { schema: { $ref: '#/components/schemas/AssetInput' } } },
+          },
+          responses: {
+            '201': {
+              description: 'Asset created',
+              content: { 'application/json': { schema: { $ref: '#/components/schemas/Asset' } } },
+            },
+            '400': { description: 'Validation error', content: { 'application/json': { schema: { $ref: '#/components/schemas/Error' } } } },
+            '401': { description: 'Unauthorized', content: { 'application/json': { schema: { $ref: '#/components/schemas/Error' } } } },
+            '409': { description: 'An asset with this contractId already exists', content: { 'application/json': { schema: { $ref: '#/components/schemas/Error' } } } },
+          },
+        },
+      },
+      '/api/v1/rwa/{contractId}': {
+        get: {
+          tags: ['Assets — v1 (versioned)'],
+          summary: 'Get asset metadata by contract ID',
+          parameters: [
+            { in: 'path', name: 'contractId', required: true, schema: { type: 'string' }, description: 'Soroban contract ID' },
+          ],
+          responses: {
+            '200': { description: 'Asset metadata', content: { 'application/json': { schema: { $ref: '#/components/schemas/Asset' } } } },
+            '404': { description: 'Asset not found', content: { 'application/json': { schema: { $ref: '#/components/schemas/Error' } } } },
+          },
+        },
+        delete: {
+          tags: ['Assets — v1 (versioned)'],
+          summary: 'Delete asset metadata',
+          description: 'Requires admin API key via `x-api-key` header.',
+          security: [{ ApiKeyAuth: [] }],
+          parameters: [
+            { in: 'path', name: 'contractId', required: true, schema: { type: 'string' }, description: 'Soroban contract ID' },
+          ],
+          responses: {
+            '200': {
+              description: 'Asset deleted',
+              content: {
+                'application/json': {
+                  schema: { type: 'object', properties: { message: { type: 'string' }, contractId: { type: 'string' } } },
+                },
+              },
+            },
+            '401': { description: 'Unauthorized', content: { 'application/json': { schema: { $ref: '#/components/schemas/Error' } } } },
+            '404': { description: 'Asset not found', content: { 'application/json': { schema: { $ref: '#/components/schemas/Error' } } } },
+          },
+        },
+      },
+      // ── Legacy paths (/api/rwa — backward-compatible aliases for v1) ────────
+      '/api/rwa': {
+        get: {
+          tags: ['Assets — legacy (backward-compatible)'],
+          deprecated: true,
+          summary: 'List all asset metadata (legacy path)',
+          description: '**Deprecated path.** Alias for `GET /api/v1/rwa`. Use `/api/v1/rwa` for new integrations.',
+          parameters: [
+            { in: 'query', name: 'page', schema: { type: 'integer', default: 1 }, description: 'Page number' },
+            { in: 'query', name: 'limit', schema: { type: 'integer', default: 20 }, description: 'Items per page (max 100)' },
+            { in: 'query', name: 'assetType', schema: { type: 'string' }, description: 'Filter by asset type (case-insensitive)' },
+            { in: 'query', name: 'search', schema: { type: 'string' }, description: 'Full-text search on title and description' },
+          ],
+          responses: {
+            '200': {
+              description: 'Paginated list of assets',
+              content: { 'application/json': { schema: { $ref: '#/components/schemas/PaginatedAssets' } } },
+            },
+          },
+        },
+        post: {
+          tags: ['Assets — legacy (backward-compatible)'],
+          deprecated: true,
+          summary: 'Create asset metadata (legacy path)',
+          description: '**Deprecated path.** Alias for `POST /api/v1/rwa`. Create-only; returns **409 Conflict** for an existing `contractId`. Use `/api/v1/rwa` for new integrations.',
+          security: [{ ApiKeyAuth: [] }],
+          requestBody: {
+            required: true,
+            content: { 'application/json': { schema: { $ref: '#/components/schemas/AssetInput' } } },
+          },
+          responses: {
+            '201': { description: 'Asset created', content: { 'application/json': { schema: { $ref: '#/components/schemas/Asset' } } } },
+            '400': { description: 'Validation error', content: { 'application/json': { schema: { $ref: '#/components/schemas/Error' } } } },
+            '401': { description: 'Unauthorized', content: { 'application/json': { schema: { $ref: '#/components/schemas/Error' } } } },
+            '409': { description: 'An asset with this contractId already exists', content: { 'application/json': { schema: { $ref: '#/components/schemas/Error' } } } },
+          },
+        },
+      },
+      '/api/rwa/pending': {
+        get: {
+          tags: ['Assets — legacy (backward-compatible)'],
+          deprecated: true,
+          summary: 'List all pending assets (admin only, legacy path)',
+          description: '**Deprecated path.** Alias for `GET /api/v1/rwa/pending`.',
+          security: [{ ApiKeyAuth: [] }],
+          responses: {
+            '200': {
+              description: 'List of pending assets',
+              content: { 'application/json': { schema: { type: 'array', items: { $ref: '#/components/schemas/Asset' } } } },
+            },
+            '401': { description: 'Unauthorized', content: { 'application/json': { schema: { $ref: '#/components/schemas/Error' } } } },
+          },
+        },
+      },
+      '/api/rwa/{contractId}': {
+        get: {
+          tags: ['Assets — legacy (backward-compatible)'],
+          deprecated: true,
+          summary: 'Get asset metadata by contract ID (legacy path)',
+          description: '**Deprecated path.** Alias for `GET /api/v1/rwa/{contractId}`. Use `/api/v1/rwa/{contractId}` for new integrations.',
+          parameters: [
+            { in: 'path', name: 'contractId', required: true, schema: { type: 'string' }, description: 'Soroban contract ID' },
+          ],
+          responses: {
+            '200': { description: 'Asset metadata', content: { 'application/json': { schema: { $ref: '#/components/schemas/Asset' } } } },
+            '404': { description: 'Asset not found', content: { 'application/json': { schema: { $ref: '#/components/schemas/Error' } } } },
+          },
+        },
+        delete: {
+          tags: ['Assets — legacy (backward-compatible)'],
+          deprecated: true,
+          summary: 'Delete asset metadata (legacy path)',
+          description: '**Deprecated path.** Alias for `DELETE /api/v1/rwa/{contractId}`. Use `/api/v1/rwa/{contractId}` for new integrations.',
+          security: [{ ApiKeyAuth: [] }],
+          parameters: [
+            { in: 'path', name: 'contractId', required: true, schema: { type: 'string' }, description: 'Soroban contract ID' },
+          ],
+          responses: {
+            '200': {
+              description: 'Asset deleted',
+              content: {
+                'application/json': {
+                  schema: { type: 'object', properties: { message: { type: 'string' }, contractId: { type: 'string' } } },
+                },
+              },
+            },
+            '401': { description: 'Unauthorized', content: { 'application/json': { schema: { $ref: '#/components/schemas/Error' } } } },
+            '404': { description: 'Asset not found', content: { 'application/json': { schema: { $ref: '#/components/schemas/Error' } } } },
+          },
+        },
+      },
+      '/api/v1/rwa/pending': {
+        get: {
+          tags: ['Assets — v1 (versioned)'],
+          summary: 'List all pending assets (admin only)',
+          description: 'Returns all assets with status "pending" that await admin review.',
+          security: [{ ApiKeyAuth: [] }],
+          responses: {
+            '200': {
+              description: 'List of pending assets',
+              content: { 'application/json': { schema: { type: 'array', items: { $ref: '#/components/schemas/Asset' } } } },
+            },
+            '401': { description: 'Unauthorized', content: { 'application/json': { schema: { $ref: '#/components/schemas/Error' } } } },
+          },
+        },
+      },
+      '/api/v1/rwa/{contractId}/approve': {
+        post: {
+          tags: ['Assets — v1 (versioned)'],
+          summary: 'Approve a pending asset (admin only)',
+          description: 'Sets asset status to "approved". Requires admin API key.',
+          security: [{ ApiKeyAuth: [] }],
+          parameters: [
+            { in: 'path', name: 'contractId', required: true, schema: { type: 'string' }, description: 'Soroban contract ID' },
+          ],
+          responses: {
+            '200': { description: 'Asset approved', content: { 'application/json': { schema: { $ref: '#/components/schemas/Asset' } } } },
+            '401': { description: 'Unauthorized', content: { 'application/json': { schema: { $ref: '#/components/schemas/Error' } } } },
+            '404': { description: 'Asset not found', content: { 'application/json': { schema: { $ref: '#/components/schemas/Error' } } } },
+          },
+        },
+      },
+      '/api/v1/rwa/{contractId}/reject': {
+        post: {
+          tags: ['Assets — v1 (versioned)'],
+          summary: 'Reject a pending asset (admin only)',
+          description: 'Sets asset status to "rejected". Requires admin API key.',
+          security: [{ ApiKeyAuth: [] }],
+          parameters: [
+            { in: 'path', name: 'contractId', required: true, schema: { type: 'string' }, description: 'Soroban contract ID' },
+          ],
+          responses: {
+            '200': { description: 'Asset rejected', content: { 'application/json': { schema: { $ref: '#/components/schemas/Asset' } } } },
+            '401': { description: 'Unauthorized', content: { 'application/json': { schema: { $ref: '#/components/schemas/Error' } } } },
+            '404': { description: 'Asset not found', content: { 'application/json': { schema: { $ref: '#/components/schemas/Error' } } } },
+          },
+        },
+      },
+      '/api/v1/webhooks': {
+        get: {
+          tags: ['Webhooks'],
+          summary: 'List all webhooks (admin only)',
+          security: [{ ApiKeyAuth: [] }],
+          responses: {
+            '200': {
+              description: 'List of registered webhooks',
+              content: { 'application/json': { schema: { type: 'array', items: { $ref: '#/components/schemas/Webhook' } } } },
+            },
+            '401': { description: 'Unauthorized', content: { 'application/json': { schema: { $ref: '#/components/schemas/Error' } } } },
+          },
+        },
+        post: {
+          tags: ['Webhooks'],
+          summary: 'Register a new webhook (admin only)',
+          security: [{ ApiKeyAuth: [] }],
+          requestBody: {
+            required: true,
+            content: { 'application/json': { schema: { $ref: '#/components/schemas/WebhookInput' } } },
+          },
+          responses: {
+            '201': { description: 'Webhook created', content: { 'application/json': { schema: { $ref: '#/components/schemas/Webhook' } } } },
+            '400': { description: 'Validation error', content: { 'application/json': { schema: { $ref: '#/components/schemas/Error' } } } },
+            '401': { description: 'Unauthorized', content: { 'application/json': { schema: { $ref: '#/components/schemas/Error' } } } },
+          },
+        },
+      },
+      '/api/v1/webhooks/{id}': {
+        get: {
+          tags: ['Webhooks'],
+          summary: 'Get a webhook by ID (admin only)',
+          security: [{ ApiKeyAuth: [] }],
+          parameters: [
+            { in: 'path', name: 'id', required: true, schema: { type: 'string' }, description: 'Webhook ID' },
+          ],
+          responses: {
+            '200': { description: 'Webhook details', content: { 'application/json': { schema: { $ref: '#/components/schemas/Webhook' } } } },
+            '401': { description: 'Unauthorized', content: { 'application/json': { schema: { $ref: '#/components/schemas/Error' } } } },
+            '404': { description: 'Webhook not found', content: { 'application/json': { schema: { $ref: '#/components/schemas/Error' } } } },
+          },
+        },
+        patch: {
+          tags: ['Webhooks'],
+          summary: 'Update a webhook (admin only)',
+          security: [{ ApiKeyAuth: [] }],
+          parameters: [
+            { in: 'path', name: 'id', required: true, schema: { type: 'string' }, description: 'Webhook ID' },
+          ],
+          requestBody: {
+            required: true,
+            content: { 'application/json': { schema: { $ref: '#/components/schemas/WebhookInput' } } },
+          },
+          responses: {
+            '200': { description: 'Webhook updated', content: { 'application/json': { schema: { $ref: '#/components/schemas/Webhook' } } } },
+            '400': { description: 'Validation error', content: { 'application/json': { schema: { $ref: '#/components/schemas/Error' } } } },
+            '401': { description: 'Unauthorized', content: { 'application/json': { schema: { $ref: '#/components/schemas/Error' } } } },
+            '404': { description: 'Webhook not found', content: { 'application/json': { schema: { $ref: '#/components/schemas/Error' } } } },
+          },
+        },
+        delete: {
+          tags: ['Webhooks'],
+          summary: 'Delete a webhook (admin only)',
+          security: [{ ApiKeyAuth: [] }],
+          parameters: [
+            { in: 'path', name: 'id', required: true, schema: { type: 'string' }, description: 'Webhook ID' },
+          ],
+          responses: {
+            '200': { description: 'Webhook deleted', content: { 'application/json': { schema: { type: 'object', properties: { message: { type: 'string' }, id: { type: 'string' } } } } } },
+            '401': { description: 'Unauthorized', content: { 'application/json': { schema: { $ref: '#/components/schemas/Error' } } } },
+            '404': { description: 'Webhook not found', content: { 'application/json': { schema: { $ref: '#/components/schemas/Error' } } } },
+          },
+        },
+      },
+      '/api/v1/rwa/search': {
+        get: {
+          tags: ['Assets — v1 (versioned)'],
+          summary: 'Full-text search across approved assets',
+          description: 'Ranks approved assets by TF-IDF relevance across title, location and description, with optional faceted filters.',
+          parameters: [
+            { in: 'query', name: 'q', required: true, schema: { type: 'string' }, description: 'Search query' },
+            { in: 'query', name: 'assetType', schema: { type: 'string' }, description: 'Filter by asset type (case-insensitive)' },
+            { in: 'query', name: 'location', schema: { type: 'string' }, description: 'Filter by location substring' },
+            { in: 'query', name: 'page', schema: { type: 'integer', default: 1 }, description: 'Page number' },
+            { in: 'query', name: 'limit', schema: { type: 'integer', default: 20 }, description: 'Items per page (max 100)' },
+          ],
+          responses: {
+            '200': {
+              description: 'Ranked search results',
+              content: { 'application/json': { schema: { $ref: '#/components/schemas/PaginatedAssets' } } },
+            },
+            '400': { description: 'Missing or blank q parameter', content: { 'application/json': { schema: { $ref: '#/components/schemas/Error' } } } },
+          },
+        },
+      },
+      '/api/admin/verify': {
+        get: {
+          tags: ['Admin'],
+          summary: 'Verify admin API key',
+          description: 'Checks whether the provided `x-api-key` is valid.',
+          security: [{ ApiKeyAuth: [] }],
+          responses: {
+            '200': {
+              description: 'Key is valid',
+              content: { 'application/json': { schema: { type: 'object', properties: { ok: { type: 'boolean' } } } } },
+            },
+            '401': {
+              description: 'Invalid or missing key',
+              content: { 'application/json': { schema: { $ref: '#/components/schemas/Error' } } },
+            },
+          },
+        },
+      },
+    },
+  },
+  apis: [
+    './src/routes/rwa.js',
+    './src/routes/analytics.js',
+    './src/routes/purchases.js',
+    './src/routes/apiKeys.js',
+    './src/routes/webhooks.js',
+    './src/routes/flashLoanProtection.js',
+  ],
+};
+
+export const swaggerSpec = options.definition;

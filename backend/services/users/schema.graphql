@@ -1,0 +1,87 @@
+# Users Service - Federated Schema
+# This service manages user profiles, authentication, and KYC status
+
+extend schema
+  @link(url: "https://specs.apollo.dev/federation/v2.3",
+        import: ["@key", "@shareable", "@inaccessible", "@override", "@provides", "@external"])
+
+type User @key(fields: "userId") {
+  userId: ID!
+  walletAddress: String!
+  email: String
+  kycStatus: KYCStatus!
+  kycVerifiedAt: String
+  createdAt: String!
+  updatedAt: String!
+  # Extended fields from other services
+  ownedAssets: [Asset!] @provides(fields: "contractId title")
+  transactions: [Transaction!] @provides(fields: "transactionId type amount")
+  profile: UserProfile
+}
+
+type UserProfile {
+  userId: ID!
+  firstName: String
+  lastName: String
+  displayName: String
+  avatarUrl: String
+  bio: String
+  preferences: UserPreferences
+}
+
+type UserPreferences {
+  notificationsEnabled: Boolean!
+  emailNotifications: Boolean!
+  currency: String!
+  language: String!
+}
+
+enum KYCStatus {
+  PENDING
+  APPROVED
+  REJECTED
+  NOT_STARTED
+}
+
+input UserFilter {
+  kycStatus: KYCStatus
+  search: String
+}
+
+input UserProfileInput {
+  firstName: String
+  lastName: String
+  displayName: String
+  bio: String
+}
+
+input UserPreferencesInput {
+  notificationsEnabled: Boolean
+  emailNotifications: Boolean
+  currency: String
+  language: String
+}
+
+type Query {
+  users(filter: UserFilter, limit: Int, offset: Int): [User!]!
+  user(userId: ID!): User
+  userByWallet(walletAddress: String!): User
+  usersCount: Int!
+  userStatistics: UserStatistics!
+}
+
+type UserStatistics {
+  totalUsers: Int!
+  kycVerifiedUsers: Int!
+  kycPendingUsers: Int!
+  activeUsers: Int!
+}
+
+type Mutation {
+  updateUserProfile(userId: ID!, input: UserProfileInput!): User!
+  updateUserPreferences(userId: ID!, input: UserPreferencesInput!): User!
+  initiateKYC(userId: ID!): User!
+  approveKYC(userId: ID!): User!
+  rejectKYC(userId: ID!, reason: String!): User!
+  deleteUser(userId: ID!): Boolean!
+}

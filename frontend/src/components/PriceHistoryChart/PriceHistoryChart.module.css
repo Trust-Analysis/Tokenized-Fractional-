@@ -1,0 +1,345 @@
+.container {
+  background: var(--bg-surface);
+  border: 1px solid var(--border-color);
+  border-radius: 8px;
+  padding: 24px;
+  box-shadow: var(--shadow-md);
+}
+
+.header {
+  display: flex;
+  justify-content: space-between;
+  align-items: flex-start;
+  gap: 24px;
+  margin-bottom: 24px;
+  flex-wrap: wrap;
+}
+
+.titleSection {
+  flex: 1;
+  min-width: 300px;
+}
+
+.title {
+  margin: 0 0 12px 0;
+  font-size: 20px;
+  font-weight: 600;
+  color: var(--text-primary);
+}
+
+.stats {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(120px, 1fr));
+  gap: 12px;
+}
+
+.statItem {
+  display: flex;
+  flex-direction: column;
+  padding: 10px 12px;
+  background: var(--bg-surface-hover);
+  border-radius: 6px;
+  border: 1px solid var(--border-color);
+  transition: all 0.2s ease;
+}
+
+.statItem:hover {
+  background: var(--bg-surface-hover);
+  border-color: var(--border-color-hover);
+}
+
+.statItem.positive {
+  background: var(--success-bg);
+  border-color: var(--success-border);
+}
+
+.statItem.positive .statValue {
+  color: var(--success-text);
+}
+
+.statItem.negative {
+  background: var(--error-bg);
+  border-color: var(--error-border);
+}
+
+.statItem.negative .statValue {
+  color: var(--error-text);
+}
+
+.statLabel {
+  font-size: 11px;
+  font-weight: 500;
+  color: var(--text-secondary);
+  text-transform: uppercase;
+  letter-spacing: 0.5px;
+  margin-bottom: 4px;
+}
+
+.statValue {
+  font-size: 14px;
+  font-weight: 600;
+  color: var(--text-primary);
+}
+
+.controls {
+  display: flex;
+  gap: 12px;
+  align-items: center;
+  flex-wrap: wrap;
+}
+
+.timeRangeButtons {
+  display: flex;
+  gap: 6px;
+  padding: 6px;
+  background: var(--bg-surface-hover);
+  border-radius: 6px;
+}
+
+.timeButton {
+  padding: 6px 12px;
+  background: transparent;
+  border: 1px solid transparent;
+  border-radius: 4px;
+  font-size: 12px;
+  font-weight: 500;
+  color: var(--text-secondary);
+  cursor: pointer;
+  transition: all 0.2s ease;
+}
+
+.timeButton:hover {
+  background: var(--bg-surface);
+  border-color: var(--border-color-hover);
+}
+
+.timeButton.active {
+  background: var(--primary);
+  color: #ffffff;
+  border-color: var(--primary);
+}
+
+.chartTypeButtons {
+  display: flex;
+  gap: 6px;
+  padding: 6px;
+  background: var(--bg-surface-hover);
+  border-radius: 6px;
+}
+
+.chartTypeButton {
+  padding: 6px 12px;
+  background: transparent;
+  border: 1px solid transparent;
+  border-radius: 4px;
+  font-size: 16px;
+  cursor: pointer;
+  transition: all 0.2s ease;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+}
+
+.chartTypeButton:hover {
+  background: var(--bg-surface);
+  border-color: var(--border-color-hover);
+}
+
+.chartTypeButton.active {
+  background: var(--primary);
+  border-color: var(--primary);
+}
+
+.chartContainer {
+  width: 100%;
+  margin: 24px 0;
+  background: var(--bg-surface);
+  border-radius: 6px;
+  border: 1px solid var(--border-color);
+  padding: 12px;
+}
+
+.footer {
+  text-align: center;
+  padding-top: 16px;
+  border-top: 1px solid var(--border-color);
+}
+
+.dataInfo {
+  margin: 0;
+  font-size: 12px;
+  color: var(--text-muted);
+}
+
+/* Loading state */
+.loading {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  min-height: 400px;
+  gap: 12px;
+}
+
+.spinner {
+  width: 40px;
+  height: 40px;
+  border: 3px solid var(--border-color);
+  border-top-color: var(--primary);
+  border-radius: 50%;
+  animation: spin 0.8s linear infinite;
+}
+
+@keyframes spin {
+  to {
+    transform: rotate(360deg);
+  }
+}
+
+.loading p {
+  margin: 0;
+  color: var(--text-secondary);
+  font-size: 14px;
+}
+
+/* Error state */
+.error {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  min-height: 300px;
+  gap: 8px;
+  padding: 24px;
+  background: var(--error-bg);
+  border: 1px solid var(--error-border);
+  border-radius: 8px;
+}
+
+.error p {
+  margin: 0;
+  color: var(--error-text);
+  font-size: 14px;
+  font-weight: 500;
+}
+
+.errorMessage {
+  font-size: 12px !important;
+  color: var(--text-muted) !important;
+  font-weight: 400 !important;
+}
+
+/* No data state */
+.noData {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  min-height: 300px;
+  padding: 24px;
+  background: var(--bg-surface);
+  border: 2px dashed var(--border-color-hover);
+  border-radius: 8px;
+}
+
+.noData p {
+  margin: 0;
+  color: var(--text-muted);
+  font-size: 14px;
+}
+
+/* Tooltip */
+.tooltip {
+  background: var(--bg-surface);
+  border: 1px solid var(--border-color);
+  border-radius: 6px;
+  padding: 10px 12px;
+  box-shadow: var(--shadow-lg);
+  z-index: 1000;
+}
+
+.tooltipDate {
+  margin: 0 0 6px 0;
+  font-size: 12px;
+  color: var(--text-secondary);
+  font-weight: 500;
+}
+
+.tooltipPrice {
+  margin: 0 0 4px 0;
+  font-size: 13px;
+  color: var(--text-primary);
+  font-weight: 600;
+}
+
+.tooltipVolume {
+  margin: 0 0 4px 0;
+  font-size: 12px;
+  color: var(--text-secondary);
+}
+
+.tooltipChange {
+  margin: 0;
+  font-size: 12px;
+  font-weight: 600;
+}
+
+.tooltipChange.positive {
+  color: var(--success);
+}
+
+.tooltipChange.negative {
+  color: var(--error);
+}
+
+/* Responsive design */
+@media (max-width: 768px) {
+  .container {
+    padding: 16px;
+  }
+
+  .header {
+    flex-direction: column;
+    gap: 16px;
+  }
+
+  .stats {
+    grid-template-columns: repeat(auto-fit, minmax(100px, 1fr));
+    gap: 8px;
+  }
+
+  .controls {
+    width: 100%;
+    flex-direction: column;
+  }
+
+  .timeRangeButtons,
+  .chartTypeButtons {
+    width: 100%;
+  }
+
+  .timeButton {
+    flex: 1;
+  }
+}
+
+@media (max-width: 480px) {
+  .title {
+    font-size: 16px;
+  }
+
+  .stats {
+    grid-template-columns: repeat(2, 1fr);
+  }
+
+  .statLabel {
+    font-size: 10px;
+  }
+
+  .statValue {
+    font-size: 12px;
+  }
+
+  .timeRangeButtons {
+    overflow-x: auto;
+  }
+}

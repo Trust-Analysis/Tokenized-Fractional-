@@ -1,0 +1,22 @@
+{
+  "CDRIFTEDAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA": {
+    "contractId": "CDRIFTEDAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA",
+    "title": "Drifted Asset",
+    "location": "Lagos",
+    "description": "availableShares is deliberately wrong; the contract reports 60",
+    "assetType": "Real Estate",
+    "totalShares": 100,
+    "availableShares": 100,
+    "pricePerShare": 10000000
+  },
+  "CINSYNCAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA": {
+    "contractId": "CINSYNCAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA",
+    "title": "In-Sync Asset",
+    "location": "Abuja",
+    "description": "Matches the contract exactly",
+    "assetType": "Real Estate",
+    "totalShares": 50,
+    "availableShares": 20,
+    "pricePerShare": 5000000
+  }
+}

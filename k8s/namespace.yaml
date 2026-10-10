@@ -1,0 +1,7 @@
+apiVersion: v1
+kind: Namespace
+metadata:
+  name: rwa-marketplace
+  labels:
+    app: rwa-marketplace
+    managed-by: kubectl

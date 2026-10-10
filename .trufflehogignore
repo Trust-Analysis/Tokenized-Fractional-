@@ -1,0 +1,6 @@
+backend/.env.example
+frontend/.env.example
+*.md
+package-lock.json
+node_modules/
+tests/fixtures/

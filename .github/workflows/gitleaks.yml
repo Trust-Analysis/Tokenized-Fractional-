@@ -1,0 +1,76 @@
+# Secret scanning with gitleaks — issue #722
+#
+# Runs on *every* pull request (any base branch) plus pushes to the long-lived
+# branches, so a secret cannot reach `main` even if it is opened against a
+# branch that is not in the `pull_request: branches: [...]` lists used by the
+# other workflows in this repository.
+#
+# The official `gitleaks/gitleaks-action` is deliberately NOT used here: since
+# v2 it requires a `GITLEAKS_LICENSE` secret on organisation-owned repositories,
+# and v2 runs on Node 20, which GitHub removes from hosted runners on
+# 2026-09-16. The gitleaks CLI itself is MIT-licensed and needs no licence key,
+# so this job pins the binary and verifies its SHA-256 checksum instead.
+
+name: Secret Scanning
+
+on:
+  pull_request:
+  push:
+    branches: [main, dev]
+  schedule:
+    - cron: '23 3 * * 1'  # Weekly, Monday 03:23 UTC
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  gitleaks:
+    name: gitleaks
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v6
+        with:
+          # Full history is required: `gitleaks git` walks every commit, so a
+          # shallow clone would silently scan almost nothing.
+          fetch-depth: 0
+
+      - name: Install gitleaks
+        env:
+          GITLEAKS_VERSION: 8.30.1
+        run: |
+          set -euo pipefail
+          url="https://github.com/gitleaks/gitleaks/releases/download/v${GITLEAKS_VERSION}/gitleaks_${GITLEAKS_VERSION}_linux_x64.tar.gz"
+          curl -sSfL "$url" -o /tmp/gitleaks.tar.gz
+          echo "551f6fc83ea457d62a0d98237cbad105af8d557003051f41f3e7ca7b3f2470eb  /tmp/gitleaks.tar.gz" | sha256sum -c -
+          tar -xzf /tmp/gitleaks.tar.gz -C /usr/local/bin gitleaks
+          gitleaks version
+
+      - name: Scan commit history for secrets
+        run: |
+          set -euo pipefail
+          gitleaks git \
+            --no-banner \
+            --config .gitleaks.toml \
+            --redact \
+            --max-target-megabytes 10 \
+            --verbose \
+            .
+
+      - name: Fail if a real .env file is tracked
+        # The templates in backend/, frontend/, gateway/ and load-test/ are the
+        # only .env files that belong in the repository. A committed .env (or
+        # .env.local / .env.production) is the exact accident this guards
+        # against, and it can hold values gitleaks' detectors do not recognise.
+        run: |
+          set -euo pipefail
+          offenders="$(git ls-files \
+            | grep -E '(^|/)\.env($|\.)' \
+            | grep -vE '\.(example|template|sample)$' || true)"
+          if [ -n "$offenders" ]; then
+            echo "::error::Real environment files are tracked in git. Remove them and rotate any credentials they contained:"
+            echo "$offenders" | sed 's/^/::error file::/'
+            exit 1
+          fi
+          echo "No real .env files are tracked."

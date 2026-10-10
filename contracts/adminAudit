@@ -1,0 +1,496 @@
+#![no_std]
+
+use soroban_sdk::{
+    contract,
+    contractimpl,
+    contracttype,
+    symbol_short,
+    Address,
+    Env,
+    Symbol,
+};
+
+// ============================================================
+// CONTRACT
+// ============================================================
+
+#[contract]
+pub struct AdminAuditContract;
+
+// ============================================================
+// STORAGE KEYS
+// ============================================================
+
+#[contracttype]
+#[derive(Clone)]
+pub enum DataKey {
+    Admin,
+    AuditCount,
+    AuditLog(u32),
+    UserStatus(Address),
+    SystemValue,
+}
+
+// ============================================================
+// AUDIT LOG ENTRY
+// ============================================================
+
+#[contracttype]
+#[derive(Clone)]
+pub struct AuditEntry {
+    pub id: u32,
+    pub admin: Address,
+    pub action: Symbol,
+    pub target: Address,
+    pub timestamp: u64,
+    pub details: Symbol,
+}
+
+// ============================================================
+// CONTRACT IMPLEMENTATION
+// ============================================================
+
+#[contractimpl]
+impl AdminAuditContract {
+
+    // --------------------------------------------------------
+    // INITIALIZE CONTRACT
+    // --------------------------------------------------------
+
+    pub fn initialize(
+        env: Env,
+        admin: Address,
+    ) {
+        admin.require_auth();
+
+        // Prevent re-initialization
+        if env.storage()
+            .instance()
+            .has(&DataKey::Admin)
+        {
+            panic!("Contract already initialized");
+        }
+
+        // Store administrator
+        env.storage()
+            .instance()
+            .set(
+                &DataKey::Admin,
+                &admin,
+            );
+
+        // Start audit counter at zero
+        env.storage()
+            .instance()
+            .set(
+                &DataKey::AuditCount,
+                &0u32,
+            );
+
+        // ----------------------------------------------------
+        // AUDIT EVENT
+        // ----------------------------------------------------
+
+        env.events().publish(
+            (symbol_short!("audit"), symbol_short!("init")),
+            admin.clone(),
+        );
+
+        // Record initialization
+        Self::record_audit(
+            &env,
+            &admin,
+            symbol_short!("init"),
+            &admin,
+            symbol_short!("contract"),
+        );
+    }
+
+    // --------------------------------------------------------
+    // ADD USER
+    // --------------------------------------------------------
+
+    pub fn add_user(
+        env: Env,
+        user: Address,
+    ) {
+        let admin = Self::require_admin(&env);
+
+        let already_exists: bool = env
+            .storage()
+            .persistent()
+            .get(&DataKey::UserStatus(user.clone()))
+            .unwrap_or(false);
+
+        if already_exists {
+            panic!("User already exists");
+        }
+
+        env.storage()
+            .persistent()
+            .set(
+                &DataKey::UserStatus(user.clone()),
+                &true,
+            );
+
+        // ----------------------------------------------------
+        // AUDIT LOG
+        // ----------------------------------------------------
+
+        Self::record_audit(
+            &env,
+            &admin,
+            symbol_short!("add_user"),
+            &user,
+            symbol_short!("created"),
+        );
+
+        // ----------------------------------------------------
+        // EVENT
+        // ----------------------------------------------------
+
+        env.events().publish(
+            (symbol_short!("admin"), symbol_short!("add")),
+            (admin, user),
+        );
+    }
+
+    // --------------------------------------------------------
+    // REMOVE USER
+    // --------------------------------------------------------
+
+    pub fn remove_user(
+        env: Env,
+        user: Address,
+    ) {
+        let admin = Self::require_admin(&env);
+
+        let exists: bool = env
+            .storage()
+            .persistent()
+            .get(&DataKey::UserStatus(user.clone()))
+            .unwrap_or(false);
+
+        if !exists {
+            panic!("User does not exist");
+        }
+
+        env.storage()
+            .persistent()
+            .set(
+                &DataKey::UserStatus(user.clone()),
+                &false,
+            );
+
+        // Record administrative action
+        Self::record_audit(
+            &env,
+            &admin,
+            symbol_short!("remove"),
+            &user,
+            symbol_short!("disabled"),
+        );
+
+        // Emit event
+        env.events().publish(
+            (symbol_short!("admin"), symbol_short!("remove")),
+            (admin, user),
+        );
+    }
+
+    // --------------------------------------------------------
+    // UPDATE SYSTEM VALUE
+    // --------------------------------------------------------
+
+    pub fn update_system_value(
+        env: Env,
+        value: u32,
+    ) {
+        let admin = Self::require_admin(&env);
+
+        env.storage()
+            .instance()
+            .set(
+                &DataKey::SystemValue,
+                &value,
+            );
+
+        // Record audit information
+        Self::record_audit(
+            &env,
+            &admin,
+            symbol_short!("update"),
+            &admin,
+            symbol_short!("sys_value"),
+        );
+
+        // Emit event
+        env.events().publish(
+            (symbol_short!("admin"), symbol_short!("update")),
+            (admin, value),
+        );
+    }
+
+    // --------------------------------------------------------
+    // CHANGE ADMIN
+    // --------------------------------------------------------
+
+    pub fn change_admin(
+        env: Env,
+        new_admin: Address,
+    ) {
+        let current_admin = Self::require_admin(&env);
+
+        // The current administrator must authorize
+        current_admin.require_auth();
+
+        // Save the action before changing the administrator.
+        Self::record_audit(
+            &env,
+            &current_admin,
+            symbol_short!("change"),
+            &new_admin,
+            symbol_short!("admin"),
+        );
+
+        // Update administrator
+        env.storage()
+            .instance()
+            .set(
+                &DataKey::Admin,
+                &new_admin,
+            );
+
+        // Emit admin-change event
+        env.events().publish(
+            (symbol_short!("admin"), symbol_short!("change")),
+            (current_admin, new_admin),
+        );
+    }
+
+    // --------------------------------------------------------
+    // PAUSE USER
+    // --------------------------------------------------------
+
+    pub fn pause_user(
+        env: Env,
+        user: Address,
+    ) {
+        let admin = Self::require_admin(&env);
+
+        env.storage()
+            .persistent()
+            .set(
+                &DataKey::UserStatus(user.clone()),
+                &false,
+            );
+
+        // Record action
+        Self::record_audit(
+            &env,
+            &admin,
+            symbol_short!("pause"),
+            &user,
+            symbol_short!("user"),
+        );
+
+        // Emit event
+        env.events().publish(
+            (symbol_short!("admin"), symbol_short!("pause")),
+            (admin, user),
+        );
+    }
+
+    // --------------------------------------------------------
+    // UNPAUSE USER
+    // --------------------------------------------------------
+
+    pub fn unpause_user(
+        env: Env,
+        user: Address,
+    ) {
+        let admin = Self::require_admin(&env);
+
+        env.storage()
+            .persistent()
+            .set(
+                &DataKey::UserStatus(user.clone()),
+                &true,
+            );
+
+        // Record action
+        Self::record_audit(
+            &env,
+            &admin,
+            symbol_short!("unpause"),
+            &user,
+            symbol_short!("user"),
+        );
+
+        // Emit event
+        env.events().publish(
+            (symbol_short!("admin"), symbol_short!("unpause")),
+            (admin, user),
+        );
+    }
+
+    // --------------------------------------------------------
+    // INTERNAL ADMIN CHECK
+    // --------------------------------------------------------
+
+    fn require_admin(
+        env: &Env,
+    ) -> Address {
+        let admin: Address = env
+            .storage()
+            .instance()
+            .get(&DataKey::Admin)
+            .unwrap_or_else(|| {
+                panic!("Contract not initialized")
+            });
+
+        admin.require_auth();
+
+        admin
+    }
+
+    // --------------------------------------------------------
+    // INTERNAL AUDIT LOGGER
+    // --------------------------------------------------------
+
+    fn record_audit(
+        env: &Env,
+        admin: &Address,
+        action: Symbol,
+        target: &Address,
+        details: Symbol,
+    ) {
+        // Read current audit count
+        let current_count: u32 = env
+            .storage()
+            .instance()
+            .get(&DataKey::AuditCount)
+            .unwrap_or(0);
+
+        // Generate new audit ID
+        let audit_id = current_count + 1;
+
+        // Obtain ledger timestamp
+        let timestamp = env.ledger().timestamp();
+
+        // Create audit record
+        let entry = AuditEntry {
+            id: audit_id,
+            admin: admin.clone(),
+            action: action.clone(),
+            target: target.clone(),
+            timestamp,
+            details: details.clone(),
+        };
+
+        // Store audit record
+        env.storage()
+            .persistent()
+            .set(
+                &DataKey::AuditLog(audit_id),
+                &entry,
+            );
+
+        // Update audit counter
+        env.storage()
+            .instance()
+            .set(
+                &DataKey::AuditCount,
+                &audit_id,
+            );
+
+        // ----------------------------------------------------
+        // AUDIT EVENT
+        // ----------------------------------------------------
+
+        env.events().publish(
+            (
+                symbol_short!("audit"),
+                action,
+            ),
+            (
+                audit_id,
+                admin.clone(),
+                target.clone(),
+                timestamp,
+                details,
+            ),
+        );
+    }
+
+    // --------------------------------------------------------
+    // GET AUDIT ENTRY
+    // --------------------------------------------------------
+
+    pub fn get_audit(
+        env: Env,
+        audit_id: u32,
+    ) -> AuditEntry {
+        env.storage()
+            .persistent()
+            .get(&DataKey::AuditLog(audit_id))
+            .unwrap_or_else(|| {
+                panic!("Audit entry not found")
+            })
+    }
+
+    // --------------------------------------------------------
+    // GET NUMBER OF AUDIT RECORDS
+    // --------------------------------------------------------
+
+    pub fn get_audit_count(
+        env: Env,
+    ) -> u32 {
+        env.storage()
+            .instance()
+            .get(&DataKey::AuditCount)
+            .unwrap_or(0)
+    }
+
+    // --------------------------------------------------------
+    // GET CURRENT ADMIN
+    // --------------------------------------------------------
+
+    pub fn get_admin(
+        env: Env,
+    ) -> Address {
+        env.storage()
+            .instance()
+            .get(&DataKey::Admin)
+            .unwrap_or_else(|| {
+                panic!("Contract not initialized")
+            })
+    }
+
+    // --------------------------------------------------------
+    // CHECK USER STATUS
+    // --------------------------------------------------------
+
+    pub fn is_user_active(
+        env: Env,
+        user: Address,
+    ) -> bool {
+        env.storage()
+            .persistent()
+            .get(&DataKey::UserStatus(user))
+            .unwrap_or(false)
+    }
+
+    // --------------------------------------------------------
+    // GET SYSTEM VALUE
+    // --------------------------------------------------------
+
+    pub fn get_system_value(
+        env: Env,
+    ) -> u32 {
+        env.storage()
+            .instance()
+            .get(&DataKey::SystemValue)
+            .unwrap_or(0)
+    }
+}

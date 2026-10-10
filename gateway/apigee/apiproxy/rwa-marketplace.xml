@@ -1,0 +1,293 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!--
+Apigee API Proxy for RWA Marketplace
+Main proxy definition with target and conditional flows
+-->
+<APIProxy revision="1" name="rwa-marketplace">
+  <ProxyEndpoints>
+    <ProxyEndpoint name="default">
+      <Description>Default proxy endpoint for RWA Marketplace</Description>
+      <FaultRules>
+        <FaultRule name="DefaultFault">
+          <Step>
+            <Name>RaiseFault</Name>
+          </Step>
+          <Condition>request.verb != "OPTIONS"</Condition>
+        </FaultRule>
+      </FaultRules>
+      <PreFlow name="PreFlow">
+        <Request>
+          <Step>
+            <Name>AddCorsHeaders</Name>
+          </Step>
+          <Step>
+            <Name>RequestValidation</Name>
+          </Step>
+        </Request>
+        <Response>
+          <Step>
+            <Name>AddResponseHeaders</Name>
+          </Step>
+        </Response>
+      </PreFlow>
+      <Flows>
+        <!-- GET /api/rwa - List RWAs -->
+        <Flow name="GetRWAList">
+          <Description>Get list of all RWAs</Description>
+          <Request>
+            <Step>
+              <Name>RateLimitPublic</Name>
+            </Step>
+            <Step>
+              <Name>TransformRequest</Name>
+            </Step>
+          </Request>
+          <Response>
+            <Step>
+              <Name>TransformResponse</Name>
+            </Step>
+          </Response>
+          <Condition>(proxy.pathsuffix == "/api/rwa") and (request.verb == "GET")</Condition>
+        </Flow>
+
+        <!-- GET /api/rwa/{contractId} - Get specific RWA -->
+        <Flow name="GetRWADetail">
+          <Description>Get details of specific RWA</Description>
+          <Request>
+            <Step>
+              <Name>RateLimitPublic</Name>
+            </Step>
+            <Step>
+              <Name>ExtractContractId</Name>
+            </Step>
+            <Step>
+              <Name>ValidateContractId</Name>
+            </Step>
+            <Step>
+              <Name>TransformRequest</Name>
+            </Step>
+          </Request>
+          <Response>
+            <Step>
+              <Name>TransformResponse</Name>
+            </Step>
+          </Response>
+          <Condition>(proxy.pathsuffix =~ "/api/rwa/[A-Za-z0-9]+") and (request.verb == "GET")</Condition>
+        </Flow>
+
+        <!-- POST /api/rwa - Create RWA (requires auth) -->
+        <Flow name="CreateRWA">
+          <Description>Create new RWA</Description>
+          <Request>
+            <Step>
+              <Name>VerifyAPIKey</Name>
+            </Step>
+            <Step>
+              <Name>JWTDecode</Name>
+            </Step>
+            <Step>
+              <Name>RateLimitAdmin</Name>
+            </Step>
+            <Step>
+              <Name>ValidateRequestPayload</Name>
+            </Step>
+            <Step>
+              <Name>TransformRequest</Name>
+            </Step>
+          </Request>
+          <Response>
+            <Step>
+              <Name>TransformResponse</Name>
+            </Step>
+          </Response>
+          <Condition>(proxy.pathsuffix == "/api/rwa") and (request.verb == "POST")</Condition>
+        </Flow>
+
+        <!-- DELETE /api/rwa/{contractId} - Delete RWA (requires auth) -->
+        <Flow name="DeleteRWA">
+          <Description>Delete RWA</Description>
+          <Request>
+            <Step>
+              <Name>VerifyAPIKey</Name>
+            </Step>
+            <Step>
+              <Name>JWTDecode</Name>
+            </Step>
+            <Step>
+              <Name>RateLimitAdmin</Name>
+            </Step>
+            <Step>
+              <Name>ExtractContractId</Name>
+            </Step>
+            <Step>
+              <Name>ValidateContractId</Name>
+            </Step>
+            <Step>
+              <Name>TransformRequest</Name>
+            </Step>
+          </Request>
+          <Response>
+            <Step>
+              <Name>TransformResponse</Name>
+            </Step>
+          </Response>
+          <Condition>(proxy.pathsuffix =~ "/api/rwa/[A-Za-z0-9]+") and (request.verb == "DELETE")</Condition>
+        </Flow>
+
+        <!-- OPTIONS request handler (CORS preflight) -->
+        <Flow name="OptionsFlow">
+          <Description>Handle CORS preflight requests</Description>
+          <Request>
+            <Step>
+              <Name>AddCorsHeaders</Name>
+            </Step>
+          </Request>
+          <Response/>
+          <Condition>request.verb == "OPTIONS"</Condition>
+        </Flow>
+      </Flows>
+      <PostFlow name="PostFlow">
+        <Request/>
+        <Response>
+          <Step>
+            <Name>AddSecurityHeaders</Name>
+          </Step>
+        </Response>
+      </PostFlow>
+      <HTTPProxyConnection>
+        <BasePath>/</BasePath>
+        <Properties/>
+        <VirtualHost>default</VirtualHost>
+        <VirtualHost>secure</VirtualHost>
+      </HTTPProxyConnection>
+    </ProxyEndpoint>
+  </ProxyEndpoints>
+  <TargetEndpoints>
+    <TargetEndpoint name="backend">
+      <Description>Target backend for RWA Marketplace</Description>
+      <PreFlow name="PreFlow">
+        <Request>
+          <Step>
+            <Name>AddBackendHeaders</Name>
+          </Step>
+        </Request>
+        <Response>
+          <Step>
+            <Name>ProcessBackendResponse</Name>
+          </Step>
+        </Response>
+      </PreFlow>
+      <Flows/>
+      <PostFlow name="PostFlow">
+        <Request/>
+        <Response/>
+      </PostFlow>
+      <HTTPTargetConnection>
+        <URL>http://backend:3001</URL>
+        <SSLInfo>
+          <Enabled>false</Enabled>
+        </SSLInfo>
+      </HTTPTargetConnection>
+    </TargetEndpoint>
+  </TargetEndpoints>
+  <Policies>
+    <!-- CORS Headers Policy -->
+    <Policy name="AddCorsHeaders">
+      <DisplayName>Add CORS Headers</DisplayName>
+      <Type>AssignMessage</Type>
+    </Policy>
+
+    <!-- Request Validation -->
+    <Policy name="RequestValidation">
+      <DisplayName>Validate Request</DisplayName>
+      <Type>OAuthV2</Type>
+    </Policy>
+
+    <!-- Response Headers -->
+    <Policy name="AddResponseHeaders">
+      <DisplayName>Add Response Headers</DisplayName>
+      <Type>AssignMessage</Type>
+    </Policy>
+
+    <!-- Rate Limiting - Public -->
+    <Policy name="RateLimitPublic">
+      <DisplayName>Rate Limit Public Requests</DisplayName>
+      <Type>Quota</Type>
+    </Policy>
+
+    <!-- Rate Limiting - Admin -->
+    <Policy name="RateLimitAdmin">
+      <DisplayName>Rate Limit Admin Requests</DisplayName>
+      <Type>Quota</Type>
+    </Policy>
+
+    <!-- Extract Contract ID from path -->
+    <Policy name="ExtractContractId">
+      <DisplayName>Extract Contract ID</DisplayName>
+      <Type>ExtractVariables</Type>
+    </Policy>
+
+    <!-- Validate Contract ID -->
+    <Policy name="ValidateContractId">
+      <DisplayName>Validate Contract ID</DisplayName>
+      <Type>Condition</Type>
+    </Policy>
+
+    <!-- Request Transformation -->
+    <Policy name="TransformRequest">
+      <DisplayName>Transform Request</DisplayName>
+      <Type>XSLT</Type>
+    </Policy>
+
+    <!-- Response Transformation -->
+    <Policy name="TransformResponse">
+      <DisplayName>Transform Response</DisplayName>
+      <Type>XSLT</Type>
+    </Policy>
+
+    <!-- Verify API Key -->
+    <Policy name="VerifyAPIKey">
+      <DisplayName>Verify API Key</DisplayName>
+      <Type>VerifyAPIKey</Type>
+    </Policy>
+
+    <!-- JWT Decode -->
+    <Policy name="JWTDecode">
+      <DisplayName>Decode JWT</DisplayName>
+      <Type>JwtDecode</Type>
+    </Policy>
+
+    <!-- Validate Request Payload -->
+    <Policy name="ValidateRequestPayload">
+      <DisplayName>Validate Request Payload</DisplayName>
+      <Type>JSONThreatProtection</Type>
+    </Policy>
+
+    <!-- Add Backend Headers -->
+    <Policy name="AddBackendHeaders">
+      <DisplayName>Add Backend Headers</DisplayName>
+      <Type>AssignMessage</Type>
+    </Policy>
+
+    <!-- Process Backend Response -->
+    <Policy name="ProcessBackendResponse">
+      <DisplayName>Process Backend Response</DisplayName>
+      <Type>AssignMessage</Type>
+    </Policy>
+
+    <!-- Security Headers -->
+    <Policy name="AddSecurityHeaders">
+      <DisplayName>Add Security Headers</DisplayName>
+      <Type>AssignMessage</Type>
+    </Policy>
+
+    <!-- Fault Handler -->
+    <Policy name="RaiseFault">
+      <DisplayName>Raise Fault</DisplayName>
+      <Type>RaiseFault</Type>
+    </Policy>
+  </Policies>
+  <Resources>
+    <!-- Policy resources will be defined separately -->
+  </Resources>
+</APIProxy>
