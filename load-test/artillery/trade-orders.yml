@@ -1,0 +1,60 @@
+# Trade-Order Placing Scenario — HTTP Path (Issue #524)
+#
+# Simulates 1,000 concurrent users placing fractional trade orders against the
+# backend trade-confirmation endpoints. Each virtual user behaves like a browser
+# that just executed an on-chain share purchase on the Soroban contract:
+#
+#   1. POST /api/v1/notify/share-purchased  — broadcasts the trade over WebSocket
+#   2. POST /api/v1/purchases                — records the purchase event
+#
+# Concurrency math: with a ~5s mean flow duration, an arrival rate of ~200
+# users/sec sustains ~1,000 concurrently connected/active users.
+#
+# Run:
+#   npm run test:orders
+#   ARTILLERY_WORKERS=... artillery run artillery/trade-orders.yml --output reports/trade-orders.json
+
+config:
+  # Base URL for the backend metadata + WebSocket service (see backend/src/config.js)
+  target: "http://localhost:3001"
+  phases:
+    - name: "ramp-to-1000"
+      duration: 120
+      arrivalRate: 10
+      rampTo: 200
+    - name: "sustain-1000"
+      duration: 90
+      arrivalRate: 200
+  processor: "../helpers/processor.js"
+  payload:
+    - path: "./contracts.csv"
+      fields:
+        - "contractId"
+      order: sequence
+
+scenarios:
+  - name: "place-fractional-trade-order"
+    weight: 1
+    flow:
+      # Publish the trade notification (drives the WebSocket fan-out engine).
+      - function: "makeSharePurchase"
+      - post:
+          url: "/api/v1/notify/share-purchased"
+          json: "{{ request }}"
+          capture:
+            - json: "$.ok"
+              as: broadcastOk
+      - think: 1
+
+  - name: "record-fractional-purchase"
+    weight: 1
+    flow:
+      # Record the purchase so price-history caches are exercised too.
+      - function: "makePurchase"
+      - post:
+          url: "/api/v1/purchases"
+          json: "{{ request }}"
+          capture:
+            - json: "$.data.status"
+              as: purchaseStatus
+      - think: 1

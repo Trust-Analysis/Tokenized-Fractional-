@@ -1,0 +1,29 @@
+name: Nginx Rate Limit
+
+on:
+  pull_request:
+    paths:
+      - 'nginx/nginx.conf'
+      - 'scripts/test-nginx-rate-limit.mjs'
+      - '.github/workflows/nginx-rate-limit.yml'
+  push:
+    branches: [main, dev]
+    paths:
+      - 'nginx/nginx.conf'
+      - 'scripts/test-nginx-rate-limit.mjs'
+      - '.github/workflows/nginx-rate-limit.yml'
+  schedule:
+    - cron: '17 5 * * 1'
+  workflow_dispatch:
+
+jobs:
+  nginx-rate-limit:
+    name: Verify API rate limiting
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 20
+      - name: Exercise configured Nginx rate limit
+        run: node scripts/test-nginx-rate-limit.mjs

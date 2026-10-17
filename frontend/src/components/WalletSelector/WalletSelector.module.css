@@ -1,0 +1,118 @@
+.wrapper {
+  position: relative;
+  display: inline-block;
+}
+
+.triggerBtn {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.5rem;
+  padding: 0.5rem 1rem;
+  border: 1px solid var(--color-border, #2a3041);
+  border-radius: var(--radius-sm, 6px);
+  background: var(--color-surface, #161b2b);
+  color: var(--color-text, #e2e8f0);
+  font-size: var(--font-size-sm, 0.875rem);
+  cursor: pointer;
+  white-space: nowrap;
+  transition: border-color 0.15s, background 0.15s;
+}
+
+.triggerBtn:hover:not(:disabled) {
+  border-color: var(--color-primary, #4a9eff);
+  background: var(--color-surface-hover, #1e2438);
+}
+
+.triggerBtn:disabled {
+  opacity: 0.6;
+  cursor: not-allowed;
+}
+
+.btnIcon {
+  border-radius: 4px;
+}
+
+.chevron {
+  transition: transform 0.2s;
+}
+
+.chevronOpen {
+  transform: rotate(180deg);
+}
+
+.dropdown {
+  position: absolute;
+  top: calc(100% + 4px);
+  right: 0;
+  min-width: 200px;
+  background: var(--color-surface, #161b2b);
+  border: 1px solid var(--color-border, #2a3041);
+  border-radius: var(--radius-sm, 6px);
+  box-shadow: 0 8px 24px rgba(0, 0, 0, 0.4);
+  z-index: 100;
+  overflow: hidden;
+}
+
+.walletOption {
+  display: flex;
+  align-items: center;
+  gap: 0.75rem;
+  width: 100%;
+  padding: 0.75rem 1rem;
+  border: none;
+  background: transparent;
+  color: var(--color-text, #e2e8f0);
+  font-size: var(--font-size-sm, 0.875rem);
+  cursor: pointer;
+  text-align: left;
+  transition: background 0.15s;
+}
+
+.walletOption:hover {
+  background: var(--color-surface-hover, #1e2438);
+}
+
+.walletIcon,
+.walletIconPlaceholder {
+  width: 24px;
+  height: 24px;
+  border-radius: 4px;
+  flex-shrink: 0;
+}
+
+.walletIconPlaceholder {
+  background: var(--color-border, #2a3041);
+}
+
+.walletName {
+  flex: 1;
+}
+
+.noWallets {
+  text-align: center;
+}
+
+.noWalletsText {
+  margin: 0 0 0.5rem;
+  font-size: var(--font-size-sm, 0.875rem);
+  color: var(--color-text-muted, #6b7280);
+}
+
+.downloadLink {
+  color: var(--color-primary, #4a9eff);
+  font-size: var(--font-size-sm, 0.875rem);
+  text-decoration: none;
+}
+
+.downloadLink:hover {
+  text-decoration: underline;
+}
+
+.loadingDots {
+  animation: pulse 1.5s ease-in-out infinite;
+}
+
+@keyframes pulse {
+  0%, 100% { opacity: 1; }
+  50% { opacity: 0.5; }
+}

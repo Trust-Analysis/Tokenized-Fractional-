@@ -1,0 +1,70 @@
+{
+  "$comment": [
+    "Recorded expectations for the graceful-degradation failure-injection exercise",
+    "(GitHub issue #802). Regenerate with `node scripts/chaos/run-chaos-exercise.mjs --update`",
+    "after reviewing any diff. The runner fails on DRIFT — behaviour that changed",
+    "since this baseline was recorded — but not on a recorded UNGRACEFUL verdict,",
+    "which is a known issue rather than a new regression. Use --strict to fail on",
+    "those too, once the follow-up issues below are closed."
+  ],
+
+  "provisional": true,
+  "provisionalNote": [
+    "PROVISIONAL — not yet confirmed by an executed run.",
+    "",
+    "These verdicts were derived by reading the code, not by running the exercise.",
+    "Each one cites the specific lines it rests on in docs/chaos-engineering.md, and",
+    "the reasoning is checkable, but a code reading is not a measurement. The first",
+    "run on a machine with the backend dependencies installed and Docker available",
+    "should be treated as the real observation: review each result against the",
+    "analysis, correct any verdict that turns out to be wrong, and then delete this",
+    "flag so drift detection is armed for subsequent runs."
+  ],
+
+  "recordedAt": "2026-09-29",
+  "experiments": {
+    "rpc-outage": {
+      "verdict": "UNGRACEFUL",
+      "mechanism": "missing-dependency",
+      "evidence": "sorobanMetadataService.js:53 dynamic-imports @stellar/stellar-sdk, which is not in backend/package.json; the throw is swallowed at :99 and returned as success:true.",
+      "followUp": [
+        "Add @stellar/stellar-sdk to backend dependencies and stop reporting RPC failure as success (#839)"
+      ]
+    },
+    "rpc-blackhole": {
+      "verdict": "UNGRACEFUL",
+      "evidence": "sorobanMetadataService.js:57 constructs rpc.Server with no timeout and there is no retry or AbortSignal, so a silent RPC has no bound.",
+      "followUp": [
+        "Bound the Soroban RPC client with a request timeout and retry policy (#840)"
+      ]
+    },
+    "backend-crash": {
+      "verdict": "UNGRACEFUL",
+      "evidence": "No SIGTERM/SIGINT handler for the HTTP server; index.js:1799 never closes the server. Only jobs/worker.js:66-74 shuts down gracefully.",
+      "followUp": [
+        "Add SIGTERM/SIGINT graceful shutdown to the backend HTTP server (#841)"
+      ]
+    },
+    "nginx-down": {
+      "verdict": "GRACEFUL",
+      "evidence": "A dead upstream fails nginx's connect() immediately (502) rather than hanging, and the gateway resumes on restart.",
+      "followUp": [
+        "Return RFC 7807 problem documents from nginx and set explicit proxy timeouts (#844)"
+      ]
+    },
+    "redis-outage": {
+      "verdict": "UNGRACEFUL",
+      "evidence": "index.js:607 calls buildTlsOptions() but index.js:21 does not import it; the ReferenceError is swallowed by the bare catch at :618, so /health reports 503 for any REDIS_URL.",
+      "followUp": [
+        "Import buildTlsOptions in backend/index.js so /health stops always reporting 503 (#842)"
+      ]
+    },
+    "health-ignores-rpc": {
+      "verdict": "UNGRACEFUL",
+      "evidence": "index.js:595-598 declares only storage and redis as dependencies; the Soroban RPC is never probed.",
+      "followUp": [
+        "Report Soroban RPC reachability from /health (#843)"
+      ]
+    }
+  }
+}

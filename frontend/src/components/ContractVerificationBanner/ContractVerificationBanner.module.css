@@ -1,0 +1,58 @@
+.banner {
+  display: flex;
+  align-items: flex-start;
+  gap: var(--spacing-sm, 0.75rem);
+  margin: var(--spacing-sm, 0.75rem) 0;
+  padding: 0.85rem 1rem;
+  border-radius: var(--radius-sm, 0.5rem);
+  border: 1px solid transparent;
+  font-size: 0.9rem;
+  line-height: 1.4;
+}
+
+.danger {
+  border-color: var(--color-danger, #e5484d);
+  background: rgba(229, 72, 77, 0.14);
+  color: var(--color-text, #f5f5f5);
+}
+
+.warning {
+  border-color: var(--color-warning, #f5a524);
+  background: rgba(245, 165, 36, 0.14);
+  color: var(--color-text, #f5f5f5);
+}
+
+.icon {
+  font-size: 1.1rem;
+  line-height: 1.4;
+}
+
+.body {
+  display: flex;
+  flex-direction: column;
+  gap: 0.25rem;
+}
+
+.heading {
+  font-weight: 700;
+}
+
+.reason {
+  margin: 0;
+}
+
+.meta {
+  margin: 0;
+  font-size: 0.8rem;
+  opacity: 0.85;
+}
+
+.code {
+  word-break: break-all;
+  font-family: monospace;
+}
+
+.link {
+  color: inherit;
+  text-decoration: underline;
+}

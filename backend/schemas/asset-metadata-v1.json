@@ -1,0 +1,302 @@
+{
+  "$schema": "http://json-schema.org/draft-07/schema#",
+  "$id": "https://rwa-marketplace.com/schemas/asset-metadata-v1.json",
+  "title": "Asset Metadata Schema v1",
+  "description": "JSON Schema for validating fractionalized real-world asset and NFT metadata before token creation",
+  "type": "object",
+  "required": [
+    "name",
+    "description",
+    "assetType",
+    "jurisdiction",
+    "custodian",
+    "appraisal",
+    "documents"
+  ],
+  "properties": {
+    "name": {
+      "type": "string",
+      "minLength": 3,
+      "maxLength": 200,
+      "description": "Asset name or title"
+    },
+    "description": {
+      "type": "string",
+      "minLength": 50,
+      "maxLength": 5000,
+      "description": "Detailed description of the asset"
+    },
+    "assetType": {
+      "type": "string",
+      "enum": [
+        "real_estate",
+        "commodity",
+        "fine_art",
+        "intellectual_property",
+        "vehicle",
+        "equipment",
+        "financial_instrument",
+        "other"
+      ],
+      "description": "Category of the real-world asset"
+    },
+    "jurisdiction": {
+      "type": "object",
+      "required": ["country", "legalFramework"],
+      "properties": {
+        "country": {
+          "type": "string",
+          "pattern": "^[A-Z]{2}$",
+          "description": "ISO 3166-1 alpha-2 country code"
+        },
+        "region": {
+          "type": "string",
+          "description": "State, province, or region"
+        },
+        "legalFramework": {
+          "type": "string",
+          "description": "Legal framework governing the asset (e.g., SEC, FCA, MAS)"
+        }
+      }
+    },
+    "custodian": {
+      "type": "object",
+      "required": ["name", "licenseNumber", "contact"],
+      "properties": {
+        "name": {
+          "type": "string",
+          "minLength": 2,
+          "maxLength": 200
+        },
+        "licenseNumber": {
+          "type": "string",
+          "minLength": 5,
+          "maxLength": 50
+        },
+        "contact": {
+          "type": "object",
+          "required": ["email"],
+          "properties": {
+            "email": {
+              "type": "string",
+              "format": "email"
+            },
+            "phone": {
+              "type": "string",
+              "pattern": "^\\+?[1-9]\\d{1,14}$"
+            },
+            "address": {
+              "type": "string"
+            }
+          }
+        }
+      }
+    },
+    "appraisal": {
+      "type": "object",
+      "required": ["value", "currency", "date", "method"],
+      "properties": {
+        "value": {
+          "type": "number",
+          "minimum": 0,
+          "description": "Appraised value in smallest currency unit"
+        },
+        "currency": {
+          "type": "string",
+          "pattern": "^[A-Z]{3}$",
+          "description": "ISO 4217 currency code"
+        },
+        "date": {
+          "type": "string",
+          "format": "date",
+          "description": "Appraisal date (ISO 8601)"
+        },
+        "method": {
+          "type": "string",
+          "enum": ["market_comparison", "income_approach", "cost_approach", "hybrid"],
+          "description": "Valuation methodology used"
+        },
+        "appraiser": {
+          "type": "object",
+          "properties": {
+            "name": {
+              "type": "string"
+            },
+            "firm": {
+              "type": "string"
+            },
+            "credentials": {
+              "type": "string"
+            }
+          }
+        }
+      }
+    },
+    "documents": {
+      "type": "array",
+      "minItems": 1,
+      "maxItems": 50,
+      "items": {
+        "type": "object",
+        "required": ["type", "hash", "url"],
+        "properties": {
+          "type": {
+            "type": "string",
+            "enum": [
+              "title_deed",
+              "ownership_certificate",
+              "appraisal_report",
+              "custody_agreement",
+              "insurance_policy",
+              "legal_opinion",
+              "financial_statement",
+              "compliance_certificate",
+              "other"
+            ]
+          },
+          "name": {
+            "type": "string",
+            "maxLength": 255
+          },
+          "hash": {
+            "type": "string",
+            "pattern": "^[a-fA-F0-9]{64}$",
+            "description": "SHA-256 hash of the document"
+          },
+          "url": {
+            "type": "string",
+            "format": "uri",
+            "description": "IPFS or secure storage URL"
+          },
+          "uploadedAt": {
+            "type": "string",
+            "format": "date-time"
+          }
+        }
+      }
+    },
+    "fractionalization": {
+      "type": "object",
+      "required": ["totalShares", "sharePrice", "minPurchase"],
+      "properties": {
+        "totalShares": {
+          "type": "integer",
+          "minimum": 1,
+          "maximum": 1000000000
+        },
+        "sharePrice": {
+          "type": "number",
+          "minimum": 0,
+          "description": "Price per share in smallest currency unit"
+        },
+        "currency": {
+          "type": "string",
+          "pattern": "^[A-Z]{3}$"
+        },
+        "minPurchase": {
+          "type": "integer",
+          "minimum": 1
+        },
+        "maxPurchase": {
+          "type": "integer",
+          "minimum": 1
+        }
+      }
+    },
+    "compliance": {
+      "type": "object",
+      "properties": {
+        "kycRequired": {
+          "type": "boolean",
+          "default": true
+        },
+        "accreditedInvestorOnly": {
+          "type": "boolean",
+          "default": false
+        },
+        "restrictedJurisdictions": {
+          "type": "array",
+          "items": {
+            "type": "string",
+            "pattern": "^[A-Z]{2}$"
+          }
+        },
+        "regulatoryApprovals": {
+          "type": "array",
+          "items": {
+            "type": "object",
+            "required": ["authority", "reference"],
+            "properties": {
+              "authority": {
+                "type": "string"
+              },
+              "reference": {
+                "type": "string"
+              },
+              "date": {
+                "type": "string",
+                "format": "date"
+              }
+            }
+          }
+        }
+      }
+    },
+    "riskFactors": {
+      "type": "array",
+      "items": {
+        "type": "object",
+        "required": ["category", "description", "severity"],
+        "properties": {
+          "category": {
+            "type": "string",
+            "enum": ["market", "legal", "operational", "liquidity", "regulatory", "other"]
+          },
+          "description": {
+            "type": "string",
+            "minLength": 10,
+            "maxLength": 1000
+          },
+          "severity": {
+            "type": "string",
+            "enum": ["low", "medium", "high", "critical"]
+          }
+        }
+      }
+    },
+    "metadata": {
+      "type": "object",
+      "properties": {
+        "imageUrl": {
+          "type": "string",
+          "format": "uri"
+        },
+        "thumbnailUrl": {
+          "type": "string",
+          "format": "uri"
+        },
+        "externalLinks": {
+          "type": "array",
+          "items": {
+            "type": "object",
+            "required": ["label", "url"],
+            "properties": {
+              "label": {
+                "type": "string"
+              },
+              "url": {
+                "type": "string",
+                "format": "uri"
+              }
+            }
+          }
+        }
+      }
+    },
+    "version": {
+      "type": "string",
+      "const": "1.0",
+      "description": "Schema version"
+    }
+  }
+}

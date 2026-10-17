@@ -1,0 +1,145 @@
+# Dependabot configuration — issue #721, rescoped by issue #800
+#
+# SCOPE: security updates only.
+#
+# Renovate (see renovate.json) now owns routine *version* updates for npm and
+# cargo. Every entry below keeps its directory, schedule and grouping so that
+# security PRs still arrive grouped and reviewable, but
+# `open-pull-requests-limit: 0` switches version updates off in this file.
+# GitHub documents that as the supported way to keep security updates while
+# excluding version updates:
+#   https://docs.github.com/code-security/dependabot/dependabot-security-updates/configuring-dependabot-security-updates
+#
+# Why not let both bots open version updates: they would raise competing PRs for
+# the same bump, double the review queue, and race each other to rewrite the
+# same lockfile. One tool per job — Renovate for routine bumps, Dependabot for
+# security — is the point of the split, and it is what issue #800 asked for.
+# The weekly review cadence is documented in docs/dependency-updates.md.
+#
+# Every directory below holds a committed lockfile, which is what both
+# Dependabot and `npm audit` need in order to resolve a dependency tree:
+#
+#   /            root tooling (husky, lint-staged, commitlint, prettier)
+#   /backend     the API service
+#   /frontend    the web client
+#   /sdk         published client SDK
+#   /load-test   k6 load-test harness
+#   /contracts   Rust/Soroban smart contract (cargo)
+#
+# `backend/gateway` and `backend/services/{assets,transactions,users}` have a
+# package.json but NO lockfile, so they cannot be scanned or updated by
+# Dependabot. Adding lockfiles for them is tracked separately.
+#
+# Notes on the two things that are easy to get wrong here:
+#
+#   * Groups. A single direct dependency can pull in a large advisory cluster —
+#     `mjml` alone accounts for 28 of the backend's high findings — so without
+#     grouping Dependabot would open a long tail of near-duplicate PRs. Updates
+#     are grouped per directory, with majors isolated so a risky bump gets its
+#     own review.
+#   * `applies-to`. Each group is scoped to `security-updates` so it still
+#     groups the security PRs that this file is responsible for, and does not
+#     silently claim the version-update PRs that Renovate now opens.
+version: 2
+
+updates:
+  - package-ecosystem: npm
+    directory: /backend
+    schedule:
+      interval: weekly
+      day: monday
+      time: "06:00"
+      timezone: Etc/UTC
+    open-pull-requests-limit: 0
+    groups:
+      backend-security-minor-patch:
+        applies-to: security-updates
+        update-types: ["minor", "patch"]
+      backend-security-major:
+        applies-to: security-updates
+        update-types: ["major"]
+    commit-message:
+      prefix: "chore(deps-backend)"
+
+  - package-ecosystem: npm
+    directory: /frontend
+    schedule:
+      interval: weekly
+      day: monday
+      time: "06:00"
+      timezone: Etc/UTC
+    open-pull-requests-limit: 0
+    groups:
+      frontend-security-minor-patch:
+        applies-to: security-updates
+        update-types: ["minor", "patch"]
+      frontend-security-major:
+        applies-to: security-updates
+        update-types: ["major"]
+    commit-message:
+      prefix: "chore(deps-frontend)"
+
+  - package-ecosystem: npm
+    directory: /
+    schedule:
+      interval: weekly
+      day: monday
+      time: "06:00"
+      timezone: Etc/UTC
+    open-pull-requests-limit: 0
+    groups:
+      tooling-security:
+        applies-to: security-updates
+    commit-message:
+      prefix: "chore(deps-tooling)"
+
+  - package-ecosystem: npm
+    directory: /sdk
+    schedule:
+      interval: weekly
+      day: monday
+      time: "06:00"
+      timezone: Etc/UTC
+    open-pull-requests-limit: 0
+    groups:
+      sdk-security-minor-patch:
+        applies-to: security-updates
+        update-types: ["minor", "patch"]
+    commit-message:
+      prefix: "chore(deps-sdk)"
+
+  - package-ecosystem: npm
+    directory: /load-test
+    schedule:
+      interval: weekly
+      day: monday
+      time: "06:00"
+      timezone: Etc/UTC
+    open-pull-requests-limit: 0
+    groups:
+      load-test-security:
+        applies-to: security-updates
+    commit-message:
+      prefix: "chore(deps-load-test)"
+
+  # The Soroban marketplace contract plus the `nft` and `multi_asset` members
+  # of the workspace. `contracts/vault` is a separate crate that is NOT listed
+  # in the workspace `members` and has no Cargo.lock, so neither Dependabot nor
+  # `cargo audit` can see it — see the triage notes in CONTRIBUTING.md.
+  - package-ecosystem: cargo
+    directory: /contracts
+    schedule:
+      interval: weekly
+      day: monday
+      time: "06:00"
+      timezone: Etc/UTC
+    open-pull-requests-limit: 0
+    groups:
+      contracts-security-minor-patch:
+        applies-to: security-updates
+        update-types: ["minor", "patch"]
+      contracts-security-major:
+        applies-to: security-updates
+        update-types: ["major"]
+    commit-message:
+      prefix: "chore(deps-contracts)"
