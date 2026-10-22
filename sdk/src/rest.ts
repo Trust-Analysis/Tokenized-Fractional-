@@ -1,3 +1,5 @@
+import { warnOnIncompatibleCombination, type CompatibilityReport } from './compatibility.js';
+
 export interface Asset {
   contractId: string;
   title?: string;
@@ -93,5 +95,40 @@ export class RwaApiClient {
     const body = await response.json().catch(() => null);
     if (!response.ok) throw new ApiError(response.status, body);
     return body as T;
+  }
+
+  /**
+   * Deployed REST API version, read from `GET /api-docs.json`
+   * (`info.version` of the backend OpenAPI spec). Returns null when the
+   * deployment does not expose the spec.
+   */
+  async getApiVersion(): Promise<string | null> {
+    try {
+      const url = new URL('/api-docs.json', `${this.baseUrl}/`);
+      const response = await this.requestFetch(url, {
+        headers: {
+          Accept: 'application/json',
+          ...this.defaultHeaders,
+          ...(this.apiKey ? { 'x-api-key': this.apiKey } : {}),
+        },
+      });
+      if (!response.ok) return null;
+      const body = (await response.json()) as { info?: { version?: unknown } };
+      return typeof body?.info?.version === 'string' ? body.info.version : null;
+    } catch {
+      return null;
+    }
+  }
+
+  /**
+   * Check the deployed REST API version against the SDK compatibility
+   * matrix (Issue #888) and warn on a known-incompatible combination.
+   * Never throws; versions that cannot be determined are skipped.
+   */
+  async checkCompatibility(
+    warn: (message: string) => void = console.warn,
+  ): Promise<CompatibilityReport> {
+    const apiVersion = await this.getApiVersion();
+    return warnOnIncompatibleCombination({ apiVersion }, warn);
   }
 }

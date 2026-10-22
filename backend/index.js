@@ -44,6 +44,7 @@ import { RateLimitAnalytics } from './src/services/rateLimitAnalytics.js';
 import { BillingService } from './src/services/billingService.js';
 import { createRateLimiter } from './src/middleware/rateLimiter.js';
 import { createGraphQLRateLimiter } from './src/middleware/tieredRateLimiter.js';
+import { createPersistedQueryEnforcementMiddleware } from './src/middleware/persistedQueryEnforcement.js';
 import { createRateLimitAdminRoutes } from './src/routes/rateLimitAdmin.js';
 import { metricsMiddleware, metricsHandler, metricsAuthMiddleware } from './src/services/metricsService.js';
 import { TenantService } from './src/services/tenantService.js';
@@ -2054,6 +2055,10 @@ v1.get('/ws/stats', (req, res) => {
 // Issue #464: Tiered rate limiting for GraphQL (100 req/min anon, 1000 req/min auth)
 app.use('/api/graphql', createGraphQLRateLimiter());
 app.use('/api/graphql', createETagMiddleware({ logger }));
+// Persisted-query enforcement (Issue #885): with PERSISTED_QUERY_ENFORCEMENT=true
+// this endpoint only serves registered persisted queries; arbitrary ad-hoc
+// documents are rejected with PERSISTED_QUERY_NOT_REGISTERED. No-op unless enabled.
+app.use('/api/graphql', createPersistedQueryEnforcementMiddleware({ logger }));
 app.use('/api/graphql', yoga);
 
 // Mount versioned router and backward-compatible aliases
@@ -2129,6 +2134,8 @@ async function initializeApolloServer(expressApp, httpServer) {
 
     // Mount GraphQL middleware at /graphql (Issue #464: Tiered rate limiting)
     expressApp.use('/graphql', createGraphQLRateLimiter());
+    // Persisted-query enforcement (Issue #885) — same semantics as /api/graphql
+    expressApp.use('/graphql', createPersistedQueryEnforcementMiddleware({ logger }));
     expressApp.use(
       '/graphql',
       expressMiddleware(server, {

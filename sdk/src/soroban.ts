@@ -1,4 +1,9 @@
 import { Contract, Networks, rpc, TransactionBuilder } from '@stellar/stellar-sdk';
+import {
+  extractContractVersion,
+  warnOnIncompatibleCombination,
+  type CompatibilityReport,
+} from './compatibility.js';
 
 export type TransactionSigner = (xdr: string, networkPassphrase: string) => Promise<string>;
 
@@ -57,5 +62,35 @@ export class SorobanClient {
     return this.server.sendTransaction(
       TransactionBuilder.fromXDR(signedXdr, this.networkPassphrase),
     );
+  }
+
+  /**
+   * Read the deployed contract's `get_contract_metadata().version`
+   * (the same value tracked in contracts/src/lib.rs contract metadata).
+   * Requires a funded `accountId` because the read is a simulation, like
+   * every other contract read in this client.
+   */
+  async getContractVersion(accountId: string): Promise<string | null> {
+    const metadata = await this.read<unknown>('get_contract_metadata', accountId);
+    return extractContractVersion(metadata);
+  }
+
+  /**
+   * Check the deployed contract version against the SDK compatibility
+   * matrix (Issue #888) and warn on a known-incompatible combination.
+   * Best-effort: if the version cannot be read, no incompatibility is
+   * asserted and a single warning is emitted instead.
+   */
+  async checkCompatibility(
+    accountId: string,
+    warn: (message: string) => void = console.warn,
+  ): Promise<CompatibilityReport> {
+    let contractVersion: string | null = null;
+    try {
+      contractVersion = await this.getContractVersion(accountId);
+    } catch (error) {
+      warn(`Could not determine contract version: ${(error as Error).message}`);
+    }
+    return warnOnIncompatibleCombination({ contractVersion }, warn);
   }
 }

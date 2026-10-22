@@ -11,6 +11,7 @@
     "lint:fix": "npm --prefix backend run lint:fix && npm --prefix frontend run lint:fix",
     "build:sdk": "npm --prefix sdk run build",
     "typecheck:sdk": "npm --prefix sdk run typecheck",
+    "test:sdk": "npm --prefix sdk test",
     "lint:backend": "cd backend && npm run lint --if-present",
     "test": "python3 -m unittest discover -s tests -v",
     "test:backend": "cd backend && npm test",
