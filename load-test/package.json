@@ -8,6 +8,7 @@
     "test:smoke": "artillery run artillery/smoke.yml --output reports/smoke.json && artillery report reports/smoke.json --output reports/smoke.html",
     "test:orders": "artillery run artillery/trade-orders.yml --output reports/trade-orders.json && artillery report reports/trade-orders.json --output reports/trade-orders.html",
     "test:websocket": "artillery run artillery/websocket.yml --output reports/websocket.json && artillery report reports/websocket.json --output reports/websocket.html",
+    "test:websocket:cross-instance": "node helpers/run-cross-instance.js",
     "test:full": "artillery run artillery/full-suite.yml --output reports/full-suite.json && artillery report reports/full-suite.json --output reports/full-suite.html",
     "baseline": "node helpers/run-baseline.js",
     "start:mock": "node mock-server.js"

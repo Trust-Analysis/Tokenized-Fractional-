@@ -12,6 +12,26 @@ import {
 import styles from './SocialShare.module.css';
 
 /**
+ * Build a canonical, public share URL from the current page location.
+ *
+ * Only the origin and pathname are kept; any query parameters or hash that
+ * may be present in the page URL (preview tokens, draft flags, session or
+ * referral identifiers) are deliberately dropped so they cannot leak into a
+ * publicly posted share link. The public asset identifier is then attached
+ * explicitly when available.
+ *
+ * @param {string} contractId - canonical public asset identifier
+ * @returns {string} canonical share URL
+ */
+export function buildCanonicalShareUrl(contractId) {
+  if (typeof window === 'undefined') {
+    return contractId ? `?asset=${encodeURIComponent(contractId)}` : '';
+  }
+  const base = `${window.location.origin}${window.location.pathname}`;
+  return contractId ? `${base}?asset=${encodeURIComponent(contractId)}` : base;
+}
+
+/**
  * SocialShare Component
  * 
  * Displays social sharing buttons for Twitter, LinkedIn, Facebook, Email, and WhatsApp
@@ -19,7 +39,7 @@ import styles from './SocialShare.module.css';
  */
 export default function SocialShare({
   asset = {},
-  url = typeof window !== 'undefined' ? window.location.href : '',
+  url = null,
   compact = false,
   showLabel = true,
   onShare = null,
@@ -34,8 +54,11 @@ export default function SocialShare({
     contractId = '',
   } = asset;
 
-  const fullUrl = url || (typeof window !== 'undefined' ? window.location.href : '');
-  const shareUrl = contractId ? `${fullUrl}?asset=${contractId}` : fullUrl;
+  // Build the share URL from only the canonical, public asset identifier.
+  // An explicit `url` prop (already canonicalized by the caller) wins;
+  // otherwise reconstruct from origin + pathname, never reusing the raw
+  // page URL as-is.
+  const shareUrl = url || buildCanonicalShareUrl(contractId);
 
   // Generate share messages for each platform
   const twitterMessage = formatShareMessage(title, location, assetType, 'twitter');

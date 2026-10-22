@@ -11,6 +11,7 @@
  */
 
 import { randomUUID } from 'crypto';
+import { recordPurchaseMetric } from './metricsService.js';
 
 /**
  * Transaction Service
@@ -128,20 +129,90 @@ export class TransactionService {
         sharesPurchased: data.sharesPurchased,
       }, 'Purchase recorded');
 
+      recordPurchaseMetric({
+        status: 'completed',
+        contractId: data.contractId,
+        sharesPurchased: data.sharesPurchased,
+        totalAmount: data.totalAmount,
+      });
+
       return transaction;
     } catch (error) {
+      recordPurchaseMetric({ status: 'failed' });
       this.logger.error({ error: error.message, data }, 'Failed to record purchase');
       throw new Error(`Failed to record purchase: ${error.message}`);
     }
   }
 
   /**
-   * Get transaction by ID
+   * Get transaction by ID (supports transaction_id string or database integer id)
    */
   async getTransaction(transactionId) {
+    return this.getTransactionById(transactionId);
+  }
+
+  /**
+   * Get transaction by either transaction_id string or primary key id
+   */
+  async getTransactionById(transactionId) {
     return this.db('transactions')
       .where('transaction_id', transactionId)
+      .orWhere('id', transactionId)
       .first();
+  }
+
+  /**
+   * Issue #912: Place a legal hold on a transaction
+   * @param {string|number} transactionId
+   * @param {Object} options
+   * @returns {Promise<Object>}
+   */
+  async placeLegalHold(transactionId, options = {}) {
+    const { reason = 'Active investigation or dispute', placedBy = 'admin' } = options;
+    const tx = await this.getTransactionById(transactionId);
+    if (!tx) {
+      throw new Error(`Transaction ${transactionId} not found`);
+    }
+
+    await this.db('transactions')
+      .where('id', tx.id)
+      .update({
+        legal_hold: true,
+        legal_hold_reason: reason,
+        legal_hold_placed_at: new Date(),
+        legal_hold_placed_by: placedBy,
+        updated_at: new Date(),
+      });
+
+    this.logger.info({ transactionId: tx.transaction_id, reason, placedBy }, 'Legal hold placed on transaction');
+    return this.getTransactionById(tx.id);
+  }
+
+  /**
+   * Issue #912: Release a legal hold on a transaction
+   * @param {string|number} transactionId
+   * @param {Object} options
+   * @returns {Promise<Object>}
+   */
+  async releaseLegalHold(transactionId, options = {}) {
+    const { releasedBy = 'admin' } = options;
+    const tx = await this.getTransactionById(transactionId);
+    if (!tx) {
+      throw new Error(`Transaction ${transactionId} not found`);
+    }
+
+    await this.db('transactions')
+      .where('id', tx.id)
+      .update({
+        legal_hold: false,
+        legal_hold_reason: null,
+        legal_hold_placed_at: null,
+        legal_hold_placed_by: null,
+        updated_at: new Date(),
+      });
+
+    this.logger.info({ transactionId: tx.transaction_id, releasedBy }, 'Legal hold released on transaction');
+    return this.getTransactionById(tx.id);
   }
 
   /**

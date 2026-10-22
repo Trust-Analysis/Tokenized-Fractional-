@@ -178,4 +178,63 @@ describe('WebSocket DLQ Service', () => {
       expect(messages[0].message.data).toBe('test');
     });
   });
+
+  describe('Retention policy (issue #902)', () => {
+    const silentLogger = { debug() {}, info() {}, warn() {}, error() {} };
+
+    test('drops the oldest messages once bufferSize is exceeded', async () => {
+      const service = new WebSocketDLQService({ redisUrl: null, bufferSize: 3, logger: silentLogger });
+      for (let i = 1; i <= 5; i++) await service.storeMessage('ch', { i }, i);
+
+      const messages = await service.getMessagesInRange('ch', 1, 5);
+      expect(messages.map((m) => m.seqId)).toEqual([3, 4, 5]);
+      expect((await service.getStats()).droppedMessages.size).toBe(2);
+    });
+
+    test('never replays or keeps messages older than ttl', async () => {
+      let now = Date.parse('2026-01-01T00:00:00Z');
+      const service = new WebSocketDLQService({
+        redisUrl: null, ttl: 60, logger: silentLogger, now: () => now,
+      });
+
+      await service.storeMessage('ch', { i: 1 }, 1);
+      now += 61_000;
+      expect(await service.getMessagesInRange('ch', 1, 1)).toHaveLength(0);
+
+      await service.storeMessage('ch', { i: 2 }, 2);
+      const stats = await service.getStats();
+      expect(stats.totalMessages).toBe(1);
+      expect(stats.droppedMessages.age).toBe(1);
+    });
+  });
+
+  describe('Size alerting (issue #902)', () => {
+    test('flags overThreshold and warns once when the DLQ grows past alertThreshold', async () => {
+      const warnings = [];
+      const logger = { debug() {}, info() {}, error() {}, warn: (...args) => warnings.push(args) };
+      const service = new WebSocketDLQService({ redisUrl: null, alertThreshold: 5, logger });
+
+      for (let i = 1; i <= 4; i++) await service.storeMessage(`ch${i}`, {}, 1);
+      expect((await service.getStats()).overThreshold).toBe(false);
+
+      await service.storeMessage('ch5', {}, 1);
+      const stats = await service.getStats();
+      expect(stats.overThreshold).toBe(true);
+      expect(stats.channels).toBe(5);
+      await service.getStats();
+      expect(warnings).toHaveLength(1);
+    });
+
+    test('exposes DLQ size as Prometheus gauges', async () => {
+      const { websocketDLQService } = await import('../src/services/websocketDLQService.js');
+      const { register } = await import('../src/services/metricsService.js');
+      await websocketDLQService.clearChannel('metrics-test');
+      for (let i = 1; i <= 3; i++) await websocketDLQService.storeMessage('metrics-test', {}, i);
+
+      const output = await register.metrics();
+      expect(output).toMatch(/websocket_dlq_messages\{scope="total"\} 3/);
+      expect(output).toMatch(/websocket_dlq_over_threshold 0/);
+      await websocketDLQService.clearChannel('metrics-test');
+    });
+  });
 });

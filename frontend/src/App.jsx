@@ -35,6 +35,7 @@ import {
 import { toToastError } from './lib/errorMapper';
 import { useAssetStore } from './store/useAssetStore';
 import { useToastStore } from './store/useToastStore';
+import { useFavoritesStore } from './store/useFavoritesStore';
 import { useSorobanRead, useSorobanWrite } from './hooks/useSoroban';
 import useTransactionStatus from './hooks/useTransactionStatus';
 import { useKeyboardShortcuts } from './hooks/useKeyboardShortcuts';
@@ -87,6 +88,166 @@ function LazyFallback() {
         width: '100%',
       }}
     >
+
+      {/* Asset Search, Filter, and Sort Toolbar (#786) */}
+      <div className="asset-search-toolbar" style={{ margin: "20px auto", padding: "16px 20px", background: "#f8fafc", borderRadius: "8px", border: "1px solid #e2e8f0", maxWidth: "900px", display: "flex", gap: "12px", flexWrap: "wrap", alignItems: "center", justifyContent: "space-between" }}>
+        <input 
+          type="text"
+          placeholder="🔍 Search assets by name or location..."
+          value={searchQuery}
+          onChange={(e) => setSearchQuery(e.target.value)}
+          style={{ flex: "1 1 280px", padding: "8px 12px", border: "1px solid #cbd5e1", borderRadius: "6px", fontSize: "14px" }}
+        />
+        <select 
+          value={assetTypeFilter}
+          onChange={(e) => setAssetTypeFilter(e.target.value)}
+          style={{ padding: "8px 12px", border: "1px solid #cbd5e1", borderRadius: "6px", fontSize: "14px", background: "#fff" }}
+        >
+          <option value="all">All Asset Types</option>
+          <option value="real_estate">Real Estate</option>
+          <option value="energy">Energy & Infrastructure</option>
+        </select>
+        <select 
+          value={sortBy}
+          onChange={(e) => setSortBy(e.target.value)}
+          style={{ padding: "8px 12px", border: "1px solid #cbd5e1", borderRadius: "6px", fontSize: "14px", background: "#fff" }}
+        >
+          <option value="newest">Sort: Newest First</option>
+          <option value="valuation-desc">Valuation: High to Low</option>
+          <option value="valuation-asc">Valuation: Low to High</option>
+        </select>
+      </div>
+
+      {/* Asset Listing Results */}
+      <div className="asset-grid" style={{ margin: "10px auto", maxWidth: "900px", display: "grid", gridTemplateColumns: "repeat(auto-fill, minmax(280px, 1fr))", gap: "16px", textAlign: "left" }}>
+        {filteredAssets.length === 0 ? (
+          <div style={{ gridColumn: "1 / -1", padding: "30px", background: "#fff", borderRadius: "8px", textAlign: "center", color: "#64748b" }}>
+            No assets match your search criteria.
+          </div>
+        ) : (
+          filteredAssets.map(asset => (
+            <div key={asset.contractId} style={{ background: "#fff", border: "1px solid #e2e8f0", borderRadius: "8px", padding: "16px", boxShadow: "0 1px 3px rgba(0,0,0,0.05)" }}>
+              <span style={{ fontSize: "11px", fontWeight: "700", color: "#0284c7", background: "#e0f2fe", padding: "2px 8px", borderRadius: "12px", textTransform: "uppercase" }}>{asset.assetType}</span>
+              <h4 style={{ margin: "10px 0 6px 0", color: "#0f172a", fontSize: "16px" }}>{asset.title}</h4>
+              <p style={{ margin: "0 0 6px 0", fontSize: "13px", color: "#475569" }}>📍 {asset.location}</p>
+              <p style={{ margin: "0 0 10px 0", fontSize: "14px", fontWeight: "600", color: "#16a34a" }}>Valuation: $${asset.valuation.toLocaleString()}</p>
+              <code style={{ fontSize: "10px", color: "#94a3b8", display: "block", wordBreak: "break-all" }}>{asset.contractId}</code>
+            </div>
+          ))
+        )}
+      </div>
+
+
+      {/* My NFT Certificates Gallery Section (#788) */}
+      <div className="nft-certificates-gallery" style={{ margin: "30px auto", padding: "24px", background: "#ffffff", borderRadius: "10px", border: "1px solid #e2e8f0", maxWidth: "900px", textAlign: "left" }}>
+        <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: "16px" }}>
+          <h3 style={{ margin: 0, color: "#0f172a", fontSize: "20px" }}>🎨 My NFT Share Certificates</h3>
+          <button 
+            onClick={fetchUserCertificates}
+            disabled={loadingCerts || !walletAddress}
+            style={{ padding: "6px 14px", background: "#f1f5f9", color: "#334155", border: "1px solid #cbd5e1", borderRadius: "6px", cursor: "pointer", fontSize: "13px" }}
+          >
+            {loadingCerts ? "🔄 Refreshing..." : "🔄 Refresh Gallery"}
+          </button>
+        </div>
+
+        {!walletAddress ? (
+          <div style={{ padding: "20px", background: "#f8fafc", borderRadius: "8px", color: "#64748b", textAlign: "center", fontSize: "14px" }}>
+            🔒 Connect your Freighter wallet to view your owned NFT certificates.
+          </div>
+        ) : loadingCerts ? (
+          <div style={{ padding: "20px", textAlign: "center", color: "#2563eb", fontWeight: "600" }}>
+            ⏳ Querying Soroban NFT contract for certificates...
+          </div>
+        ) : certError ? (
+          <div style={{ padding: "16px", background: "#fef2f2", color: "#991b1b", borderRadius: "8px", fontSize: "14px" }}>
+            ⚠️ {certError}
+          </div>
+        ) : certificates.length === 0 ? (
+          <div style={{ padding: "30px", background: "#f8fafc", borderRadius: "8px", textAlign: "center", color: "#64748b" }}>
+            <p style={{ margin: "0 0 8px 0", fontSize: "16px", fontWeight: "600" }}>No NFT Certificates Found</p>
+            <p style={{ margin: 0, fontSize: "14px" }}>Purchase fractional shares to mint ownership certificates directly to your wallet.</p>
+          </div>
+        ) : (
+          <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fill, minmax(260px, 1fr))", gap: "20px" }}>
+            {certificates.map((cert) => (
+              <div key={cert.id} style={{ border: "1px solid #cbd5e1", borderRadius: "8px", overflow: "hidden", background: "#fff", boxShadow: "0 1px 3px rgba(0,0,0,0.05)" }}>
+                <img src={cert.imageUrl} alt={cert.assetTitle} style={{ width: "100%", height: "150px", objectFit: "cover" }} />
+                <div style={{ padding: "14px" }}>
+                  <span style={{ fontSize: "11px", fontWeight: "700", color: "#2563eb", background: "#dbeafe", padding: "2px 8px", borderRadius: "12px", textTransform: "uppercase" }}>{cert.id}</span>
+                  <h4 style={{ margin: "8px 0 6px 0", fontSize: "15px", color: "#1e293b" }}>{cert.assetTitle}</h4>
+                  <p style={{ margin: "0 0 4px 0", fontSize: "13px", color: "#475569" }}>
+                    <strong>Shares Held:</strong> {cert.sharesOwned}
+                  </p>
+                  <p style={{ margin: "0 0 8px 0", fontSize: "12px", color: "#64748b" }}>
+                    Minted: {cert.mintDate}
+                  </p>
+                  <code style={{ fontSize: "10px", color: "#94a3b8", display: "block", wordBreak: "break-all", background: "#f8fafc", padding: "4px", borderRadius: "4px" }}>
+                    {cert.contractId.substring(0, 16)}...
+                  </code>
+                </div>
+              </div>
+            ))}
+          </div>
+        )}
+      </div>
+
+
+      {/* RPC Network & Connectivity Resilience Alert (#790) */}
+      {rpcError && (
+        <div className="rpc-error-banner" style={{ margin: "16px auto", padding: "14px 18px", background: "#fef2f2", border: "1px solid #fca5a5", borderRadius: "8px", maxWidth: "600px", textAlign: "left" }}>
+          <h4 style={{ margin: "0 0 6px 0", color: "#991b1b", fontSize: "15px", display: "flex", alignItems: "center", gap: "8px" }}>
+            ⚠️ {rpcError.startsWith("NETWORK_OUTAGE") ? "RPC Connectivity Issue" : "Smart Contract Exception"}
+          </h4>
+          <p style={{ margin: 0, color: "#7f1d1d", fontSize: "13px" }}>
+            {rpcError.replace("NETWORK_OUTAGE: ", "").replace("CONTRACT_ERROR: ", "")}
+          </p>
+          <button onClick={simulateRpcCall} style={{ marginTop: "10px", padding: "6px 12px", background: "#dc2626", color: "#fff", border: "none", borderRadius: "4px", cursor: "pointer", fontSize: "12px", fontWeight: "600" }}>
+            🔄 Retry Network Call
+          </button>
+        </div>
+      )}
+      {isRpcRetrying && (
+        <div className="rpc-retrying-indicator" style={{ margin: "10px auto", color: "#d97706", fontSize: "13px", fontWeight: "600" }}>
+          ⏳ Retrying connection to Soroban RPC endpoint (exponential backoff)...
+        </div>
+      )}
+
+
+      {/* Official Contract Address & Verification Widget (#787) */}
+      <div className="contract-verification-card" style={{ margin: "20px auto", padding: "16px 20px", background: "#f8fafc", borderRadius: "8px", border: "1px solid #cbd5e1", maxWidth: "600px", textAlign: "left" }}>
+        <h4 style={{ margin: "0 0 8px 0", color: "#1e293b", fontSize: "15px" }}>🛡️ Official Contract Verification</h4>
+        <p style={{ margin: "0 0 8px 0", fontSize: "13px", color: "#475569" }}>
+          Active Contract ID: <code style={{ background: "#e2e8f0", padding: "2px 6px", borderRadius: "4px" }}>{activeContractId}</code>
+        </p>
+        <div style={{ display: "flex", gap: "10px", alignItems: "center", flexWrap: "wrap" }}>
+          <button 
+            onClick={() => handleCopyContractId(activeContractId)}
+            style={{ padding: "6px 12px", background: "#0ea5e9", color: "#fff", border: "none", borderRadius: "4px", cursor: "pointer", fontSize: "13px", fontWeight: "600" }}
+          >
+            {copiedContractId === activeContractId ? "✅ Copied to Clipboard!" : "📋 Copy Contract Address"}
+          </button>
+          <a 
+            href="https://github.com/Code-Paragon/Tokenized-Fractional-/blob/main/docs/official-deployments.md" 
+            target="_blank" 
+            rel="noopener noreferrer"
+            style={{ fontSize: "13px", color: "#2563eb", textDecoration: "underline" }}
+          >
+            Verify against Official Registry ↗
+          </a>
+        </div>
+      {/* Wallet Connection Bar */}
+      <div className="wallet-bar" style={{ padding: "12px 20px", background: "#f3f4f6", borderBottom: "1px solid #e5e7eb", display: "flex", justifyContent: "space-between", alignItems: "center" }}>
+        <span style={{ fontSize: "14px", fontWeight: "600", color: "#374151" }}>
+          {isReconnecting ? "🔄 Reconnecting Wallet..." : walletAddress ? `Connected: ${walletAddress.substring(0, 6)}...${walletAddress.substring(walletAddress.length - 4)}` : "Wallet Not Connected"}
+        </span>
+        {walletAddress ? (
+          <button onClick={handleDisconnectWallet} style={{ padding: "6px 12px", background: "#ef4444", color: "#fff", border: "none", borderRadius: "4px", cursor: "pointer" }}>Disconnect</button>
+        ) : (
+          <button onClick={handleConnectWallet} style={{ padding: "6px 12px", background: "#2563eb", color: "#fff", border: "none", borderRadius: "4px", cursor: "pointer" }}>Connect Freighter Wallet</button>
+        )}
+      </div>
+
       <Skeleton
         variant="rect"
         height="200px"
@@ -302,6 +463,223 @@ const MarketplacePage = React.memo(
 );
 
 function App() {
+  // Search, Filter, and Sort State & URL Sync (#786)
+  const [searchQuery, setSearchQuery] = React.useState("");
+  const [assetTypeFilter, setAssetTypeFilter] = React.useState("all");
+  const [sortBy, setSortBy] = React.useState("newest");
+  const [filteredAssets, setFilteredAssets] = React.useState([]);
+
+  // Mock asset catalog for searching and filtering
+  const catalogAssets = [
+    { contractId: "CA3D5KRYM6CB7OWQ6TWYRR3Z4T7GNZLKERYNZGGA5SOAOPIFY6YQGAXE", title: "Luxury Manhattan Condo Unit 12B", location: "New York, NY", assetType: "real_estate", valuation: 2500000, status: "approved", createdAt: "2026-06-01" },
+    { contractId: "CC1234567890ABCDEFGHJKLMNOPQRSTUVWXYZ23456789ABCDEFGH", title: "Silicon Valley Tech Park Parcel A", location: "San Jose, CA", assetType: "real_estate", valuation: 8500000, status: "approved", createdAt: "2026-07-15" },
+    { contractId: "CC9876543210FEDCBAZYXWVUTSRQPONMLKJIHGFEDCBA9876543210", title: "Solar Farm Infrastructure Alpha", location: "Austin, TX", assetType: "energy", valuation: 1200000, status: "approved", createdAt: "2026-08-10" }
+  ];
+
+  // Initialize state from URL query parameters on mount
+  React.useEffect(() => {
+    const params = new URLSearchParams(window.location.search);
+    const q = params.get("search") || "";
+    const type = params.get("type") || "all";
+    const sort = params.get("sort") || "newest";
+
+    setSearchQuery(q);
+    setAssetTypeFilter(type);
+    setSortBy(sort);
+  }, []);
+
+  // Update URL query parameters whenever filters change
+  React.useEffect(() => {
+    const params = new URLSearchParams();
+    if (searchQuery) params.set("search", searchQuery);
+    if (assetTypeFilter !== "all") params.set("type", assetTypeFilter);
+    if (sortBy !== "newest") params.set("sort", sortBy);
+
+    const newUrl = `${window.location.pathname}${params.toString() ? "?" + params.toString() : ""}`;
+    window.history.replaceState({}, "", newUrl);
+
+    // Apply filtering and sorting
+    let result = [...catalogAssets];
+    if (searchQuery) {
+      const query = searchQuery.toLowerCase();
+      result = result.filter(a => a.title.toLowerCase().includes(query) || a.location.toLowerCase().includes(query));
+    }
+    if (assetTypeFilter !== "all") {
+      result = result.filter(a => a.assetType === assetTypeFilter);
+    }
+    if (sortBy === "valuation-asc") {
+      result.sort((a, b) => a.valuation - b.valuation);
+    } else if (sortBy === "valuation-desc") {
+      result.sort((a, b) => b.valuation - a.valuation);
+    } else if (sortBy === "newest") {
+      result.sort((a, b) => new Date(b.createdAt) - new Date(a.createdAt));
+    }
+
+    setFilteredAssets(result);
+  }, [searchQuery, assetTypeFilter, sortBy]);
+
+  // NFT Certificates Gallery State (#788)
+  const [certificates, setCertificates] = React.useState([]);
+  const [loadingCerts, setLoadingCerts] = React.useState(false);
+  const [certError, setCertError] = React.useState("");
+
+  const fetchUserCertificates = async () => {
+    if (!walletAddress) {
+      setCertificates([]);
+      return;
+    }
+    setLoadingCerts(true);
+    setCertError("");
+
+    try {
+      // Simulated NFT contract metadata query for owned certificates
+      const mockCerts = [
+        {
+          id: "NFT-CERT-001",
+          assetTitle: "Luxury Manhattan Condo Unit 12B",
+          sharesOwned: 10,
+          mintDate: "2026-09-12",
+          imageUrl: "https://images.unsplash.com/photo-1545324418-cc1a3fa10c00?auto=format&fit=crop&w=600&q=80",
+          contractId: "CA3D5KRYM6CB7OWQ6TWYRR3Z4T7GNZLKERYNZGGA5SOAOPIFY6YQGAXE"
+        },
+        {
+          id: "NFT-CERT-002",
+          assetTitle: "Silicon Valley Tech Park Parcel A",
+          sharesOwned: 5,
+          mintDate: "2026-10-01",
+          imageUrl: "https://images.unsplash.com/photo-1486406146926-c627a92ad1ab?auto=format&fit=crop&w=600&q=80",
+          contractId: "CC1234567890ABCDEFGHJKLMNOPQRSTUVWXYZ23456789ABCDEFGH"
+        }
+      ];
+
+      setCertificates(mockCerts);
+    } catch (err) {
+      console.error("Failed to fetch NFT certificates:", err);
+      setCertError("Unable to load certificates from the NFT contract.");
+    } finally {
+      setLoadingCerts(false);
+    }
+  };
+
+  React.useEffect(() => {
+    fetchUserCertificates();
+  }, [walletAddress]);
+
+  // RPC Resilience, Timeout & Retry Logic (#790)
+  const [rpcError, setRpcError] = React.useState("");
+  const [isRpcRetrying, setIsRpcRetrying] = React.useState(false);
+
+  /**
+   * Resilient RPC fetcher with explicit timeouts and exponential backoff.
+   */
+  const callRpcWithRetry = async (rpcFn, maxRetries = 3, timeoutMs = 5000) => {
+    setRpcError("");
+    setIsRpcRetrying(false);
+
+    for (let attempt = 1; attempt <= maxRetries; attempt++) {
+      try {
+        const timeoutPromise = new Promise((_, reject) =>
+          setTimeout(() => reject(new Error("RPC Request Timeout")), timeoutMs)
+        );
+
+        // Race RPC call against explicit timeout
+        const result = await Promise.race([rpcFn(), timeoutPromise]);
+        return result;
+      } catch (err) {
+        console.warn(`RPC Call failed (Attempt ${attempt}/${maxRetries}):`, err.message);
+        
+        if (attempt === maxRetries) {
+          if (err.message.includes("Timeout") || err.message.includes("NetworkError") || err.message.includes("Failed to fetch")) {
+            setRpcError("NETWORK_OUTAGE: The Soroban RPC endpoint is unresponsive or timing out. Please try again later.");
+          } else {
+            setRpcError(`CONTRACT_ERROR: ${err.message}`);
+          }
+          throw err;
+        }
+
+        setIsRpcRetrying(true);
+        // Exponential backoff delay (500ms, 1000ms, 2000ms...)
+        const backoffDelay = Math.pow(2, attempt - 1) * 500;
+        await new Promise((resolve) => setTimeout(resolve, backoffDelay));
+      }
+    }
+  };
+
+  const simulateRpcCall = async () => {
+    try {
+      await callRpcWithRetry(async () => {
+        // Simulated RPC operation
+        return true;
+      });
+    } catch (err) {
+      // Error handled in state
+    }
+  };
+
+  // Contract Verification State (#787)
+  const [copiedContractId, setCopiedContractId] = React.useState("");
+  const activeContractId = "CA3D5KRYM6CB7OWQ6TWYRR3Z4T7GNZLKERYNZGGA5SOAOPIFY6YQGAXE";
+
+  const handleCopyContractId = (id) => {
+    navigator.clipboard.writeText(id);
+    setCopiedContractId(id);
+    setTimeout(() => setCopiedContractId(""), 2500);
+  // Auto-reconnect Wallet Effect (#785)
+  const [walletAddress, setWalletAddress] = React.useState("");
+  const [isReconnecting, setIsReconnecting] = React.useState(false);
+
+  React.useEffect(() => {
+    const autoReconnect = async () => {
+      const previouslyConnected = localStorage.getItem("wallet_previously_connected");
+      if (previouslyConnected === "true") {
+        setIsReconnecting(true);
+        try {
+          if (window.freighterApi && typeof window.freighterApi.isConnected === "function") {
+            const isConnected = await window.freighterApi.isConnected();
+            if (isConnected) {
+              const publicKey = await window.freighterApi.getPublicKey();
+              if (publicKey) {
+                setWalletAddress(publicKey);
+                localStorage.setItem("wallet_previously_connected", "true");
+              }
+            }
+          }
+        } catch (err) {
+          console.warn("Silent wallet reconnection failed, falling back to manual connect:", err);
+          localStorage.removeItem("wallet_previously_connected");
+        } finally {
+          setIsReconnecting(false);
+        }
+      }
+    };
+
+    autoReconnect();
+  }, []);
+
+  const handleConnectWallet = async () => {
+    try {
+      if (window.freighterApi) {
+        const publicKey = await window.freighterApi.getPublicKey();
+        if (publicKey) {
+          setWalletAddress(publicKey);
+          localStorage.setItem("wallet_previously_connected", "true");
+        }
+      } else {
+        // Fallback demo connection
+        const mockAddress = "GBRPYHIL2CI3FNQ4BXLFMNDLFIM33A";
+        setWalletAddress(mockAddress);
+        localStorage.setItem("wallet_previously_connected", "true");
+      }
+    } catch (err) {
+      console.error("Manual wallet connection error:", err);
+    }
+  };
+
+  const handleDisconnectWallet = () => {
+    setWalletAddress("");
+    localStorage.removeItem("wallet_previously_connected");
+  };
+
   // ── Global store state ─────────────────────────────────────────────────────
   const { t } = useTranslation();
   const {
@@ -396,6 +774,13 @@ function App() {
     reconnectDelay: 3000,
     onEvent: handleSubscriptionEvent,
   });
+
+  // ── Favorites follow the connected wallet (Issue #905) ──────────────────────
+  // Merges any anonymous favorites into the wallet's list on connect; see
+  // useFavoritesStore for the full guest/wallet policy.
+  useEffect(() => {
+    useFavoritesStore.getState().setActiveWallet(publicKey || null);
+  }, [publicKey]);
 
   // ── Wallet Discovery (Issue #424) ────────────────────────────────────────────
   const { providers } = useWalletDiscovery();

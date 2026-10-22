@@ -446,13 +446,15 @@ v1.post('/rwa', adminAuth, writeLimiter, async (req, res) => {
       data[contractId].metadataUri = ipfsResult.metadataUri;
       if (ipfsResult.imageUrl) data[contractId].imageUrl = ipfsResult.imageUrl;
 
-      await storeMetadataCidOnContract({
+      const onChainResult = await storeMetadataCidOnContract({
         contractId,
         cid: ipfsResult.metadataCid,
         uri: ipfsResult.metadataUri,
       });
+      data[contractId].onChainSynced = onChainResult.onChain === true;
+      if (onChainResult.warning) data[contractId].onChainSyncWarning = onChainResult.warning;
     } catch (err) {
-      req.log?.warn?.({ err, contractId }, 'IPFS metadata pinning during asset creation skipped/failed');
+      req.log?.warn?.({ err, contractId }, 'IPFS pinning or Soroban metadata write during asset creation failed');
     }
   }
 
@@ -531,7 +533,7 @@ v1.post('/rwa/tokenize', adminAuth, writeLimiter, upload.fields([
       totalValuation: metadata.totalValuation || '',
       documents: ipfsResult.documents,
       status: ASSET_STATUS.PENDING,
-      onChainSynced: onChainResult.success,
+      onChainSynced: onChainResult.onChain === true,
       submittedAt: now,
       createdAt: metadata.createdAt || now,
       updatedAt: now,

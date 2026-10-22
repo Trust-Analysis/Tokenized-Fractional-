@@ -151,3 +151,132 @@ fn benchmark_large_batch_mint() {
     let nft = share_certificate_nft::Base::new(&env, &env.current_contract_address());
     assert_eq!(nft.balance(&buyer), 100);
 }
+
+#[test]
+fn benchmark_batch_mint_to_single_at_ceiling() {
+    let env = Env::default();
+    env.mock_all_auths();
+    
+    let admin = Address::generate(&env);
+    let buyer = Address::generate(&env);
+    
+    // Initialize NFT contract
+    ShareCertificate::init(
+        &env,
+        admin.clone(),
+        soroban_sdk::String::from_str(&env, "ipfs://test"),
+        soroban_sdk::String::from_str(&env, "Test NFT"),
+        soroban_sdk::String::from_str(&env, "TEST"),
+    );
+    
+    // Benchmark batch minting at the enforced maximum ceiling (Issue #942)
+    let start = env.budget().cpu_instruction_cost();
+    ShareCertificate::batch_mint_to_single(&env, buyer.clone(), share_certificate_nft::MAX_BATCH_MINT_SIZE);
+    let end = env.budget().cpu_instruction_cost();
+    let batch_cost = end - start;
+    
+    println!("Batch mint at ceiling ({} NFTs): {}", share_certificate_nft::MAX_BATCH_MINT_SIZE, batch_cost);
+    println!("Batch mint at ceiling cost: {}", batch_cost);
+    
+    // Verify balance
+    let nft = share_certificate_nft::Base::new(&env, &env.current_contract_address());
+    assert_eq!(nft.balance(&buyer), 100);
+}
+
+#[test]
+fn benchmark_batch_mint_certificates_at_ceiling() {
+    let env = Env::default();
+    env.mock_all_auths();
+    
+    let admin = Address::generate(&env);
+    let recipient = Address::generate(&env);
+    
+    // Initialize NFT contract
+    ShareCertificate::init(
+        &env,
+        admin.clone(),
+        soroban_sdk::String::from_str(&env, "ipfs://test"),
+        soroban_sdk::String::from_str(&env, "Test NFT"),
+        soroban_sdk::String::from_str(&env, "TEST"),
+    );
+    
+    // Benchmark batch minting that totals exactly the enforced maximum (Issue #942)
+    let mut requests = soroban_sdk::Vec::new(&env);
+    requests.push_back(MintRequest {
+        to: recipient.clone(),
+        count: 50,
+    });
+    requests.push_back(MintRequest {
+        to: recipient.clone(),
+        count: 50,
+    });
+    
+    let start = env.budget().cpu_instruction_cost();
+    let total = ShareCertificate::batch_mint_certificates(&env, requests);
+    let end = env.budget().cpu_instruction_cost();
+    let batch_cost = end - start;
+    
+    println!("Batch mint to single recipient at ceiling ({} NFTs): {}", share_certificate_nft::MAX_BATCH_MINT_SIZE, batch_cost);
+    println!("Total NFTs minted: {}", total);
+    
+    assert_eq!(total, share_certificate_nft::MAX_BATCH_MINT_SIZE);
+    
+    let nft = share_certificate_nft::Base::new(&env, &env.current_contract_address());
+    assert_eq!(nft.balance(&recipient), 100);
+}
+
+#[test]
+#[should_panic(expected = "Batch mint exceeds maximum batch size")]
+fn test_batch_mint_to_single_rejects_count_above_ceiling() {
+    let env = Env::default();
+    env.mock_all_auths();
+    
+    let admin = Address::generate(&env);
+    let buyer = Address::generate(&env);
+    
+    // Initialize NFT contract
+    ShareCertificate::init(
+        &env,
+        admin.clone(),
+        soroban_sdk::String::from_str(&env, "ipfs://test"),
+        soroban_sdk::String::from_str(&env, "Test NFT"),
+        soroban_sdk::String::from_str(&env, "TEST"),
+    );
+    
+    // A single batch above the enforced maximum must be rejected with a clear
+    // error instead of exhausting the transaction resource budget (Issue #942).
+    ShareCertificate::batch_mint_to_single(&env, buyer.clone(), share_certificate_nft::MAX_BATCH_MINT_SIZE + 1);
+}
+
+#[test]
+#[should_panic(expected = "Batch mint exceeds maximum batch size")]
+fn test_batch_mint_certificates_rejects_total_above_ceiling() {
+    let env = Env::default();
+    env.mock_all_auths();
+    
+    let admin = Address::generate(&env);
+    let buyer = Address::generate(&env);
+    
+    // Initialize NFT contract
+    ShareCertificate::init(
+        &env,
+        admin.clone(),
+        soroban_sdk::String::from_str(&env, "ipfs://test"),
+        soroban_sdk::String::from_str(&env, "Test NFT"),
+        soroban_sdk::String::from_str(&env, "TEST"),
+    );
+    
+    // Batch whose cumulative mint count exceeds the enforced maximum must be
+    // rejected with a clear error (Issue #942).
+    let mut requests = soroban_sdk::Vec::new(&env);
+    requests.push_back(MintRequest {
+        to: buyer.clone(),
+        count: 60,
+    });
+    requests.push_back(MintRequest {
+        to: buyer.clone(),
+        count: 60,
+    });
+    
+    ShareCertificate::batch_mint_certificates(&env, requests);
+}

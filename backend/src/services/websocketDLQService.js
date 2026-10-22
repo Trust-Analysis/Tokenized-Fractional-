@@ -6,21 +6,48 @@
  *
  * Provides Redis-backed message buffering with sequence numbers to ensure delivery
  * guarantees for WebSocket broadcasts. Handles message recovery for reconnection scenarios.
+ *
+ * Retention policy (issue #902) — see docs/WEBSOCKET_DLQ.md:
+ *   - Size: at most `bufferSize` messages per channel (WS_DLQ_BUFFER_SIZE,
+ *     default 1000). Storing message N+1 drops the lowest seqId.
+ *   - Age: messages older than `ttl` seconds (WS_DLQ_TTL_SECONDS, default
+ *     86400) are never replayed and are pruned on the next write. In Redis the
+ *     whole channel key also expires `ttl` seconds after its last write.
+ *   - Failure log: the last 1000 delivery failures, same TTL.
+ * A reconnecting client whose gap reaches past either bound gets only the
+ * messages still retained and must refetch current state.
+ *
+ * Alerting: `getStats()` (scraped via the `websocket_dlq_*` Prometheus gauges)
+ * flags `overThreshold` and logs a warning once when the total buffered count
+ * crosses `alertThreshold` (WS_DLQ_ALERT_THRESHOLD, default 10000).
  */
 
 import Redis from 'ioredis';
+
+const FAILURE_LOG_LIMIT = 1000;
+
+function envInt(name) {
+  const value = parseInt(process.env[name], 10);
+  return Number.isFinite(value) && value > 0 ? value : undefined;
+}
 
 /**
  * Dead Letter Queue Service for WebSocket message reliability
  */
 export class WebSocketDLQService {
   constructor(options = {}) {
-    this.redisUrl = options.redisUrl || process.env.REDIS_URL;
-    this.bufferSize = options.bufferSize || 1000; // Last N messages per channel
-    this.ttl = options.ttl || 86400; // 24 hours default TTL
+    this.redisUrl = options.redisUrl !== undefined ? options.redisUrl : process.env.REDIS_URL;
+    this.bufferSize = options.bufferSize || envInt('WS_DLQ_BUFFER_SIZE') || 1000; // Last N messages per channel
+    this.ttl = options.ttl || envInt('WS_DLQ_TTL_SECONDS') || 86400; // 24 hours default TTL
+    this.alertThreshold = options.alertThreshold || envInt('WS_DLQ_ALERT_THRESHOLD') || 10000;
     this.logger = options.logger || console;
+    this.now = options.now || (() => Date.now());
     this.redis = null;
     this.sequenceNumbers = new Map(); // In-memory sequence tracking per channel
+    this.memoryBuffers = new Map(); // channel -> messages (in-memory fallback)
+    this.memoryFailures = []; // delivery failures (in-memory fallback)
+    this.droppedMessages = { size: 0, age: 0 };
+    this._overThreshold = false;
   }
 
   /**
@@ -59,6 +86,11 @@ export class WebSocketDLQService {
     return next;
   }
 
+  /** True when a stored message is past the retention window. */
+  _isExpired(messageData) {
+    return this.now() - Date.parse(messageData.timestamp) > this.ttl * 1000;
+  }
+
   /**
    * Store message in DLQ buffer
    */
@@ -67,22 +99,26 @@ export class WebSocketDLQService {
       seqId,
       channel,
       message,
-      timestamp: new Date().toISOString(),
+      timestamp: new Date(this.now()).toISOString(),
     };
 
     if (this.redis) {
       try {
         const key = `ws:dlq:${channel}`;
         const field = `msg:${seqId}`;
-        
+
         // Store message as hash
         await this.redis.hset(key, field, JSON.stringify(messageData));
-        
-        // Maintain buffer size by removing old messages
+
+        // Maintain buffer size by removing the lowest seqIds. HKEYS order is
+        // not insertion order once the hash leaves listpack encoding, so sort.
         const fields = await this.redis.hkeys(key);
         if (fields.length > this.bufferSize) {
-          const toRemove = fields.slice(0, fields.length - this.bufferSize);
+          const toRemove = fields
+            .sort((a, b) => parseInt(a.slice(4), 10) - parseInt(b.slice(4), 10))
+            .slice(0, fields.length - this.bufferSize);
           await this.redis.hdel(key, ...toRemove);
+          this.droppedMessages.size += toRemove.length;
         }
 
         // Set TTL on the key
@@ -97,17 +133,20 @@ export class WebSocketDLQService {
     }
 
     // Fallback to in-memory storage
-    const memoryKey = `memory:${channel}`;
-    if (!this.sequenceNumbers.has(memoryKey)) {
-      this.sequenceNumbers.set(memoryKey, []);
-    }
-    const buffer = this.sequenceNumbers.get(memoryKey);
+    const buffer = this.memoryBuffers.get(channel) || [];
     buffer.push(messageData);
-    
-    // Maintain buffer size
-    if (buffer.length > this.bufferSize) {
+
+    // Maintain retention: age first, then size
+    while (buffer.length > 0 && this._isExpired(buffer[0])) {
       buffer.shift();
+      this.droppedMessages.age++;
     }
+    if (buffer.length > this.bufferSize) {
+      const excess = buffer.length - this.bufferSize;
+      buffer.splice(0, excess);
+      this.droppedMessages.size += excess;
+    }
+    this.memoryBuffers.set(channel, buffer);
 
     return true;
   }
@@ -125,7 +164,8 @@ export class WebSocketDLQService {
           const field = `msg:${seqId}`;
           const data = await this.redis.hget(key, field);
           if (data) {
-            messages.push(JSON.parse(data));
+            const parsed = JSON.parse(data);
+            if (!this._isExpired(parsed)) messages.push(parsed);
           }
         }
 
@@ -138,9 +178,10 @@ export class WebSocketDLQService {
     }
 
     // Fallback to in-memory storage
-    const memoryKey = `memory:${channel}`;
-    const buffer = this.sequenceNumbers.get(memoryKey) || [];
-    return buffer.filter(msg => msg.seqId >= fromSeqId && msg.seqId <= toSeqId);
+    const buffer = this.memoryBuffers.get(channel) || [];
+    return buffer.filter(
+      (msg) => msg.seqId >= fromSeqId && msg.seqId <= toSeqId && !this._isExpired(msg),
+    );
   }
 
   /**
@@ -151,7 +192,7 @@ export class WebSocketDLQService {
       try {
         const key = `ws:dlq:${channel}`;
         const fields = await this.redis.hkeys(key);
-        
+
         if (fields.length === 0) return 0;
 
         // Extract sequence numbers from field names
@@ -170,7 +211,9 @@ export class WebSocketDLQService {
     }
 
     // Fallback to in-memory
-    return this.sequenceNumbers.get(channel) || 0;
+    const buffer = this.memoryBuffers.get(channel) || [];
+    const bufferedMax = buffer.reduce((max, msg) => Math.max(max, msg.seqId), 0);
+    return Math.max(bufferedMax, this.sequenceNumbers.get(channel) || 0);
   }
 
   /**
@@ -182,21 +225,26 @@ export class WebSocketDLQService {
       clientId,
       seqId,
       error: error.message,
-      timestamp: new Date().toISOString(),
+      timestamp: new Date(this.now()).toISOString(),
     };
 
     if (this.redis) {
       try {
         const key = `ws:dlq:failures`;
         await this.redis.rpush(key, JSON.stringify(failureData));
-        
+
         // Keep only last 1000 failures
-        await this.redis.ltrim(key, -1000, -1);
+        await this.redis.ltrim(key, -FAILURE_LOG_LIMIT, -1);
         await this.redis.expire(key, this.ttl);
 
         this.logger.warn({ channel, clientId, seqId }, 'Broadcast delivery failure logged');
       } catch (error) {
         this.logger.error({ error: error.message }, 'Failed to log delivery failure');
+      }
+    } else {
+      this.memoryFailures.push(failureData);
+      if (this.memoryFailures.length > FAILURE_LOG_LIMIT) {
+        this.memoryFailures.splice(0, this.memoryFailures.length - FAILURE_LOG_LIMIT);
       }
     }
 
@@ -218,7 +266,7 @@ export class WebSocketDLQService {
       }
     }
 
-    return [];
+    return this.memoryFailures.slice(-limit);
   }
 
   /**
@@ -236,33 +284,44 @@ export class WebSocketDLQService {
     }
 
     // Clear in-memory buffer
-    const memoryKey = `memory:${channel}`;
-    this.sequenceNumbers.delete(memoryKey);
+    this.memoryBuffers.delete(channel);
     this.sequenceNumbers.delete(channel);
   }
 
   /**
-   * Get DLQ statistics
+   * Get DLQ statistics. Also evaluates the size alert threshold, logging a
+   * warning when the total buffered count first crosses it (issue #902).
    */
   async getStats() {
     const stats = {
       channels: 0,
       totalMessages: 0,
+      largestChannel: 0,
       recentFailures: 0,
+      droppedMessages: { ...this.droppedMessages },
+      alertThreshold: this.alertThreshold,
+      overThreshold: false,
       redisConnected: this.redis !== null,
     };
 
     if (this.redis) {
       try {
-        const pattern = 'ws:dlq:*';
-        const keys = await this.redis.keys(pattern);
-        
+        // SCAN rather than KEYS: this runs on every /metrics scrape.
+        const keys = [];
+        let cursor = '0';
+        do {
+          const [next, batch] = await this.redis.scan(cursor, 'MATCH', 'ws:dlq:*', 'COUNT', 100);
+          cursor = next;
+          keys.push(...batch);
+        } while (cursor !== '0');
+
         for (const key of keys) {
-          if (key.includes(':failures')) {
+          if (key === 'ws:dlq:failures') {
             stats.recentFailures = await this.redis.llen(key);
           } else {
             const count = await this.redis.hlen(key);
             stats.totalMessages += count;
+            stats.largestChannel = Math.max(stats.largestChannel, count);
             stats.channels++;
           }
         }
@@ -271,14 +330,22 @@ export class WebSocketDLQService {
       }
     } else {
       // In-memory stats
-      for (const [key] of this.sequenceNumbers) {
-        if (key.startsWith('memory:')) {
-          const buffer = this.sequenceNumbers.get(key);
-          stats.totalMessages += buffer.length;
-          stats.channels++;
-        }
+      for (const buffer of this.memoryBuffers.values()) {
+        stats.totalMessages += buffer.length;
+        stats.largestChannel = Math.max(stats.largestChannel, buffer.length);
+        stats.channels++;
       }
+      stats.recentFailures = this.memoryFailures.length;
     }
+
+    stats.overThreshold = stats.totalMessages >= this.alertThreshold;
+    if (stats.overThreshold && !this._overThreshold) {
+      this.logger.warn(
+        { totalMessages: stats.totalMessages, threshold: this.alertThreshold, channels: stats.channels },
+        'WebSocket DLQ size exceeded alert threshold — many clients may be failing to reconnect',
+      );
+    }
+    this._overThreshold = stats.overThreshold;
 
     return stats;
   }

@@ -6,6 +6,10 @@ pub enum DataKey {
     TotalShares,
     Shares(Address),      // per-holder balance — already a separate key, not a blob
     Holders,              // soroban_sdk::Vec<Address> — registry only, no balances inline
+    /// Issue #940: O(1) holder-membership flag. Replaces the previous
+    /// load-full-Vec + linear `contains` scan + rewrite of the whole holder
+    /// registry with a single per-holder boolean check/set.
+    IsHolder(Address),
 }
 
 /// Read-only: total assets. No storage write, so no TTL bump either — a
@@ -28,17 +32,29 @@ pub fn shares_of(env: &Env, holder: &Address) -> i128 {
 }
 
 /// Registers a holder in the iterable set the FIRST time they hold a
-/// nonzero balance. Uses soroban_sdk::Vec natively — no std::Vec
-/// round-trip, no full holder list decoded except when someone is
-/// actually being added.
+/// nonzero balance. Uses an O(1) per-holder membership flag
+/// (`DataKey::IsHolder`) instead of loading, scanning and rewriting the full
+/// `Holders` vector on every call (Issue #940) — the same scalable pattern
+/// adopted by the marketplace and multi-asset contracts.
 pub fn register_holder_if_new(env: &Env, holder: &Address) {
+    if env
+        .storage()
+        .persistent()
+        .get(&DataKey::IsHolder(holder.clone()))
+        .unwrap_or(false)
+    {
+        // Already registered — no storage write, no Vec scan.
+        return;
+    }
+    env.storage()
+        .persistent()
+        .set(&DataKey::IsHolder(holder.clone()), &true);
+
     let mut holders: soroban_sdk::Vec<Address> = env
         .storage()
         .persistent()
         .get(&DataKey::Holders)
         .unwrap_or_else(|| soroban_sdk::Vec::new(env));
-    if !holders.contains(holder) {
-        holders.push_back(holder.clone());
-        env.storage().persistent().set(&DataKey::Holders, &holders);
-    }
+    holders.push_back(holder.clone());
+    env.storage().persistent().set(&DataKey::Holders, &holders);
 }

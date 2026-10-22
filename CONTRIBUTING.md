@@ -14,6 +14,7 @@ Thank you for your interest in contributing! This document outlines the process 
 - [Dependency Updates](#dependency-updates)
 - [Operational Runbooks](#operational-runbooks)
 - [Review and Merge Requirements](#review-and-merge-requirements)
+- [Git Hooks and CI Enforcement](#git-hooks-and-ci-enforcement)
 - [Local Secret Scanning](#local-secret-scanning)
 - [Testing](#testing)
 - [Internationalization (i18n)](#internationalization-i18n)
@@ -310,6 +311,28 @@ well as to external contributors. Merge your own pull request only after it has 
 
 The desired settings are version-controlled in `.github/branch-protection.json`; apply or verify
 them with `./scripts/branch-protection.sh apply` / `check` using a token that has admin access.
+
+---
+
+## Git Hooks and CI Enforcement
+
+This repository configures [Husky](https://typicode.github.io/husky/) git hooks in `.husky/`:
+- **`commit-msg`**: runs `commitlint` to validate that commit messages follow the [Conventional Commits](https://www.conventionalcommits.org/) specification (`type(scope): subject`).
+- **`pre-commit`**: runs `gitleaks` against staged changes and `lint-staged` for JavaScript/JSON formatting and syntax validation.
+
+### Local Convenience vs. Authoritative CI Enforcement (Issue #907)
+
+> **Important**: Git hooks run exclusively on the contributor's local machine and can be bypassed (e.g. via `git commit --no-verify`, or if `npm install` was run without installing hooks). **Husky hooks are purely a local convenience and fast-feedback layer; they are never a substitute for passing CI.**
+
+Every check performed by the Husky hooks is **independently enforced as a required status check in GitHub Actions CI**:
+
+| Hook Check | Local Tool | CI Workflow & Job | CI Enforcement Gate |
+|---|---|---|---|
+| Commit message format | `commitlint` (`.husky/commit-msg`) | `.github/workflows/pr.yml` (`Commit Message Linting (commitlint)`) | **Required** status check on PRs |
+| Secret scanning | `gitleaks` (`.husky/pre-commit`) | `.github/workflows/gitleaks.yml` (`gitleaks`), `.github/workflows/pr.yml` (`TruffleHog Secret Scanning`) | **Required** status check on PRs |
+| Code syntax & linting | `lint-staged` (`.husky/pre-commit`) | `.github/workflows/pr.yml` (`Lint and Formatting Enforcement`), `security.yml` (`Security Linting`) | **Required** status check on PRs |
+
+Even if a contributor bypasses local hooks, pull requests that fail commitlint, contain leaked secrets, or have linting/syntax failures are blocked from merging by the branch protection policy on `main`.
 
 ---
 

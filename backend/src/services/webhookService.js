@@ -2,6 +2,7 @@
 // SPDX-License-Identifier: MIT
 
 import { createHmac, createCipheriv, createDecipheriv, randomBytes, randomUUID } from 'crypto';
+import { parseWebhookUrl, postWebhook } from '../utils/safeWebhookRequest.js';
 
 export const WEBHOOK_EVENTS = {
   ASSET_CREATED: 'asset.created',
@@ -16,8 +17,9 @@ export const WEBHOOK_EVENTS = {
 };
 
 class WebhookService {
-  constructor(logger = console) {
+  constructor(logger = console, requestWebhook = postWebhook) {
     this.logger = logger;
+    this.requestWebhook = requestWebhook;
     this.webhooks = new Map(); // id -> webhook config
     this.deliveries = new Map(); // deliveryId -> delivery log
     this.maxRetries = 5;
@@ -27,9 +29,7 @@ class WebhookService {
    * Register a new webhook endpoint.
    */
   registerWebhook({ url, secret, eventTypes = [], ipWhitelist = [], description = '', encrypted = false }) {
-    if (!url || typeof url !== 'string' || !url.startsWith('http')) {
-      throw new Error('Valid URL starting with http/https is required');
-    }
+    parseWebhookUrl(url);
 
     const id = randomUUID();
     const webhookSecret = secret || randomBytes(32).toString('hex');
@@ -200,12 +200,9 @@ class WebhookService {
         'User-Agent': 'RWA-Platform-Webhook/1.0',
       };
 
-      const fetchImpl = globalThis.fetch || (await import('node-fetch')).default;
-      const response = await fetchImpl(webhook.url, {
-        method: 'POST',
+      const response = await this.requestWebhook(webhook.url, {
         headers,
         body: bodyString,
-        timeout: 5000,
       });
 
       deliveryLog.durationMs = Date.now() - startTime;

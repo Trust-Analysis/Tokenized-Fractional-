@@ -241,15 +241,30 @@ describe('pinAssetMetadataToIPFS', () => {
 describe('storeMetadataCidOnContract', () => {
   test('stores resulting CID for Soroban smart contract', async () => {
     const CONTRACT_ID = 'CAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA';
-    const result = await storeMetadataCidOnContract({
-      contractId: CONTRACT_ID,
-      cid: FAKE_CID,
-    });
+    const previousRpcUrl = process.env.SOROBAN_RPC_URL;
+    const previousAdminSecret = process.env.SOROBAN_ADMIN_SECRET;
+    delete process.env.SOROBAN_RPC_URL;
+    delete process.env.SOROBAN_ADMIN_SECRET;
 
-    expect(result.success).toBe(true);
-    expect(result.contractId).toBe(CONTRACT_ID);
-    expect(result.cid).toBe(FAKE_CID);
-    expect(result.uri).toBe(`ipfs://${FAKE_CID}`);
+    try {
+      const result = await storeMetadataCidOnContract({
+        contractId: CONTRACT_ID,
+        cid: FAKE_CID,
+      });
+
+      expect(result.success).toBe(false);
+      expect(result.onChain).toBe(false);
+      expect(result.simulated).toBe(true);
+      expect(result.contractId).toBe(CONTRACT_ID);
+      expect(result.cid).toBe(FAKE_CID);
+      expect(result.uri).toBe(`ipfs://${FAKE_CID}`);
+      expect(result.warning).toMatch(/not written on-chain/);
+    } finally {
+      if (previousRpcUrl === undefined) delete process.env.SOROBAN_RPC_URL;
+      else process.env.SOROBAN_RPC_URL = previousRpcUrl;
+      if (previousAdminSecret === undefined) delete process.env.SOROBAN_ADMIN_SECRET;
+      else process.env.SOROBAN_ADMIN_SECRET = previousAdminSecret;
+    }
   });
 
   test('validates inputs', async () => {

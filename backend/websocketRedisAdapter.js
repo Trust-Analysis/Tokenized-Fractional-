@@ -8,11 +8,13 @@
  * order book and price updates reach every client no matter which node they
  * are connected to.
  *
- * Notes:
- * - Redis Pub/Sub is fire-and-forget by design; messages published while a
- *   node is offline are not replayed to it. The existing WebSocketDLQService
- *   still buffers messages per instance for clients reconnecting to the same
- *   node.
+ * Resilience & Reconnection:
+ * - Never throws — on initial connection failure or mid-session disconnect,
+ *   the adapter disables itself (connected = false) and the manager keeps
+ *   working in single-node mode.
+ * - Automatically attempts background reconnection when Redis is unreachable
+ *   or recovers after an outage, re-subscribes to the channel, and restores
+ *   cross-instance broadcasting without requiring a full backend restart.
  * - Each instance tags its messages with a unique `instanceId` and ignores
  *   its own messages, preventing broadcast loops.
  */
@@ -28,50 +30,189 @@ export class WebSocketRedisAdapter {
     this.redisUrl = options.redisUrl || DEFAULT_REDIS_URL;
     this.channel = options.channel || 'ws:broadcast';
     this.instanceId = options.instanceId || `ws-${process.pid}-${Date.now()}`;
+    this.reconnectInterval = options.reconnectInterval || 5000;
+    this.RedisClient = options.RedisClient || Redis;
+    this.redisOptions = options.redisOptions || {};
     this.pub = null;
     this.sub = null;
     this.connected = false;
+    this.closed = false;
+    this.reconnectTimer = null;
+    this.isConnecting = false;
   }
 
   /**
    * Connect the publisher and subscriber clients and start listening for
-   * broadcasts from other instances. Never throws — on failure the adapter
-   * disables itself and the manager keeps working in single-node mode.
+   * broadcasts from other instances. Never throws — on failure or disconnect
+   * the adapter disables itself and the manager keeps working in single-node mode.
+   * Automatically attempts reconnection in the background when Redis recovers,
+   * without requiring a full backend restart.
+   *
+   * @returns {Promise<boolean>} Whether the adapter is currently connected.
    */
   async connect() {
+    if (this.closed) return false;
+    if (this.connected) return true;
+    if (this.isConnecting) return false;
+
+    this.isConnecting = true;
+    if (this.reconnectTimer) {
+      clearTimeout(this.reconnectTimer);
+      this.reconnectTimer = null;
+    }
+
     try {
-      this.pub = new Redis(this.redisUrl, {
-        lazyConnect: true,
-        connectTimeout: 5000,
-        maxRetriesPerRequest: 1,
-      });
-      this.sub = new Redis(this.redisUrl, {
-        lazyConnect: true,
-        connectTimeout: 5000,
-        maxRetriesPerRequest: 1,
-      });
+      await this._cleanupClients();
 
-      await this.pub.connect();
-      await this.sub.connect();
+      const clientOptions = {
+        lazyConnect: true,
+        connectTimeout: 5000,
+        maxRetriesPerRequest: null,
+        retryStrategy: (times) => {
+          if (this.closed) return null;
+          return Math.min(times * 200, this.reconnectInterval);
+        },
+        ...this.redisOptions,
+      };
+
+      this.pub = new this.RedisClient(this.redisUrl, clientOptions);
+      this.sub = new this.RedisClient(this.redisUrl, clientOptions);
+
+      this._setupClientListeners(this.pub, 'pub');
+      this._setupClientListeners(this.sub, 'sub');
+
+      await Promise.all([this.pub.connect(), this.sub.connect()]);
       await this.sub.subscribe(this.channel);
-
-      this.sub.on('message', (channel, payload) => {
-        this.handleMessage(channel, payload);
-      });
 
       this.connected = true;
       logger.info(
         { instanceId: this.instanceId, channel: this.channel },
-        'WebSocket Redis Pub/Sub adapter connected'
+        'WebSocket Redis Pub/Sub adapter connected',
       );
     } catch (error) {
       this.connected = false;
       logger.error(
         { error: error.message, redisUrl: this.redisUrl },
-        'WebSocket Redis Pub/Sub adapter failed to connect; running single-node'
+        'WebSocket Redis Pub/Sub adapter failed to connect; running single-node',
       );
+      this._scheduleReconnect();
+    } finally {
+      this.isConnecting = false;
     }
     return this.connected;
+  }
+
+  /**
+   * Attach lifecycle and error listeners on Redis clients.
+   * Prevents unhandled error events from crashing the process.
+   */
+  _setupClientListeners(client, type) {
+    if (!client || typeof client.on !== 'function') return;
+
+    client.on('error', (error) => {
+      logger.debug(
+        { client: type, error: error.message, instanceId: this.instanceId },
+        'WebSocket Redis Pub/Sub client error',
+      );
+      this._handleDisconnect();
+    });
+
+    client.on('close', () => {
+      this._handleDisconnect();
+    });
+
+    client.on('ready', async () => {
+      await this._onClientReady();
+    });
+
+    if (type === 'sub') {
+      client.on('message', (channel, payload) => {
+        this.handleMessage(channel, payload);
+      });
+    }
+  }
+
+  /**
+   * Handle unexpected disconnection of a Redis client.
+   */
+  _handleDisconnect() {
+    if (this.closed) return;
+    if (this.connected) {
+      this.connected = false;
+      logger.warn(
+        { instanceId: this.instanceId, channel: this.channel },
+        'WebSocket Redis Pub/Sub adapter connection lost; running single-node',
+      );
+    }
+    this._scheduleReconnect();
+  }
+
+  /**
+   * Schedule a reconnection attempt after a failure or disconnection.
+   */
+  _scheduleReconnect() {
+    if (this.closed || this.reconnectTimer) return;
+    this.reconnectTimer = setTimeout(async () => {
+      this.reconnectTimer = null;
+      if (!this.closed && !this.connected) {
+        await this._retryConnect();
+      }
+    }, this.reconnectInterval);
+  }
+
+  _isPubReady() {
+    return !!(this.pub && (this.pub.status === 'ready' || this.pub.status === 'connect'));
+  }
+
+  _isSubReady() {
+    return !!(this.sub && (this.sub.status === 'ready' || this.sub.status === 'connect'));
+  }
+
+  /**
+   * Called when a client emits 'ready'. If both pub and sub are ready,
+   * resubscribe and re-enable cross-instance broadcasting.
+   */
+  async _onClientReady() {
+    if (this.closed) return;
+    if (this._isPubReady() && this._isSubReady()) {
+      try {
+        if (this.sub && typeof this.sub.subscribe === 'function') {
+          await this.sub.subscribe(this.channel);
+        }
+        if (!this.connected) {
+          this.connected = true;
+          if (this.reconnectTimer) {
+            clearTimeout(this.reconnectTimer);
+            this.reconnectTimer = null;
+          }
+          logger.info(
+            { instanceId: this.instanceId, channel: this.channel },
+            'WebSocket Redis Pub/Sub adapter reconnected',
+          );
+        }
+      } catch (error) {
+        logger.warn(
+          { error: error.message, channel: this.channel },
+          'Failed to re-subscribe on Redis reconnect',
+        );
+        this.connected = false;
+        this._scheduleReconnect();
+      }
+    }
+  }
+
+  /**
+   * Background retry logic called by the reconnect timer.
+   */
+  async _retryConnect() {
+    if (this.closed || this.connected) return;
+
+    if (this._isPubReady() && this._isSubReady()) {
+      await this._onClientReady();
+      if (this.connected) return;
+    }
+
+    await this.connect();
   }
 
   /**
@@ -104,24 +245,53 @@ export class WebSocketRedisAdapter {
     });
 
     this.pub.publish(this.channel, envelope).catch((error) => {
-      logger.error({ error: error.message, topic }, 'Failed to publish WebSocket broadcast to Redis');
+      logger.error(
+        { error: error.message, topic },
+        'Failed to publish WebSocket broadcast to Redis',
+      );
+      this._handleDisconnect();
     });
   }
 
   /**
-   * Close both Redis connections.
+   * Disconnect and clear Redis clients cleanly.
+   */
+  async _cleanupClients() {
+    const clients = [this.sub, this.pub].filter(Boolean);
+    this.sub = null;
+    this.pub = null;
+
+    await Promise.all(
+      clients.map(async (client) => {
+        try {
+          client.removeAllListeners?.();
+          client.on?.('error', () => {});
+          if (typeof client.quit === 'function') {
+            await client.quit();
+          } else if (typeof client.disconnect === 'function') {
+            client.disconnect();
+          }
+        } catch {
+          try {
+            client.disconnect?.();
+          } catch {
+            /* ignore */
+          }
+        }
+      }),
+    );
+  }
+
+  /**
+   * Close both Redis connections and disable automatic reconnects.
    */
   async close() {
+    this.closed = true;
     this.connected = false;
-    try {
-      if (this.sub) await this.sub.quit();
-    } catch {
-      /* ignore */
+    if (this.reconnectTimer) {
+      clearTimeout(this.reconnectTimer);
+      this.reconnectTimer = null;
     }
-    try {
-      if (this.pub) await this.pub.quit();
-    } catch {
-      /* ignore */
-    }
+    await this._cleanupClients();
   }
 }

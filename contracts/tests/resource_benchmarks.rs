@@ -27,7 +27,7 @@ fn fixture(total_shares: u32) -> Fixture {
     let token = token_contract.address();
     let contract = env.register(RwaMarketplace, ());
     let client = RwaMarketplaceClient::new(&env, &contract);
-    client.init(&admin, &token, &100, &total_shares);
+    client.init(&admin, &token, &100, &total_shares, &None);
 
     Fixture { env, admin, buyer, token, contract }
 }

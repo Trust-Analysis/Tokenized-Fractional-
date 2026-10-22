@@ -262,3 +262,59 @@ export async function closeDatabase() {
     dbInstance = null;
   }
 }
+
+/**
+ * Issue #913: Set tenant context on a database connection or transaction.
+ * For PostgreSQL, sets the session variable 'app.current_tenant_id' using SET LOCAL.
+ * @param {import('knex').Knex | import('knex').Knex.Transaction} connOrTrx
+ * @param {string} tenantId
+ * @returns {Promise<import('knex').Knex | import('knex').Knex.Transaction>}
+ */
+export async function setTenantContext(connOrTrx, tenantId) {
+  if (!tenantId) {
+    throw new Error('Tenant ID is required to set tenant context');
+  }
+
+  const clientType = connOrTrx?.client?.config?.client;
+  if (clientType === 'pg' || clientType === 'postgres' || clientType === 'postgresql') {
+    await connOrTrx.raw('SET LOCAL app.current_tenant_id = ?', [tenantId]);
+  }
+  return connOrTrx;
+}
+
+/**
+ * Issue #913: Executes a query callback within a tenant-scoped transaction context.
+ * Guarantees RLS tenant isolation across connection pools.
+ * @param {import('knex').Knex} db - Knex instance (primary or replica)
+ * @param {string} tenantId - Tenant identifier
+ * @param {Function} callback - Callback receiving the scoped connection/transaction
+ * @returns {Promise<any>}
+ */
+export async function withTenantContext(db, tenantId, callback) {
+  if (!tenantId) {
+    return callback(db);
+  }
+
+  const clientType = db?.client?.config?.client;
+  if (clientType === 'pg' || clientType === 'postgres' || clientType === 'postgresql') {
+    return db.transaction(async (trx) => {
+      await setTenantContext(trx, tenantId);
+      return callback(trx);
+    });
+  }
+
+  return callback(db);
+}
+
+/**
+ * Issue #913: Acquire a tenant-scoped transaction connection from the primary database pool.
+ * @param {string} tenantId
+ * @returns {Promise<import('knex').Knex.Transaction>}
+ */
+export async function getTenantConnection(tenantId) {
+  const db = getDatabase();
+  const trx = await db.transaction();
+  await setTenantContext(trx, tenantId);
+  return trx;
+}
+

@@ -11,7 +11,9 @@
       "SQL Injection Prevention Tests",
       "npm audit (high/critical)",
       "cargo audit (contracts)",
-      "gitleaks"
+      "gitleaks",
+      "Commit Message Linting (commitlint)",
+      "Lint and Formatting Enforcement"
     ]
   },
   "enforce_admins": true,

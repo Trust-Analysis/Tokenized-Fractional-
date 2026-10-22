@@ -1,4 +1,25 @@
 /**
+ * Favorites / watchlist store.
+ *
+ * Anonymous vs. authenticated favorites (issue #905)
+ * ──────────────────────────────────────────────────
+ * Favorites are client-side only (localStorage); there is no backend copy.
+ * Each wallet gets its own storage key, and visitors without a connected
+ * wallet use the shared `guest` key, so favoriting works before login.
+ *
+ *   - Anonymous browsing: favorites persist under `rwa-watchlist_guest`.
+ *   - Guest → wallet (first connect in a session): the guest list is MERGED
+ *     into the wallet's saved list. On a duplicate contractId the wallet's
+ *     saved entry wins (keeps its categories / addedAt / alert baseline);
+ *     guest-only assets are appended. Guest custom categories are merged by id.
+ *     The guest key is then cleared, so the same anonymous list is never
+ *     merged into a second wallet on a shared device.
+ *   - Wallet → guest (disconnect): the wallet's list stays saved under its
+ *     own key and the UI switches to the (now empty) guest list.
+ *   - Wallet A → wallet B: no merge; B's saved list is loaded.
+ */
+
+/**
  * Helper to get wallet-specific localStorage key (#277)
  */
 export function getStorageKey(walletAddress) {
@@ -89,22 +110,69 @@ function saveStateToStorage(walletAddress, state) {
   }
 }
 
+function normalizeWallet(walletAddress) {
+  return walletAddress ? walletAddress.trim().toLowerCase() : null;
+}
+
+function clearGuestStorage() {
+  if (typeof window === 'undefined' || !window.localStorage) return;
+  try {
+    window.localStorage.removeItem(getStorageKey(null));
+  } catch (err) {
+    // Ignore storage error
+  }
+}
+
+/**
+ * Merge an anonymous (guest) watchlist into a wallet's saved watchlist.
+ * The wallet's entries take precedence on duplicate contractIds (#905).
+ */
+export function mergeGuestIntoWallet(walletState, guestState) {
+  const idOf = (a) => a.contractId || a.id;
+  const walletIds = new Set(walletState.favorites.map(idOf));
+  const favorites = [
+    ...walletState.favorites,
+    ...guestState.favorites.filter((a) => !walletIds.has(idOf(a))),
+  ];
+
+  const categoryIds = new Set(walletState.categories.map((c) => c.id));
+  const categories = [
+    ...walletState.categories,
+    ...guestState.categories.filter((c) => !categoryIds.has(c.id)),
+  ];
+
+  return { favorites, categories, notifications: walletState.notifications };
+}
+
 /**
  * Enhanced useFavoritesStore (#277)
  */
+const initialGuestState = loadStateFromStorage(null);
+
 export const useFavoritesStore = createStoreImpl((set, get) => ({
   walletAddress: null,
-  favorites: [],
-  categories: DEFAULT_CATEGORIES,
-  notifications: [],
+  favorites: initialGuestState.favorites,
+  categories: initialGuestState.categories,
+  notifications: initialGuestState.notifications,
 
   /**
-   * Set active wallet address and switch storage key seamlessly
+   * Set active wallet address and switch storage key seamlessly.
+   * Connecting from the guest list merges it into the wallet's list (#905).
    */
   setActiveWallet: (walletAddress) => {
-    const loaded = loadStateFromStorage(walletAddress);
+    const previous = normalizeWallet(get().walletAddress);
+    const next = normalizeWallet(walletAddress);
+    if (previous === next) return;
+
+    let loaded = loadStateFromStorage(next);
+    if (previous === null && next !== null) {
+      loaded = mergeGuestIntoWallet(loaded, loadStateFromStorage(null));
+      saveStateToStorage(next, loaded);
+      clearGuestStorage();
+    }
+
     set({
-      walletAddress,
+      walletAddress: next,
       favorites: loaded.favorites,
       categories: loaded.categories,
       notifications: loaded.notifications,

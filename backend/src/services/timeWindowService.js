@@ -239,7 +239,6 @@ export class TimeWindowService {
 
     return Object.values(dailyMap);
   }
-}
 
   /**
    * Get events for a time window using cursor-based pagination

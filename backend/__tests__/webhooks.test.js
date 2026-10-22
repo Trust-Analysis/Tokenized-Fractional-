@@ -4,6 +4,7 @@
 import { describe, it, expect, beforeEach, jest } from '@jest/globals';
 import { createWebhookService, WEBHOOK_EVENTS } from '../src/services/webhookService.js';
 import { createWebhookRoutes } from '../src/routes/webhooks.js';
+import { parseWebhookUrl, resolveWebhookTarget } from '../src/utils/safeWebhookRequest.js';
 import express from 'express';
 import request from 'supertest';
 
@@ -35,7 +36,37 @@ describe('Enterprise Webhook System (#291)', () => {
     it('validates URL format during registration', () => {
       expect(() => {
         webhookService.registerWebhook({ url: 'invalid-url' });
-      }).toThrow('Valid URL starting with http/https is required');
+      }).toThrow('Webhook URL must be a valid absolute URL');
+    });
+
+    it.each([
+      'file:///etc/passwd',
+      'http://localhost/hook',
+      'https://user:pass@example.com/hook',
+      'http://127.0.0.1/hook',
+        'http://[::1]/hook',
+      ])('rejects unsafe webhook URL %s', url => {
+        expect(() => parseWebhookUrl(url)).toThrow();
+    });
+
+    it('rejects a hostname if any DNS answer is non-public', async () => {
+      await expect(resolveWebhookTarget(
+        'https://hooks.example.com/events',
+        async () => [
+          { address: '203.0.113.10', family: 4 },
+          { address: '10.0.0.4', family: 4 },
+        ],
+      )).rejects.toThrow('non-public IP');
+    });
+
+    it('pins public DNS results to one validated address', async () => {
+      const target = await resolveWebhookTarget(
+        'https://hooks.example.com/events',
+        async () => [{ address: '8.8.8.8', family: 4 }],
+      );
+
+      expect(target.address).toBe('8.8.8.8');
+      expect(target.family).toBe(4);
     });
 
     it('generates and verifies HMAC-SHA256 signatures correctly', () => {
@@ -95,8 +126,7 @@ describe('Enterprise Webhook System (#291)', () => {
     it('POST /api/v1/webhooks/:id/test sends a test webhook', async () => {
       const webhook = webhookService.registerWebhook({ url: 'https://httpbin.org/post' });
       
-      // Mock fetch for delivery test
-      globalThis.fetch = jest.fn().mockResolvedValue({
+      webhookService.requestWebhook = jest.fn().mockResolvedValue({
         ok: true,
         status: 200,
         text: () => Promise.resolve('{"status": "received"}'),

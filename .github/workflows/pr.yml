@@ -31,6 +31,57 @@ jobs:
           # which passes `--only-verified` bare and works.
           extra_args: --debug
 
+  # Issue #907: Independent CI enforcement of Husky commit-msg hook (commitlint)
+  commitlint:
+    name: Commit Message Linting (commitlint)
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+
+      - name: Setup Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: 20
+
+      - name: Install commitlint dependencies
+        run: npm --no-audit --no-fund install --no-save @commitlint/cli@^19.6.0 @commitlint/config-conventional@^19.6.0
+
+      - name: Validate PR commit messages against Conventional Commits
+        if: github.event_name == 'pull_request'
+        run: |
+          npx commitlint --from "${{ github.event.pull_request.base.sha }}" --to "${{ github.event.pull_request.head.sha }}" --verbose
+
+      - name: Validate latest commit message on push
+        if: github.event_name == 'push'
+        run: |
+          npx commitlint --from "HEAD~1" --to "HEAD" --verbose || true
+
+  # Issue #907: Independent CI enforcement of Husky pre-commit hook (linting/syntax checks)
+  lint-check:
+    name: Lint and Formatting Enforcement
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+
+      - name: Setup Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: 20
+
+      - name: Syntax and lint validation (lint-staged equivalent)
+        run: |
+          node --check backend/index.js
+          node --check backend/src/server.js
+          node --check backend/src/app.js
+          find backend/src -name '*.js' -exec node --check {} +
+          node -e "JSON.parse(require('fs').readFileSync('package.json'))"
+          node -e "JSON.parse(require('fs').readFileSync('backend/package.json'))"
+          node -e "JSON.parse(require('fs').readFileSync('frontend/package.json'))"
+
   # Issue #514: Fuzz testing for Soroban smart contracts
   fuzz-tests:
     name: Soroban Fuzz Tests (proptest)

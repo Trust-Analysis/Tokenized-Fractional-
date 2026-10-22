@@ -15,8 +15,9 @@ A full-stack decentralized application (dApp) built on the **Stellar Network** u
 
 The Soroban contract in `contracts/` is **unaudited**: no independent third
 party has reviewed it. That is a material risk — the contract custodies
-payment-token balances and an admin key that can pause trading, change the
-price, raise the share supply and withdraw tokens.
+payment-token balances and an admin key that can pause trading (state-changing
+operations only — read-only query functions keep working while paused), change
+the price, raise the share supply and withdraw tokens.
 
 | Component | Audit status |
 | --- | --- |
@@ -126,8 +127,11 @@ graph TB
 - [Infrastructure Inventory & IaC Boundary](docs/infrastructure.md) — What is managed by `render.yaml` / Terraform, what is still provisioned by hand, and how to apply the database
 - [Architecture Decision Records (ADRs)](docs/adr/README.md) — Technical decisions and rationale
 - [Security Policy & Audit Status](SECURITY.md) — Vulnerability reporting, current smart-contract audit status, mainnet risk disclaimer, and re-audit policy
+- [Asset Admission and Trust Review](docs/asset-admission-and-trust.md) — Issuer and asset checks, approval gates, user disclosures, and ongoing review expectations
+- [Stellar and Soroban Glossary](docs/stellar-glossary.md) — Plain-language definitions and official documentation links for common ecosystem terms
 - [Security Best Practices Guide](docs/security.md) — Security guidelines, audit checklist, and incident response
 - [Observability Guide](docs/OBSERVABILITY.md) — Structured logging, request IDs, secret redaction, Sentry alerting, and the ELK log pipeline
+- [Prometheus Metrics & Grafana Guide](docs/METRICS_AND_MONITORING.md) — Scraping `/metrics`, business & operational KPIs, production authentication, and SLO alerting
 - [Performance Benchmarks](docs/performance.md) — Gas costs, API latency, frontend metrics
 - [CDN Configuration](docs/cdn.md) — Serve frontend assets and uploaded media through Cloudflare
 - [Troubleshooting Guide](docs/troubleshooting.md) — Common issues and solutions
@@ -426,12 +430,29 @@ Keep ports 80 and 443 reachable so HTTP-01 renewal can complete. Check the renew
 | `get_total_shares` | Query total shares | None |
 | `get_price` | Query price per share | None |
 | `get_admin` | Query the address that currently administers the contract | None |
+| `get_holders` | Enumerate every address with a registered share position (on-chain cap table) | None |
+| `get_payment_token` | Query the default payment token | None |
+| `get_accepted_tokens` | Query the list of accepted payment tokens | None |
+| `add_payment_token` | Add a token to the accepted payment list | Admin |
+| `remove_payment_token` | Remove a token from the accepted payment list (default cannot be removed) | Admin |
+| `update_payment_token` | Migrate the default payment token (paused marketplace only; requires no outstanding unclaimed funds in the old token) | Admin |
+| `deposit_distribution` | Deposit asset income for pro-rata distribution to holders | Admin |
+| `claim_distribution` | Claim accrued income distribution | Holder |
+| `get_pending_distribution` | Query the income a holder can currently claim | None |
+| `get_unclaimed_distribution` | Query total deposited-but-unclaimed income | None |
 | `update_price` | Correct the price per share (paused marketplace only) | Admin |
 | `increase_total_shares` | Add supply for a follow-on offering (paused marketplace only) | Admin |
 | `is_paused` | Check if paused | None |
-| `pause` | Pause marketplace | Admin |
+| `pause` | Pause marketplace (blocks state-changing operations only) | Admin |
 | `unpause` | Unpause marketplace | Admin |
 | `emergency_withdraw` | Withdraw tokens from contract | Admin |
+
+> **Pause semantics:** `pause` blocks only state-changing operations (buys,
+> transfers, sell orders, buybacks). Read-only `get_*` functions — including
+> `get_shares`, `get_price`, `get_holders` and `get_contract_metadata` — keep
+> returning normal values while paused, so dashboards and explorers stay live
+> during an incident. See
+> [docs/architecture.md](docs/architecture.md#pause-semantics).
 
 ### Compliance and Regulatory Limitations
 

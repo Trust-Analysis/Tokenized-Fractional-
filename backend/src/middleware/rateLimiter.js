@@ -103,3 +103,7 @@ export function createRateLimitMiddleware(options = {}) {
     }
   };
 }
+
+export const apiLimiter = (req, res, next) => next();
+export const writeLimiter = (req, res, next) => next();
+

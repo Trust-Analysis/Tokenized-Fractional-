@@ -90,7 +90,31 @@ base64 keys). Remove the old key only after every deployment has been rebuilt.
 | Variable | Default | Meaning |
 | --- | --- | --- |
 | `VITE_CONTRACT_MANIFEST_URL` | `/official-contracts.json` | Where the signed manifest is fetched from. |
+| `VITE_CONTRACT_MANIFEST_REMOTE_URL` | _(empty)_ | Independently-hosted remote manifest URL for secondary runtime cross-checking. |
 | `VITE_CONTRACT_MANIFEST_SIGNERS` | _(empty)_ | Extra pinned signers (comma-separated base64) for key rotation. |
+
+## Trust Model & Tamper-Evidence Analysis (Issue #906)
+
+### Trust Architecture: Build-Time vs. Runtime
+
+The verification system avoids implicit trust in build-time configuration or bundled JSON files:
+
+1. **Unsigned Source (`contract-manifest/official-contracts.payload.json`)**:
+   Editable in git by developers to declare official contract addresses for each network. Not trusted directly by the client.
+2. **Signed Artifact (`public/official-contracts.json`)**:
+   Contains the canonicalized payload, signer public key, and an Ed25519 digital signature generated with the offline private key.
+3. **Client-Side Verification Engine**:
+   At startup, `verifyConfiguredContract()` loads the manifest and verifies the signature using the browser's WebCrypto API (`crypto.subtle.verify`) against the client-side pinned public key list (`OFFICIAL_MANIFEST_SIGNERS`).
+4. **Offline Private Key Isolation**:
+   The private signing key is **never** committed to version control and **never** placed into CI/CD build environments. It resides in offline hardware / secret managers and is only used during authorized release signing.
+
+### Threat Model & Mitigations
+
+| Threat Scenario | Impact Without Verification | System Defense & Behavior |
+|---|---|---|
+| **Compromised Build / CI Pipeline** | Attacker alters `VITE_CONTRACT_ID` or bundles a fake address list. | The attacker lacks the offline Ed25519 private key. The tampered contract is not in the signed manifest, triggering an `UNVERIFIED` or `UNOFFICIAL` warning banner. |
+| **Compromised Frontend Hosting / CDN** | Web server serves a modified manifest file pointing to an attacker contract. | The browser verifies the Ed25519 signature before accepting the manifest. Signature validation fails and the app renders an `UNVERIFIED` banner. |
+| **Subtle Build Tampering modifying Pinned Signers** | Attacker alters both code and manifest in a compromised build. | The optional `VITE_CONTRACT_MANIFEST_REMOTE_URL` performs an out-of-band runtime cross-check against an independently hosted origin (e.g., an immutable S3 bucket or GitHub Pages). A mismatch immediately flags the contract as `UNOFFICIAL`. |
 
 ## Behaviour at startup
 
@@ -98,7 +122,8 @@ base64 keys). Remove the old key only after every deployment has been rebuilt.
 2. Verify the signature against the pinned signer list using Ed25519. A manifest
    signed by a key that is not pinned is rejected even if its signature is
    otherwise valid.
-3. Look up the configured `VITE_CONTRACT_ID` in `payload.contracts` and confirm
+3. If `VITE_CONTRACT_MANIFEST_REMOTE_URL` is set, cross-check against the independently-hosted remote manifest.
+4. Look up the configured `VITE_CONTRACT_ID` in `payload.contracts` and confirm
    the network matches.
 
 The resulting status drives the banner:

@@ -19,6 +19,16 @@ pub struct MintRequest {
     pub count: u32,
 }
 
+/// Issue #942: documented maximum number of certificates that a single
+/// batch-mint entry point may mint. Each minted certificate performs a
+/// storage write inside `Base::sequential_mint`, so the per-call work (and
+/// therefore the Soroban resource/instruction budget consumed) grows linearly
+/// with the batch size. Capping the batch keeps a single call — however large
+/// the legitimate purchase or the misconfigured/malicious call from the
+/// registered minter — comfortably within the transaction limits instead of
+/// failing opaquely on resource exhaustion.
+pub const MAX_BATCH_MINT_SIZE: u32 = 100;
+
 #[contract]
 pub struct ShareCertificate;
 
@@ -59,6 +69,11 @@ impl ShareCertificate {
     ///
     /// * `requests` – vector of (recipient_address, count) pairs
     /// Returns the total number of NFTs minted.
+    ///
+    /// Issue #942: enforces a documented maximum batch size
+    /// (`MAX_BATCH_MINT_SIZE`). Panics with a clear error when the batch would
+    /// exceed the ceiling, rather than letting the call fail opaquely on
+    /// Soroban resource exhaustion.
     pub fn batch_mint_certificates(e: Env, requests: Vec<MintRequest>) -> u32 {
         let minter: Address = e
             .storage()
@@ -72,9 +87,24 @@ impl ShareCertificate {
         // Process mint requests directly from calldata to avoid memory copies
         for i in 0..requests.len() {
             let request = requests.get(i).unwrap();
+            // A zero-count entry represents no mints and mints nothing.
+            if request.count == 0 {
+                continue;
+            }
+            // Issue #942: reject any single-entry batch that exceeds the
+            // documented maximum before touching storage.
+            if request.count > MAX_BATCH_MINT_SIZE {
+                panic!("Batch mint exceeds maximum batch size of {}", MAX_BATCH_MINT_SIZE);
+            }
+            // Issue #942: reject batches whose cumulative mint count exceed
+            // the documented maximum before touching storage.
+            let new_total = total_minted.saturating_add(request.count);
+            if new_total > MAX_BATCH_MINT_SIZE {
+                panic!("Batch mint exceeds maximum batch size of {}", MAX_BATCH_MINT_SIZE);
+            }
+            total_minted = new_total;
             for _ in 0..request.count {
                 Base::sequential_mint(&e, &request.to);
-                total_minted += 1;
             }
         }
 
@@ -88,6 +118,14 @@ impl ShareCertificate {
     /// * `to` – recipient address
     /// * `count` – number of NFTs to mint
     /// Returns the starting token ID.
+    ///
+    /// Issue #941: rejects `count == 0` before any mint happens — previously
+    /// the first `Base::sequential_mint` ran unconditionally, so a zero count
+    /// still minted a single (unintended) certificate.
+    ///
+    /// Issue #942: enforces the documented maximum batch size
+    /// (`MAX_BATCH_MINT_SIZE`) with a clear error instead of risking a single
+    /// call exceeding the transaction's Soroban resource/instruction budget.
     pub fn batch_mint_to_single(e: Env, to: Address, count: u32) -> u32 {
         let minter: Address = e
             .storage()
@@ -96,8 +134,21 @@ impl ShareCertificate {
             .expect("not initialized");
         minter.require_auth();
 
+        // Issue #941: a zero count must not mint anything. The first mint used
+        // to run unconditionally before the loop, so `count == 0` minted one
+        // certificate anyway.
+        if count == 0 {
+            panic!("count must be greater than zero");
+        }
+
+        // Issue #942: enforce the documented maximum batch size so a single
+        // call cannot exceed the Soroban resource/instruction budget.
+        if count > MAX_BATCH_MINT_SIZE {
+            panic!("Batch mint exceeds maximum batch size of {}", MAX_BATCH_MINT_SIZE);
+        }
+
         let start_id = Base::sequential_mint(&e, &to);
-        
+
         // Mint remaining certificates
         for _ in 1..count {
             Base::sequential_mint(&e, &to);

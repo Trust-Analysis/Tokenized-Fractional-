@@ -1,19 +1,56 @@
+/**
+ * Request-level anomaly detector used by RateLimiterService (issue #903).
+ *
+ * Every /api/ request is scored from per-IP / per-API-key history. Each
+ * feature yields a score in [0, 1] and has a weight saying how suspicious that
+ * signal is on its own; they combine as a noisy-OR:
+ *
+ *   score = 1 - Π (1 - weight_i * feature_i)
+ *
+ * so one strong signal (a flood) can block alone, while weaker ones (path
+ * scanning, user-agent rotation) block only in combination. A score at or
+ * above `confidenceThreshold` is flagged.
+ *
+ * Action on a flag: RateLimiterService rejects that request with 429
+ * `anomaly_detected` (Retry-After: 300) and logs it via RateLimitAnalytics; the
+ * detector also logs a warning. It is not a persistent ban — every request is
+ * re-scored, so the client is let through once its recent history looks
+ * normal again. See docs/ANOMALY_DETECTION.md for the dataset and accuracy bar.
+ *
+ * On-chain manipulation (flash loans, same-ledger buy/sell) is out of scope
+ * here; that is flashLoanProtectionService's job.
+ */
+
+const HISTORY_CAP = 2000;
+
+export const FEATURE_WEIGHTS = {
+  burst_rate: 0.9,
+  request_frequency: 0.8,
+  path_diversity: 0.6,
+  user_agent_diversity: 0.6,
+  sequential_pattern: 0.5,
+  time_of_day_anomaly: 0.1,
+  geo_velocity: 0.5,
+};
+
 export class AnomalyDetector {
   constructor(options = {}) {
     this.logger = options.logger || console;
     this._enabled = process.env.ANOMALY_DETECTION_ENABLED !== 'false';
     this.redisClient = options.redisClient || null;
+    this.now = options.now || (() => Date.now());
 
     this.burstThreshold = parseInt(process.env.ANOMALY_BURST_THRESHOLD) || 50;
     this.timeWindowMs = parseInt(process.env.ANOMALY_TIME_WINDOW_MS) || 10000;
     this.confidenceThreshold = parseFloat(process.env.ANOMALY_CONFIDENCE_THRESHOLD) || 0.7;
 
-    this.ipHistory = new Map();
+    this.ipHistory = new Map(); // ip -> request timestamps
+    this.ipPathHistory = new Map(); // ip -> [{ path, time }]
     this.apiKeyHistory = new Map();
-    this.userAgentHistory = new Map();
-    this.pathPatterns = new Map();
+    this.userAgentHistory = new Map(); // ip -> [{ ua, time }]
+    this.pathPatterns = new Map(); // apiKey -> [{ path, time }]
 
-    this._modelVersion = '1.0.0';
+    this._modelVersion = '1.1.0';
     this._features = [
       'request_frequency',
       'burst_rate',
@@ -33,64 +70,38 @@ export class AnomalyDetector {
   async check({ apiKey, ip, userAgent, path, method }) {
     if (!this._enabled) return { blocked: false, confidence: 0 };
 
-    const features = {};
-    let anomalyScore = 0;
-    let reasons = [];
+    const now = this.now();
+    this._recordRequest(now, ip, apiKey, userAgent, path);
 
-    const freqScore = this._checkRequestFrequency(ip, apiKey);
-    features.request_frequency = freqScore;
-    if (freqScore > 0.3) {
-      anomalyScore += freqScore * 0.25;
-      if (freqScore > 0.7) reasons.push('high_request_frequency');
+    const features = {
+      request_frequency: this._checkRequestFrequency(now, ip),
+      burst_rate: this._checkBurstRate(now, ip),
+      path_diversity: this._checkPathDiversity(now, apiKey),
+      user_agent_diversity: this._checkUserAgent(now, ip),
+      time_of_day_anomaly: this._checkTimeAnomaly(now),
+      sequential_pattern: this._checkSequentialPattern(now, ip),
+      geo_velocity: this._checkGeoVelocity(ip),
+    };
+
+    let clean = 1;
+    const reasons = [];
+    for (const [name, value] of Object.entries(features)) {
+      clean *= 1 - FEATURE_WEIGHTS[name] * value;
+      if (value >= 0.7 && name !== 'time_of_day_anomaly') reasons.push(`${name}_anomaly`);
     }
-
-    const burstScore = this._checkBurstRate(ip);
-    features.burst_rate = burstScore;
-    if (burstScore > 0.3) {
-      anomalyScore += burstScore * 0.2;
-      if (burstScore > 0.7) reasons.push('burst_rate_anomaly');
-    }
-
-    const pathScore = this._checkPathDiversity(apiKey, path);
-    features.path_diversity = pathScore;
-    if (pathScore > 0.5) {
-      anomalyScore += pathScore * 0.15;
-      if (pathScore > 0.7) reasons.push('path_diversity_anomaly');
-    }
-
-    const uaScore = this._checkUserAgent(userAgent, ip);
-    features.user_agent_diversity = uaScore;
-    if (uaScore > 0.5) {
-      anomalyScore += uaScore * 0.1;
-      if (uaScore > 0.7) reasons.push('user_agent_anomaly');
-    }
-
-    const timeScore = this._checkTimeAnomaly();
-    features.time_of_day_anomaly = timeScore;
-    anomalyScore += timeScore * 0.1;
-
-    const seqScore = this._checkSequentialPattern(ip, path);
-    features.sequential_pattern = seqScore;
-    if (seqScore > 0.5) {
-      anomalyScore += seqScore * 0.1;
-      if (seqScore > 0.7) reasons.push('sequential_pattern_anomaly');
-    }
-
-    const geoScore = this._checkGeoVelocity(ip);
-    features.geo_velocity = geoScore;
-    if (geoScore > 0.6) {
-      anomalyScore += geoScore * 0.1;
-      reasons.push('geo_velocity_anomaly');
-    }
+    const anomalyScore = 1 - clean;
 
     const blocked = anomalyScore >= this.confidenceThreshold;
-    const confidence = Math.min(1, anomalyScore);
-
-    this._recordRequest(ip, apiKey, userAgent, path, method);
+    if (blocked) {
+      this.logger.warn(
+        { ip, apiKey: apiKey?.slice(0, 8), method, path, score: anomalyScore, reasons },
+        'Anomalous request pattern flagged',
+      );
+    }
 
     return {
       blocked,
-      confidence: Math.round(confidence * 100) / 100,
+      confidence: Math.round(anomalyScore * 100) / 100,
       score: Math.round(anomalyScore * 100) / 100,
       reasons,
       features,
@@ -101,90 +112,49 @@ export class AnomalyDetector {
     };
   }
 
-  _checkRequestFrequency(ip, apiKey) {
-    const now = Date.now();
-    const windowMs = this.timeWindowMs;
-
-    const ipCounts = this.ipHistory.get(ip) || [];
-    const recent = ipCounts.filter(t => now - t < windowMs);
-    recent.push(now);
-    this.ipHistory.set(ip, recent.slice(-200));
-
-    const freq = recent.length / (windowMs / 1000);
+  /** Sustained rate over timeWindowMs: 0 at ≤10 req/s, 1 at ≥50 req/s. */
+  _checkRequestFrequency(now, ip) {
+    const count = (this.ipHistory.get(ip) || []).filter(t => now - t < this.timeWindowMs).length;
+    const perSecond = count / (this.timeWindowMs / 1000);
     const baseline = 10;
-    if (freq <= baseline) return 0;
-    return Math.min(1, (freq - baseline) / 100);
+    if (perSecond <= baseline) return 0;
+    return Math.min(1, (perSecond - baseline) / 40);
   }
 
-  _checkBurstRate(ip) {
-    const now = Date.now();
-    const shortWindow = 2000;
-
-    const ipCounts = this.ipHistory.get(ip) || [];
-    const burst = ipCounts.filter(t => now - t < shortWindow).length;
-
+  /** Requests in the last 2s: 0 at ≤burstThreshold, 1 at 2× burstThreshold. */
+  _checkBurstRate(now, ip) {
+    const burst = (this.ipHistory.get(ip) || []).filter(t => now - t < 2000).length;
     if (burst <= this.burstThreshold) return 0;
-    return Math.min(1, (burst - this.burstThreshold) / 100);
+    return Math.min(1, (burst - this.burstThreshold) / this.burstThreshold);
   }
 
-  _checkPathDiversity(apiKey, path) {
-    const now = Date.now();
-    const windowMs = 60000;
-
-    const paths = this.pathPatterns.get(apiKey) || [];
-    const recent = paths.filter(p => now - p.time < windowMs);
-    recent.push({ path, time: now });
-    this.pathPatterns.set(apiKey, recent.slice(-100));
-
-    const unique = new Set(recent.map(p => p.path));
-    if (unique.size <= 5) return 0;
-    return Math.min(1, (unique.size - 5) / 20);
+  /** Distinct paths per API key in 60s: 0 at ≤10, 1 at ≥30 (endpoint scanning). */
+  _checkPathDiversity(now, apiKey) {
+    const recent = (this.pathPatterns.get(apiKey) || []).filter(p => now - p.time < 60000);
+    const unique = new Set(recent.map(p => p.path)).size;
+    if (unique <= 10) return 0;
+    return Math.min(1, (unique - 10) / 20);
   }
 
-  _checkUserAgent(userAgent, ip) {
-    if (!userAgent) return 0;
-
-    const now = Date.now();
-    const windowMs = 300000;
-
-    const agents = this.userAgentHistory.get(ip) || [];
-    const recent = agents.filter(a => now - a.time < windowMs);
-
-    if (recent.length === 0) {
-      recent.push({ ua: userAgent, time: now });
-      this.userAgentHistory.set(ip, recent);
-      return 0;
-    }
-
-    const unique = new Set(recent.map(a => a.ua));
-    if (!unique.has(userAgent)) {
-      recent.push({ ua: userAgent, time: now });
-      this.userAgentHistory.set(ip, recent.slice(-20));
-    }
-
-    if (unique.size <= 2) return 0;
-    return Math.min(1, (unique.size - 2) / 5);
+  /** Distinct user agents per IP in 5min: 0 at ≤3 (NAT / multiple devices), 1 at ≥8. */
+  _checkUserAgent(now, ip) {
+    const recent = (this.userAgentHistory.get(ip) || []).filter(a => now - a.time < 300000);
+    const unique = new Set(recent.map(a => a.ua)).size;
+    if (unique <= 3) return 0;
+    return Math.min(1, (unique - 3) / 5);
   }
 
-  _checkTimeAnomaly() {
-    const hour = new Date().getHours();
+  _checkTimeAnomaly(now) {
+    const hour = new Date(now).getUTCHours();
     if (hour >= 2 && hour <= 5) return 0.3;
     return 0;
   }
 
-  _checkSequentialPattern(ip, path) {
-    const now = Date.now();
-    const windowMs = 5000;
-
-    const ipCounts = this.ipHistory.get(ip) || [];
-    const recent = ipCounts.filter(t => now - t < windowMs);
-
-    const pathAccess = this.pathPatterns.get(ip) || [];
-    const recentPaths = pathAccess.filter(p => now - p.time < windowMs);
-
-    if (recent.length >= 20 && recentPaths.length >= 10) {
-      return 0.6;
-    }
+  /** Rapid enumeration from one IP: ≥20 requests over ≥10 distinct paths within 5s. */
+  _checkSequentialPattern(now, ip) {
+    const recent = (this.ipPathHistory.get(ip) || []).filter(p => now - p.time < 5000);
+    const unique = new Set(recent.map(p => p.path)).size;
+    if (recent.length >= 20 && unique >= 10) return 1;
     return 0;
   }
 
@@ -192,16 +162,24 @@ export class AnomalyDetector {
     return 0;
   }
 
-  _recordRequest(ip, apiKey, userAgent, path, method) {
-    if (!this.ipHistory.has(ip)) {
-      this.ipHistory.set(ip, []);
-    }
-    this.ipHistory.get(ip).push(Date.now());
+  _recordRequest(now, ip, apiKey, userAgent, path) {
+    const push = (map, key, entry, cap = HISTORY_CAP) => {
+      const list = map.get(key) || [];
+      list.push(entry);
+      if (list.length > cap) list.splice(0, list.length - cap);
+      map.set(key, list);
+    };
 
-    if (!this.pathPatterns.has(apiKey)) {
-      this.pathPatterns.set(apiKey, []);
+    push(this.ipHistory, ip, now);
+    push(this.ipPathHistory, ip, { path, time: now }, 200);
+    push(this.pathPatterns, apiKey, { path, time: now }, 200);
+
+    if (userAgent) {
+      const agents = this.userAgentHistory.get(ip) || [];
+      const existing = agents.find(a => a.ua === userAgent);
+      if (existing) existing.time = now;
+      else push(this.userAgentHistory, ip, { ua: userAgent, time: now }, 20);
     }
-    this.pathPatterns.get(apiKey).push({ path, time: Date.now() });
   }
 
   getModelInfo() {
@@ -209,6 +187,7 @@ export class AnomalyDetector {
       version: this._modelVersion,
       enabled: this._enabled,
       features: this._features,
+      weights: FEATURE_WEIGHTS,
       burstThreshold: this.burstThreshold,
       timeWindowMs: this.timeWindowMs,
       confidenceThreshold: this.confidenceThreshold,
@@ -224,6 +203,7 @@ export class AnomalyDetector {
 
   destroy() {
     this.ipHistory.clear();
+    this.ipPathHistory.clear();
     this.apiKeyHistory.clear();
     this.userAgentHistory.clear();
     this.pathPatterns.clear();

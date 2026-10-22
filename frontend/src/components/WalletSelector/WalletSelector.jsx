@@ -136,6 +136,10 @@ export default function WalletSelector({ onConnect, connecting }) {
               disabled={connecting}
             />
           ))}
+          <p className={styles.hardwareHint}>
+            Hardware wallets (e.g. Ledger) are not supported yet. Connect with a
+            software wallet such as Freighter for now.
+          </p>
         </div>
       )}
     </div>

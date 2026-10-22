@@ -4,6 +4,7 @@ import Card from '../Card/Card';
 import PriceHistoryModal from '../PriceHistoryChart/PriceHistoryModal';
 import { useComparisonStore } from '../../store/useComparisonStore';
 import { useFavoritesStore } from '../../store/useFavoritesStore';
+import { useToastStore } from '../../store/useToastStore';
 import { formatLocalCurrency } from '../../utils/i18nFormatters';
 import PulsingDot from '../PulsingDot/PulsingDot';
 import LiveBadge from '../LiveBadge/LiveBadge';
@@ -28,7 +29,6 @@ import styles from './AssetCard.module.css';
 function AssetCard({ asset, isLive = false }) {
   const [showPriceHistory, setShowPriceHistory] = useState(false);
   const [showQuickView, setShowQuickView] = useState(false);
-  const [imageLoaded, setImageLoaded] = useState(false);
 
   if (!asset) return null;
 
@@ -49,7 +49,13 @@ function AssetCard({ asset, isLive = false }) {
 
   const handleCompareChange = (e) => {
     e.stopPropagation();
-    toggleComparison(asset);
+    const { status } = toggleComparison(asset);
+    if (status === 'limit_reached') {
+      useToastStore.getState().addToast({
+        type: 'warning',
+        message: `You can compare up to ${MAX_COMPARISON} assets at once. Remove one to add another.`,
+      });
+    }
   };
 
   // ── Favorites/Bookmarks (issue #187) ────────────────────────────────────
@@ -99,13 +105,6 @@ function AssetCard({ asset, isLive = false }) {
       <Card hoverable className={styles.assetCard}>
         {imageUrl ? (
           <div className={styles.imageWrapper}>
-            {!imageLoaded && <div className={styles.imageSkeleton} />}
-            <img
-              src={imageUrl}
-              alt={title || 'Asset'}
-              className={`${styles.image} ${imageLoaded ? styles.imageLoaded : ''}`}
-              loading="lazy"
-              onLoad={() => setImageLoaded(true)}
             <OptimizedImage
               src={imageUrl}
               alt={title || 'Asset'}
@@ -295,8 +294,12 @@ function AssetCard({ asset, isLive = false }) {
                 className={styles.compareCheckbox}
                 checked={compared}
                 onChange={handleCompareChange}
-                disabled={atMax}
-                aria-label={`Compare ${title || 'this asset'}`}
+                aria-disabled={atMax}
+                aria-label={
+                  atMax
+                    ? `Compare ${title || 'this asset'} (limit of ${MAX_COMPARISON} reached)`
+                    : `Compare ${title || 'this asset'}`
+                }
               />
               <span className={styles.compareText}>Compare</span>
             </label>

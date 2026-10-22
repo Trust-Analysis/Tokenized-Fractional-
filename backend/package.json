@@ -29,14 +29,16 @@
     "docs:generate": "node scripts/generate-docs.js",
     "docs:serve": "node scripts/generate-docs.js && echo \"Docs generated in docs/api/\"",
     "docs:verify-examples": "node scripts/verify-readme-examples.js",
-    "test:openapi": "node scripts/verify-openapi.js"
+    "test:openapi": "node scripts/verify-openapi.js",
+    "check:unmounted-routes": "node scripts/check-unmounted-routes.js"
   },
   "jest": {
     "testEnvironment": "node",
     "globalSetup": "./__tests__/setup.js",
     "testPathIgnorePatterns": [
       "/node_modules/",
-      "__tests__/setup.js"
+      "__tests__/setup.js",
+      "__tests__/fixtures/"
     ],
     "transform": {},
     "collectCoverage": false,
@@ -68,6 +70,7 @@
     "@apollo/server": "^4.10.1",
     "@apollo/subgraph": "^2.7.0",
     "@sentry/node": "^10.60.0",
+    "@stellar/stellar-sdk": "^16.3.1",
     "ajv": "^8.17.1",
     "ajv-formats": "^3.0.1",
     "bcryptjs": "^2.4.3",
@@ -88,6 +91,7 @@
     "handlebars": "^4.7.8",
     "helmet": "^7.1.0",
     "ioredis": "^5.11.1",
+    "ipaddr.js": "^1.9.1",
     "jsdom": "^30.0.1",
     "jsonwebtoken": "^9.0.0",
     "knex": "^3.1.0",
@@ -100,6 +104,7 @@
     "pino-http": "^10.5.0",
     "swagger-jsdoc": "^6.3.0",
     "swagger-ui-express": "^5.0.1",
+    "validator": "^13.15.35",
     "ws": "^8.21.3"
   },
   "devDependencies": {

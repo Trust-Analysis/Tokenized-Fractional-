@@ -116,3 +116,12 @@
   0%, 100% { opacity: 1; }
   50% { opacity: 0.5; }
 }
+
+.hardwareHint {
+  margin: 0;
+  padding: 0.5rem 0.75rem;
+  border-top: 1px solid var(--color-border, #2a3041);
+  font-size: var(--font-size-xs, 0.75rem);
+  line-height: 1.4;
+  color: var(--color-text-muted, #6b7280);
+}

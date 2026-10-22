@@ -21,6 +21,7 @@ Each ADR follows this structure:
 | [0001](0001-use-soroban-smart-contracts.md) | Use Soroban Smart Contracts for RWA Marketplace | Accepted |
 | [0002](0002-file-based-asset-storage.md) | File-Based Asset Storage (data.json) for Metadata | Accepted |
 | [0003](0003-react-vite-frontend.md) | Use React + Vite for Frontend Development | Accepted |
+| [0004](0004-payment-token-migration-and-multi-asset-acceptance.md) | Payment Token Migration and Multi-Asset Payment Acceptance | Accepted |
 
 ## How to Add a New ADR
 

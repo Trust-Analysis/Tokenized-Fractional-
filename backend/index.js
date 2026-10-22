@@ -1,3 +1,16 @@
+
+// Content-Type: application/json enforcement middleware (#782)
+const requireJsonContentType = (req, res, next) => {
+  const contentType = req.headers["content-type"];
+  if (!contentType || !contentType.toLowerCase().includes("application/json")) {
+    return res.status(415).json({
+      error: "Unsupported Media Type",
+      message: "Requests to write endpoints must specify Content-Type: application/json"
+    });
+  }
+  next();
+};
+
 // Copyright (c) 2026 Tokenized Fractional RWA Marketplace Contributors
 // SPDX-License-Identifier: MIT
 
@@ -32,6 +45,10 @@ import { BillingService } from './src/services/billingService.js';
 import { createRateLimiter } from './src/middleware/rateLimiter.js';
 import { createGraphQLRateLimiter } from './src/middleware/tieredRateLimiter.js';
 import { createRateLimitAdminRoutes } from './src/routes/rateLimitAdmin.js';
+import { metricsMiddleware, metricsHandler, metricsAuthMiddleware } from './src/services/metricsService.js';
+import { TenantService } from './src/services/tenantService.js';
+import { createTenantAdminRoutes } from './src/routes/tenantAdmin.js';
+import { startVaultMetricsRefreshCron } from './src/services/vaultMetricsRefresh.js';
 import { metricsMiddleware, metricsHandler } from './src/services/metricsService.js';
 import { readDiskUsage, resolveDataDirectory } from './src/utils/diskUsage.js';
 import { applyCursorPagination, CursorError, paginationErrorHandler, SORT_FIELDS } from './src/services/cursorPagination.js';
@@ -44,6 +61,7 @@ import {
 import { generateOpenapiSpec } from './src/services/openapiService.js';
 import { getDatabase } from './src/services/database.js';
 import { logger, runWithRequestContext } from './logger.js';
+export { logger };
 import {
   initErrorTracking,
   installErrorTrackingRequestScope,
@@ -52,6 +70,7 @@ import {
   reportError,
 } from './src/services/errorTracking.js';
 import { wsManager } from './websocket.js';
+import { parseWebhookUrl, postWebhook } from './src/utils/safeWebhookRequest.js';
 
 const __dirname = dirname(fileURLToPath(import.meta.url));
 // multer memoryStorage keeps the file in memory as a Buffer (req.file.buffer).
@@ -376,9 +395,9 @@ function saveWebhooks(data) {
 function validateWebhookBody(body) {
   if (!body.url || typeof body.url !== 'string') return 'url is required';
   try {
-    new URL(body.url);
-  } catch {
-    return 'url must be a valid URL';
+    parseWebhookUrl(body.url);
+  } catch (err) {
+    return err.message;
   }
   if (!Array.isArray(body.events) || body.events.length === 0) {
     return 'events must be a non-empty array';
@@ -402,11 +421,9 @@ async function deliverToWebhook(webhook, payload) {
     'X-Webhook-Delivery': randomUUID(),
   };
 
-  const response = await fetch(webhook.url, {
-    method: 'POST',
+  const response = await postWebhook(webhook.url, {
     headers,
     body,
-    signal: AbortSignal.timeout(5000),
   });
 
   if (!response.ok) {
@@ -479,7 +496,7 @@ installErrorTrackingRequestScope(app);
 
 // Prometheus metrics for backend observability (Issue #518)
 app.use(metricsMiddleware);
-app.get('/metrics', metricsHandler);
+app.get('/metrics', metricsAuthMiddleware, metricsHandler);
 
 app.use(helmet());
 app.use(cors({ origin: CORS_ORIGINS, methods: ['GET', 'POST', 'PATCH', 'DELETE'], allowedHeaders: ['Content-Type', 'x-api-key', 'X-Request-ID'] }));
@@ -655,6 +672,15 @@ const rateLimitAdminRoutes = createRateLimitAdminRoutes(rateLimiterService, admi
 });
 app.use('/api/admin/rate-limits', rateLimitAdminRoutes);
 
+// Tenant admin routes (Issue #900): onboarding + post-onboarding quota management.
+// The service (and DB handle) is resolved lazily per request via getDatabase().
+app.use(
+  '/api/admin/tenants',
+  createTenantAdminRoutes(() => new TenantService(getDatabase(), logger), adminAuth, {
+    writeLimiter,
+  })
+);
+
 /**
  * @openapi
  * /health:
@@ -677,24 +703,52 @@ app.use('/api/admin/rate-limits', rateLimitAdminRoutes);
  *               $ref: '#/components/schemas/HealthResponse'
  */
 
-// Storage health check helper
-async function checkStorageHealth() {
-  const dataFile = process.env.DATA_FILE || "data.json";
-  const resolvedPath = require("path").resolve(process.cwd(), dataFile);
-  const dirPath = require("path").dirname(resolvedPath);
+app.get('/health', async (_req, res) => {
+  const deploymentColor = process.env.DEPLOYMENT_COLOR || 'local';
+  const serviceName = process.env.SERVICE_NAME || 'backend';
+  const buildId = process.env.BUILD_ID || process.env.GITHUB_SHA || 'local';
+  const deps = {
+    storage: { status: 'ok' },
+    redis: { status: 'not_configured' },
+  };
 
+  // Issue #801: report free space on the volume holding DATA_FILE.
+  //
+  // Informational only — this deliberately does NOT influence the HTTP status.
+  // Render restarts an instance whose health check fails, and restarting
+  // mid-fill-up is more likely to lose the pending write than to reclaim space.
+  // Alerting lives in scripts/check-disk-usage.js and the disk_usage_ratio
+  // gauge; the procedure is in docs/disk-usage-monitoring.md.
+  const diskUsage = await readDiskUsage(resolveDataDirectory(__dirname));
+  deps.disk = {
+    status: diskUsage.status,
+    usedPercent: diskUsage.usedPercent,
+    available: diskUsage.available,
+    thresholds: diskUsage.thresholds,
+    ...(diskUsage.message && { message: diskUsage.message }),
+  };
+
+  // Check storage (data file) accessibility
   try {
-    await require("fs").promises.access(resolvedPath, require("fs").constants.R_OK | require("fs").constants.W_OK);
-    return { status: "ok" };
-  } catch (err) {
+    const { promises: fsPromises, constants: fsConstants } = await import('fs');
+    const dataFile = process.env.DATA_FILE || 'data.json';
+    const resolvedPath = join(__dirname, dataFile);
     try {
-      await require("fs").promises.access(dirPath, require("fs").constants.W_OK);
-      return { status: "ok", note: "file will be created on write" };
-    } catch (dirErr) {
-      return { status: "degraded", error: err.message };
+      await fsPromises.access(resolvedPath, fsConstants.R_OK | fsConstants.W_OK); // eslint-disable-line no-bitwise
+      deps.storage = { status: 'ok' };
+    } catch {
+      // File may not exist yet — directory writability is sufficient
+      const dirPath = dirname(resolvedPath);
+      try {
+        await fsPromises.access(dirPath, fsConstants.W_OK);
+        deps.storage = { status: 'ok', note: 'file will be created on write' };
+      } catch (dirErr) {
+        deps.storage = { status: 'degraded', error: dirErr.message };
+      }
     }
+  } catch (err) {
+    deps.storage = { status: 'degraded', error: err.message };
   }
-}
 
 // Soroban RPC health probe helper with bounded timeout
 async function checkSorobanRpcHealth() {
@@ -756,6 +810,80 @@ app.get('/health', async (req, res) => {
   }
 
   res.status(200).json(baseResponse);
+  // Check Redis if configured
+  if (process.env.REDIS_URL) {
+    try {
+      const Redis = (await import('ioredis')).default;
+      // Reuse the same TLS options as the main cache client so the health
+      // check honours REDIS_TLS, REDIS_TLS_CA, REDIS_TLS_CERT, REDIS_TLS_KEY
+      // and REDIS_TLS_REJECT_UNAUTHORIZED.
+      const tlsOptions = buildTlsOptions();
+      const pingClient = new Redis(process.env.REDIS_URL, {
+        lazyConnect: true,
+        connectTimeout: 2000,
+        maxRetriesPerRequest: 0,
+        ...(tlsOptions && { tls: tlsOptions }),
+      });
+      await pingClient.connect();
+      await pingClient.ping();
+      pingClient.disconnect();
+      deps.redis = { status: 'ok' };
+    } catch {
+      deps.redis = { status: 'error', message: 'Redis configured but unreachable' };
+      return res.status(503).json({ status: 'degraded', timestamp: new Date().toISOString(), dependencies: deps });
+    }
+  }
+
+  // Check Soroban RPC if configured — the only on-chain integration, and
+  // the one dependency with no circuit-breaker outside this probe.  We call
+  // getHealth (a JSON-RPC method supported by every Soroban/Horizon node)
+  // with a hard 3 s timeout so a dead or slow node doesn't block the probe
+  // indefinitely.  The probe is skipped, not failed, when the env var is unset
+  // (test environments, off-chain-only deployments).
+  const sorobanRpcUrl = process.env.SOROBAN_RPC_URL || process.env.VITE_RPC_URL;
+  if (sorobanRpcUrl) {
+    deps.sorobanRpc = { status: 'not_configured' };
+    try {
+      const controller = new AbortController();
+      const rpcTimeout = setTimeout(() => controller.abort(), 3000);
+      try {
+        const rpcRes = await fetch(sorobanRpcUrl, {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ jsonrpc: '2.0', id: 1, method: 'getHealth' }),
+          signal: controller.signal,
+        });
+        clearTimeout(rpcTimeout);
+        if (!rpcRes.ok) {
+          throw new Error(`HTTP ${rpcRes.status}`);
+        }
+        const body = await rpcRes.json();
+        // Soroban RPC returns { result: { status: "healthy" } } on success
+        if (body?.result?.status !== 'healthy') {
+          throw new Error(`RPC status: ${body?.result?.status ?? 'unknown'}`);
+        }
+        deps.sorobanRpc = { status: 'ok' };
+      } finally {
+        clearTimeout(rpcTimeout);
+      }
+    } catch (err) {
+      const message = err.name === 'AbortError' ? 'timed out after 3 s' : err.message;
+      deps.sorobanRpc = { status: 'error', message };
+      return res.status(503).json({ status: 'degraded', timestamp: new Date().toISOString(), dependencies: deps });
+    }
+  }
+
+  const isHealthy = deps.storage.status === 'ok';
+  res.status(isHealthy ? 200 : 503).json({
+    status: isHealthy ? 'ok' : 'degraded',
+    timestamp: new Date().toISOString(),
+    service: {
+      name: serviceName,
+      deploymentColor,
+      buildId,
+    },
+    dependencies: deps,
+  });
 });
 
 /**
@@ -1185,7 +1313,7 @@ v1.get('/rwa/:contractId', getAssetMetadata);
  *             contractId: 'CCF7LXM6U6H6Z7Z7Z7Z7Z7Z7Z7Z7Z7Z7Z7Z7Z7Z7Z7Z7Z7Z7Z7Z7Z7Z'
  *             title: 'Luxury Manhattan Condo Unit 12B'
  *             location: 'New York, NY'
- *             description: 'A fully furnished 2-bedroom condo'
+ *             description: "Tokenized Fractional RWA REST API. See the [API Changelog](https://github.com/Code-Paragon/Tokenized-Fractional-/blob/main/docs/api-changelog.md) for version history and updates."
  *             assetType: 'real_estate'
  *             imageUrl: 'https://ipfs.io/ipfs/QmX...'
  *             totalValuation: '2500000.00'
@@ -2100,18 +2228,13 @@ if (process.env.NODE_ENV !== 'test') {
       billing: billingService.enabled,
     }, 'RWA Off-chain Metadata Backend started');
 
-    // Cron job to refresh materialized view (PostgreSQL only)
-    setInterval(async () => {
-      try {
-        const db = getDatabase();
-        if (db && db.client.config.client === 'pg') {
-          await db.raw('REFRESH MATERIALIZED VIEW CONCURRENTLY mv_historical_vault_metrics');
-          logger.info('Materialized view mv_historical_vault_metrics refreshed in background');
-        }
-      } catch (error) {
-        reportError(error, { message: 'Failed to refresh materialized view' });
-      }
-    }, 60 * 60 * 1000); // 1 hour
+    // Cron job to refresh the vault metrics materialized view (PostgreSQL
+    // only). Strategy + staleness bound documented in
+    // docs/VAULT_METRICS_REFRESH.md; cadence tunable via MV_REFRESH_INTERVAL_MS.
+    startVaultMetricsRefreshCron(getDatabase, {
+      info: (obj, msg) => logger.info(obj, msg),
+      error: ({ message, error }) => reportError(new Error(error), { message }),
+    });
   });
 
   // ── WebSocket server (Issue #593) ──────────────────────────────────────
@@ -2120,6 +2243,31 @@ if (process.env.NODE_ENV !== 'test') {
   // book / price updates reach clients on every horizontal node.
   wsManager.initialize(httpServer);
   wsManager.connectRedisAdapter();
+
+  // ── Graceful shutdown ──────────────────────────────────────────────────
+  // Stop accepting new connections, wait for in-flight requests to finish,
+  // then exit cleanly.  Without this, Docker/Kubernetes sends SIGTERM and
+  // the process exits immediately, dropping live requests.
+  const gracefulShutdown = (signal) => {
+    logger.info({ signal }, 'Shutdown signal received — stopping server');
+    httpServer.close((err) => {
+      if (err) {
+        logger.error({ err }, 'Error during graceful shutdown');
+        process.exit(1);
+      }
+      logger.info('HTTP server closed — exiting');
+      process.exit(0);
+    });
+
+    // Force exit if in-flight requests do not drain within 10 s
+    setTimeout(() => {
+      logger.warn('Graceful shutdown timed out — forcing exit');
+      process.exit(1);
+    }, 10_000).unref();
+  };
+
+  process.on('SIGTERM', () => gracefulShutdown('SIGTERM'));
+  process.on('SIGINT',  () => gracefulShutdown('SIGINT'));
 }
 if (require.main === module) {
   const PORT = process.env.PORT || 3001;

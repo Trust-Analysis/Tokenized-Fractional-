@@ -125,3 +125,133 @@ export function trackMessages(context, events, done) {
   }
   return done();
 }
+
+// ---------------------------------------------------------------------------
+// Cross-instance broadcast verification (Issue #894)
+//
+// The backend's Redis pub/sub adapter (backend/websocketRedisAdapter.js) exists
+// so that a broadcast published on one backend replica reaches clients
+// connected to a DIFFERENT replica. These helpers make that path measurable:
+//  1. triggerCrossInstanceBroadcast() POSTs a trade event carrying a unique
+//     `crossInstanceBroadcastId` to instance A's HTTP API.
+//  2. trackCrossInstanceMessages() listens on the WebSocket connection to
+//     instance B and records `websocket.cross_instance_broadcast_latency` for
+//     every client that receives that broadcast.
+//
+// The DELIVERY assertion itself (every triggered broadcast must reach at least
+// one client on instance B) is performed by helpers/run-cross-instance.js on
+// Artillery's aggregated report — Artillery executes VUs in worker processes,
+// so an in-process `after` hook cannot see cross-worker delivery state. When
+// running artillery directly, check the summary manually:
+// `websocket.cross_instance_broadcast_received` must be >=
+// `websocket.cross_instance_broadcast_sent` (and `..._failed` must be 0).
+// ---------------------------------------------------------------------------
+
+// broadcastId -> epoch ms when it was triggered (on the OTHER instance)
+const triggeredBroadcasts = new Map();
+// broadcastId -> Set of virtual-user client ids that received it
+const deliveredBroadcasts = new Map();
+
+/**
+ * Base URL of the backend replica that RECEIVES the trigger HTTP request
+ * (instance A). The WebSocket clients under test connect to a different
+ * replica (instance B, the Artillery `target`).
+ */
+function instanceAClientUrl(context) {
+  return (
+    (context && context.vars && context.vars.INSTANCE_A_API) ||
+    process.env.INSTANCE_A_API_URL ||
+    process.env.INSTANCE_A_API ||
+    'http://localhost:3002'
+  );
+}
+
+/**
+ * Attach a cross-instance-aware message handler to the open WebSocket
+ * (instance B side). Counts per-client delivery and records the broadcast
+ * latency histogram.
+ */
+export function trackCrossInstanceMessages(context, events, done) {
+  const ws = context.ws;
+  if (ws && typeof ws.on === 'function') {
+    // Stable per-virtual-user id so one client cannot double-count the same
+    // broadcast delivery.
+    if (!context.vars.xbClientId) {
+      context.vars.xbClientId = `vu-${Math.random().toString(36).slice(2, 11)}`;
+    }
+
+    ws.on('message', (raw) => {
+      let msg;
+      try {
+        msg = JSON.parse(raw.toString());
+      } catch {
+        return;
+      }
+      const broadcastId = msg.crossInstanceBroadcastId;
+      if (!broadcastId) return;
+
+      const sentAt = triggeredBroadcasts.get(broadcastId);
+      if (sentAt === undefined) return; // broadcast not triggered by this test run
+
+      let receivers = deliveredBroadcasts.get(broadcastId);
+      if (!receivers) {
+        receivers = new Set();
+        deliveredBroadcasts.set(broadcastId, receivers);
+      }
+      const firstReceiptForClient = !receivers.has(context.vars.xbClientId);
+      receivers.add(context.vars.xbClientId);
+
+      events.emit('counter', 'websocket.cross_instance_broadcast_received', 1);
+      events.emit('rate', 'websocket.cross_instance_broadcast_delivery_rate');
+      if (firstReceiptForClient) {
+        events.emit('histogram', 'websocket.cross_instance_broadcast_latency', Date.now() - sentAt);
+      }
+    });
+  }
+  return done();
+}
+
+/**
+ * Trigger a broadcast on instance A over HTTP. The message carries a unique
+ * `crossInstanceBroadcastId` so receivers on instance B can recognize it and
+ * measure end-to-end cross-instance delivery latency.
+ */
+export function triggerCrossInstanceBroadcast(context, events, done) {
+  const targetUrl = `${instanceAClientUrl(context)}/api/v1/notify/share-purchased`;
+  const broadcastId = `xb-${Date.now()}-${Math.random().toString(36).slice(2, 8)}`;
+  const contractId = context.vars.contractId || DEFAULT_CONTRACT_ID;
+  const topic = context.vars.subscribeTopic || 'share-purchases';
+
+  triggeredBroadcasts.set(broadcastId, Date.now());
+  events.emit('counter', 'websocket.cross_instance_broadcast_sent', 1);
+
+  fetch(targetUrl, {
+    method: 'POST',
+    headers: { 'content-type': 'application/json' },
+    body: JSON.stringify({
+      contractId,
+      buyerAddress: `G${randomStellarAddress()}`,
+      sharesToBuy: 5,
+      totalCost: 55000,
+      sharesPurchased: 5,
+      pricePerShare: 11000,
+      totalAmount: 55000,
+      paymentToken: 'XLM',
+      blockchainHash: `00000${randomStellarAddress().toUpperCase()}`,
+      // Marker fields consumed by trackCrossInstanceMessages() and by the
+      // mock-server peer bridge (load-test/mock-server.js).
+      crossInstanceBroadcastId: broadcastId,
+      topic,
+    }),
+  })
+    .then((res) => {
+      if (!res.ok) {
+        events.emit('counter', 'websocket.cross_instance_broadcast_failed', 1);
+      }
+    })
+    .catch(() => {
+      events.emit('counter', 'websocket.cross_instance_broadcast_failed', 1);
+    });
+
+  return done();
+}
