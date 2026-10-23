@@ -21,10 +21,19 @@ const DEFAULTS = {
 
 // Per-field cost weights
 const FIELD_COSTS = {
-  asset: 1, assets: 3, queryComplexity: 0,
-  contractId: 0.5, title: 0.5, location: 0.5,
-  description: 0.5, assetType: 0.5, imageUrl: 1,
-  totalValuation: 1, documents: 2, createdAt: 0.5, updatedAt: 0.5,
+  asset: 1,
+  assets: 3,
+  queryComplexity: 0,
+  contractId: 0.5,
+  title: 0.5,
+  location: 0.5,
+  description: 0.5,
+  assetType: 0.5,
+  imageUrl: 1,
+  totalValuation: 1,
+  documents: 2,
+  createdAt: 0.5,
+  updatedAt: 0.5,
 };
 
 const LIST_FIELDS = new Set(['data', 'assets', 'documents']);
@@ -38,15 +47,24 @@ function walkSelections(selections, depth, listMultiplier, state) {
 
   for (const sel of selections) {
     if (sel.kind === 'Field') {
-      state.fieldCount++;
+      state.fieldCount += 1;
       const name = sel.name.value;
       const baseCost = FIELD_COSTS[name] ?? 1;
       const isList = LIST_FIELDS.has(name);
-      const mult = isList ? (listMultiplier || 20) : 1;
-      state.score += baseCost * mult;
+      // Cost of a field is scaled by the accumulated list context: every
+      // enclosing list multiplies the cost by the page-size factor (20), so
+      // top-level list fields are charged properly too (fixes the previous
+      // behaviour where only *nested* list fields were multiplied).
+      const inherited = listMultiplier || 1;
+      state.score += baseCost * inherited;
 
       if (sel.selectionSet?.selections) {
-        walkSelections(sel.selectionSet.selections, depth + 1, isList ? 20 : listMultiplier, state);
+        walkSelections(
+          sel.selectionSet.selections,
+          depth + 1,
+          isList ? inherited * 20 : inherited,
+          state,
+        );
       }
     } else if (sel.kind === 'InlineFragment' || sel.kind === 'FragmentSpread') {
       if (sel.selectionSet?.selections) {
@@ -85,6 +103,9 @@ export function complexityValidationRule(options = {}) {
   const maxComplexity = options.maxComplexity ?? DEFAULTS.MAX_COMPLEXITY;
   const maxDepth = options.maxDepth ?? DEFAULTS.MAX_DEPTH;
   const maxFields = options.maxFields ?? DEFAULTS.MAX_FIELDS;
+  // Introspection queries (GraphiQL/playground, tooling) are exempt by default:
+  // they are field-dense but not costly to execute.
+  const introspectionExempt = options.introspectionExempt !== false;
 
   return function validationRule(context) {
     return {
@@ -92,28 +113,46 @@ export function complexityValidationRule(options = {}) {
         leave(node) {
           if (node.operation !== 'query') return;
 
+          if (introspectionExempt) {
+            const top = node.selectionSet?.selections ?? [];
+            const isIntrospection =
+              top.length > 0 &&
+              top.every(
+                (sel) =>
+                  sel.kind === 'Field' &&
+                  ['__schema', '__type', '__typename'].includes(sel.name.value),
+              );
+            if (isIntrospection) return;
+          }
+
           // Build a fake document with just this operation for analysis
           const fakeDoc = { kind: 'Document', definitions: [node] };
           const complexity = calculateComplexity(fakeDoc);
 
           if (complexity.depth > maxDepth) {
-            context.reportError(new GraphQLError(
-              `Query depth (${complexity.depth}) exceeds maximum allowed (${maxDepth}). Reduce nesting.`,
-              { nodes: node }
-            ));
+            context.reportError(
+              new GraphQLError(
+                `Query depth (${complexity.depth}) exceeds maximum allowed (${maxDepth}). Reduce nesting.`,
+                { nodes: node },
+              ),
+            );
           }
           if (complexity.fieldCount > maxFields) {
-            context.reportError(new GraphQLError(
-              `Query requests ${complexity.fieldCount} fields (max: ${maxFields}). Request only needed fields.`,
-              { nodes: node }
-            ));
+            context.reportError(
+              new GraphQLError(
+                `Query requests ${complexity.fieldCount} fields (max: ${maxFields}). Request only needed fields.`,
+                { nodes: node },
+              ),
+            );
           }
           if (complexity.score > maxComplexity) {
-            context.reportError(new GraphQLError(
-              `Query complexity score (${complexity.score}) exceeds maximum allowed (${maxComplexity}). ` +
-              `Reduce requested fields or use smaller page sizes.`,
-              { nodes: node }
-            ));
+            context.reportError(
+              new GraphQLError(
+                `Query complexity score (${complexity.score}) exceeds maximum allowed (${maxComplexity}). ` +
+                  `Reduce requested fields or use smaller page sizes.`,
+                { nodes: node },
+              ),
+            );
           }
         },
       },
