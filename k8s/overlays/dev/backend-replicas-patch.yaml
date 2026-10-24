@@ -1,0 +1,8 @@
+# Dev runs a single backend replica (Issue #890)
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: rwa-backend
+  namespace: rwa-marketplace
+spec:
+  replicas: 1

@@ -1,0 +1,23 @@
+# Smoke Test — quick sanity check (Issue #524)
+#
+# A tiny run used by CI to verify the load-test harness is wired up and the
+# backend is reachable, without generating meaningful load.
+#
+# Run:
+#   npm run test:smoke
+
+config:
+  target: "http://localhost:3001"
+  phases:
+    - name: "smoke"
+      duration: 5
+      arrivalRate: 2
+  processor: "../helpers/processor.js"
+
+scenarios:
+  - name: "smoke-place-order"
+    flow:
+      - function: "makeSharePurchase"
+      - post:
+          url: "/api/v1/notify/share-purchased"
+          json: "{{ request }}"

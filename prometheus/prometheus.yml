@@ -1,0 +1,39 @@
+# Prometheus Configuration for Tokenized Fractional RWA Marketplace
+global:
+  scrape_interval: 15s
+  evaluation_interval: 15s
+  scrape_timeout: 10s
+
+rule_files:
+  - "alerts.yml"
+
+scrape_configs:
+  # RWA Marketplace Backend API Metrics
+  - job_name: 'rwa-backend'
+    metrics_path: '/metrics'
+    scheme: 'http'
+    static_configs:
+      - targets: ['backend:3001']
+        labels:
+          service: 'rwa-marketplace-backend'
+          environment: 'production'
+
+    # Production Authentication Options:
+    # 1. Bearer Token (Recommended):
+    # authorization:
+    #   type: Bearer
+    #   credentials: 'change-me-to-a-random-32-byte-secret'
+
+    # 2. HTTP Basic Auth:
+    # basic_auth:
+    #   username: 'metrics'
+    #   password: 'change-me-to-a-random-32-byte-secret'
+
+    # 3. Custom Header:
+    # http_headers:
+    #   x-api-key: 'change-me-to-a-random-32-byte-secret'
+
+  # Prometheus self-monitoring
+  - job_name: 'prometheus'
+    static_configs:
+      - targets: ['localhost:9090']

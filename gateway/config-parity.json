@@ -1,0 +1,43 @@
+{
+  "$comment": "Single source of truth for the routing/auth/rate-limit contract that EVERY gateway implementation in this directory must honour (Issue #891). gateway/scripts/check-parity.js verifies gateway/aws/cdk-stack.ts and gateway/kong/kong.yml against this manifest so the two configs cannot silently diverge. Update this file together with any intentional gateway change.",
+  "issue": 891,
+  "routes": [
+    {
+      "path": "/api/rwa",
+      "method": "GET",
+      "auth": "none",
+      "kongRateLimitPerMinute": 60,
+      "$comment": "List all RWAs — public read"
+    },
+    {
+      "path": "/api/rwa/{contractId}",
+      "method": "GET",
+      "auth": "none",
+      "kongRateLimitPerMinute": 100,
+      "$comment": "Fetch a single RWA by contract id — public read"
+    },
+    {
+      "path": "/api/rwa",
+      "method": "POST",
+      "auth": "jwt",
+      "kongRateLimitPerMinute": 10,
+      "$comment": "Create RWA — requires authorization in both gateways"
+    },
+    {
+      "path": "/api/rwa/{contractId}",
+      "method": "DELETE",
+      "auth": "jwt",
+      "kongRateLimitPerMinute": 5,
+      "$comment": "Delete RWA — requires authorization in both gateways"
+    }
+  ],
+  "waf": {
+    "$comment": "The WAF rate-based rule must have the same limit wherever it is defined. terraform/waf.tf references var.rate_limit_threshold, which is resolved from terraform/variables.tf by the checker.",
+    "rateLimitPerIpPer5Minutes": 2000,
+    "sources": [
+      "gateway/aws/cdk-stack.ts",
+      "gateway/aws/waf.tf",
+      "terraform/waf.tf"
+    ]
+  }
+}

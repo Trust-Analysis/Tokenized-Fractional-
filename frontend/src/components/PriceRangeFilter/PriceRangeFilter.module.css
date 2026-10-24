@@ -1,0 +1,156 @@
+/* PriceRangeFilter.module.css — Issue #373 */
+
+.sidebar {
+  background: var(--bg-surface);
+  border: 1px solid var(--border-color);
+  border-radius: var(--radius-md);
+  padding: var(--spacing-md);
+  display: flex;
+  flex-direction: column;
+  gap: var(--spacing-sm);
+}
+
+/* Header row: title + clear button */
+.header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: var(--spacing-sm);
+}
+
+.title {
+  font-size: var(--font-size-sm);
+  font-weight: var(--font-weight-semibold);
+  color: var(--text-primary);
+  margin: 0;
+}
+
+.clearBtn {
+  font-size: var(--font-size-xs);
+  color: var(--primary);
+  background: none;
+  border: none;
+  cursor: pointer;
+  padding: 0;
+  text-decoration: underline;
+  transition: opacity var(--transition-fast);
+}
+
+.clearBtn:hover {
+  opacity: 0.75;
+}
+
+/* Selected range display above slider */
+.rangeDisplay {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: var(--spacing-xs);
+  padding: var(--spacing-xs) var(--spacing-sm);
+  background: var(--bg-surface-hover);
+  border-radius: var(--radius-sm);
+}
+
+.rangeValue {
+  font-size: var(--font-size-sm);
+  font-weight: var(--font-weight-semibold);
+  color: var(--primary);
+  font-variant-numeric: tabular-nums;
+}
+
+.rangeSep {
+  color: var(--text-muted);
+  font-size: var(--font-size-xs);
+}
+
+/* ── Dual-range slider ─────────────────────────────────────────────── */
+.sliderWrapper {
+  position: relative;
+  height: 32px;
+  display: flex;
+  align-items: center;
+}
+
+/* Base track (grey background) */
+.sliderWrapper::before {
+  content: '';
+  position: absolute;
+  left: 0;
+  right: 0;
+  height: 4px;
+  border-radius: 2px;
+  background: var(--border-color);
+  z-index: 0;
+}
+
+/* Filled portion between the two thumbs */
+.trackFill {
+  position: absolute;
+  height: 4px;
+  background: var(--primary);
+  border-radius: 2px;
+  z-index: 1;
+  pointer-events: none;
+}
+
+/* Common range input reset */
+.thumb {
+  position: absolute;
+  width: 100%;
+  -webkit-appearance: none;
+  appearance: none;
+  background: transparent;
+  pointer-events: none;
+  height: 4px;
+  outline: none;
+}
+
+/* Thumb handle */
+.thumb::-webkit-slider-thumb {
+  -webkit-appearance: none;
+  appearance: none;
+  width: 18px;
+  height: 18px;
+  border-radius: 50%;
+  background: var(--primary);
+  border: 2px solid var(--bg-surface);
+  box-shadow: 0 0 0 2px var(--primary);
+  cursor: pointer;
+  pointer-events: all;
+  position: relative;
+  z-index: 2;
+  transition: box-shadow var(--transition-fast), transform var(--transition-fast);
+}
+
+.thumb::-webkit-slider-thumb:hover,
+.thumb:focus-visible::-webkit-slider-thumb {
+  box-shadow: 0 0 0 4px var(--primary-glow);
+  transform: scale(1.15);
+}
+
+.thumb::-moz-range-thumb {
+  width: 18px;
+  height: 18px;
+  border-radius: 50%;
+  background: var(--primary);
+  border: 2px solid var(--bg-surface);
+  box-shadow: 0 0 0 2px var(--primary);
+  cursor: pointer;
+  pointer-events: all;
+}
+
+.thumb::-moz-range-thumb:hover {
+  box-shadow: 0 0 0 4px var(--primary-glow);
+}
+
+/* z-index management so both thumbs are always interactive */
+.thumbMin { z-index: 3; }
+.thumbMax { z-index: 4; }
+
+/* Min / max labels */
+.labels {
+  display: flex;
+  justify-content: space-between;
+  font-size: var(--font-size-xs);
+  color: var(--text-muted);
+}

@@ -1,0 +1,29 @@
+.container {
+  background-color: var(--bg-surface);
+  border: 1px solid var(--error-border);
+  border-radius: var(--radius-md);
+  padding: var(--spacing-lg);
+  display: flex;
+  flex-direction: column;
+  gap: var(--spacing-md);
+}
+
+.heading {
+  font-size: var(--font-size-md);
+  font-weight: var(--font-weight-semibold);
+  color: var(--error-text);
+  margin: 0;
+}
+
+.warning {
+  font-size: var(--font-size-sm);
+  color: var(--text-secondary);
+  margin: 0;
+  line-height: 1.5;
+}
+
+.inputRow {
+  display: flex;
+  flex-direction: column;
+  gap: var(--spacing-xs);
+}

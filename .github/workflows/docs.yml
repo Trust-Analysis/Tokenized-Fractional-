@@ -1,0 +1,72 @@
+# Issue #295: Automated API Documentation Generation — CI/CD workflow
+name: API Documentation
+
+on:
+  push:
+    branches: [main]
+    paths:
+      - 'backend/src/routes/**'
+      - 'backend/docs.js'
+      - 'backend/graphql.js'
+      - 'backend/package.json'
+  pull_request:
+    paths:
+      - 'backend/src/routes/**'
+      - 'backend/docs.js'
+      - 'backend/graphql.js'
+
+jobs:
+  generate-docs:
+    name: Generate & Validate API Docs
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '20'
+
+      - name: Install backend dependencies
+        working-directory: backend
+        run: npm ci
+
+      - name: Generate API documentation
+        working-directory: backend
+        run: npm run docs:generate
+
+      - name: Upload documentation artifacts
+        uses: actions/upload-artifact@v4
+        with:
+          name: api-docs
+          path: docs/api/
+          retention-days: 30
+
+      - name: Check documentation quality
+        working-directory: backend
+        run: |
+          if [ -f ../docs/api/quality-report.json ]; then
+            node -e "
+              const report = require('../docs/api/quality-report.json');
+              if (!report.passed) {
+                console.error('Documentation quality check FAILED');
+                console.error('Issues:', report.issues);
+                process.exit(1);
+              }
+              console.log('Documentation quality: PASSED');
+              console.log('Warnings:', report.warnings.length);
+            "
+          fi
+
+      - name: Commit generated docs (main only)
+        if: github.ref == 'refs/heads/main'
+        working-directory: .
+        run: |
+          git config user.name "github-actions[bot]"
+          git config user.email "github-actions[bot]@users.noreply.github.com"
+          git add docs/api/ || true
+          if git diff --staged --quiet; then
+            echo "No doc changes to commit"
+          else
+            git commit -m "docs: auto-generate API documentation [skip ci]"
+            git push
+          fi

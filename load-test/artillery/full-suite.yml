@@ -1,0 +1,40 @@
+# Full End-to-End Suite — Order Placement + WebSocket Fan-Out (Issue #524)
+#
+# A single orchestrated run that drives BOTH sides of the order-matching flow at
+# ~1,000 concurrent users:
+#
+#   1. HTTP trade-order placement (trade-orders.yml scenarios) — the "submit" side.
+#   2. WebSocket connections subscribing to the live trade feed — the "receive" side.
+#
+# Running them together reproduces a realistic heavy concurrent-trading load:
+# orders are placed AND broadcast to 1,000 subscribed clients simultaneously.
+#
+# Run:
+#   npm run test:full
+
+config:
+  target: "http://localhost:3001"
+  phases:
+    - name: "ramp-orders-To-1000"
+      duration: 120
+      arrivalRate: 10
+      rampTo: 200
+    - name: "sustain-Orders-at-1000"
+      duration: 90
+      arrivalRate: 200
+  processor: "../helpers/processor.js"
+  payload:
+    - path: "./contracts.csv"
+      fields:
+        - "contractId"
+      order: sequence
+
+scenarios:
+  - name: "fractional-trade-order-submission"
+    weight: 2
+    flow:
+      - function: "makeSharePurchase"
+      - post:
+          url: "/api/v1/notify/share-purchased"
+          json: "{{ request }}"
+      - think: 1
