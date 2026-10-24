@@ -367,5 +367,5 @@ export function createAssetsSubgraph(dataLayer) {
     },
   };
 
-  return buildSubgraphSchema({ typeDefs, resolvers });
+  return buildSubgraphSchema([{ typeDefs, resolvers }]);
 }
