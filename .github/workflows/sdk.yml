@@ -1,0 +1,149 @@
+name: SDK
+
+# Dedicated CI for the standalone SDK (sdk/) — Issue #889.
+#
+# Runs on the SDK's own cadence, independent of the backend/frontend/contract
+# pipelines: install, typecheck, build and test on every change that touches
+# sdk/, and publish to npm when a tagged SDK release (`sdk-v*`) is pushed.
+#
+# The `sdk-contract-sync` job additionally fails a PR that changes the
+# contract's public interface (contracts/src) without a corresponding sdk/
+# change or an explicit acknowledgement label (`sdk-contract-sync`).
+
+on:
+  pull_request:
+    branches: [ main, dev ]
+    paths:
+      - 'sdk/**'
+      - '.github/workflows/sdk.yml'
+  push:
+    branches: [ main, dev ]
+    # Tag pushes are not subject to the path filter, so a release tag always
+    # triggers the publish job.
+    tags: [ 'sdk-v*' ]
+    paths:
+      - 'sdk/**'
+      - '.github/workflows/sdk.yml'
+  workflow_dispatch:
+
+jobs:
+  sdk:
+    name: Build & test SDK
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+
+      - name: Setup Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: 20
+          cache: npm
+          cache-dependency-path: sdk/package-lock.json
+
+      - name: Install dependencies
+        working-directory: sdk
+        run: npm ci
+
+      - name: Typecheck
+        working-directory: sdk
+        run: npm run typecheck
+
+      - name: Build
+        working-directory: sdk
+        run: npm run build
+
+      - name: Run SDK test suite
+        working-directory: sdk
+        run: node --test test/*.test.mjs
+
+  publish:
+    name: Publish to npm (tagged SDK release)
+    # Publishing runs only for `sdk-v*` tags, on its own release cadence.
+    if: startsWith(github.ref, 'refs/tags/sdk-v')
+    needs: sdk
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+
+      - name: Setup Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: 20
+          registry-url: 'https://registry.npmjs.org'
+          cache: npm
+          cache-dependency-path: sdk/package-lock.json
+
+      - name: Install dependencies
+        working-directory: sdk
+        run: npm ci
+
+      - name: Sync package version with release tag
+        working-directory: sdk
+        run: |
+          set -euo pipefail
+          VERSION="${GITHUB_REF_NAME#sdk-v}"
+          if ! echo "$VERSION" | grep -Eq '^[0-9]+\.[0-9]+\.[0-9]+$'; then
+            echo "::error::Tag '$GITHUB_REF_NAME' does not match sdk-vMAJOR.MINOR.PATCH"
+            exit 1
+          fi
+          npm version "$VERSION" --no-git-tag-version --allow-same-version
+          # The workspace copy stays private; the published artifact must not be.
+          npm pkg delete private
+
+      - name: Publish to npm
+        working-directory: sdk
+        run: npm publish --access public
+        env:
+          NODE_AUTH_TOKEN: ${{ secrets.NPM_TOKEN }}
+
+  sdk-contract-sync:
+    name: Contract change / SDK sync check
+    if: github.event_name == 'pull_request'
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read
+      pull-requests: read
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+
+      # Issue #889: a contract interface change must be reflected in a
+      # corresponding SDK update (or explicitly acknowledged). Initial
+      # implementation: fail unless sdk/** changed in the same PR, or the PR
+      # carries the `sdk-contract-sync` label after the checklist in
+      # sdk/README.md has been worked through.
+      - name: Fail if contract interface changed without an SDK update
+        shell: bash
+        env:
+          GH_TOKEN: ${{ github.token }}
+          BASE_SHA: ${{ github.event.pull_request.base.sha }}
+          PR_NUMBER: ${{ github.event.pull_request.number }}
+        run: |
+          set -euo pipefail
+          changed=$(git diff --name-only "$BASE_SHA" HEAD -- contracts/src)
+          if [ -z "$changed" ]; then
+            echo "No contract source changes — nothing to sync."
+            exit 0
+          fi
+          echo "Changed contract files:"
+          echo "$changed"
+
+          sdk_changed=$(git diff --name-only "$BASE_SHA" HEAD -- sdk)
+          if [ -n "$sdk_changed" ]; then
+            echo "SDK changed in the same PR — sync acknowledged by the diff:"
+            echo "$sdk_changed"
+            exit 0
+          fi
+
+          labels=$(gh pr view "$PR_NUMBER" --repo "$GITHUB_REPOSITORY" --json labels --jq '.labels[].name')
+          if echo "$labels" | grep -qx 'sdk-contract-sync'; then
+            echo "PR is labelled 'sdk-contract-sync' — manual checklist acknowledgement accepted."
+            exit 0
+          fi
+
+          echo "::error::contracts/src changed without any sdk/** change. Either update the SDK (including the compatibility matrix in sdk/src/compatibility.ts and sdk/README.md) or label this PR 'sdk-contract-sync' after completing the checklist in sdk/README.md."
+          exit 1

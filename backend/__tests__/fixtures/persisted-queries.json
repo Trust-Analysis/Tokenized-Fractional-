@@ -1,0 +1,12 @@
+{
+  "queries": [
+    {
+      "operationName": "GetAssetsCount",
+      "queryString": "query GetAssetsCount { assetsCount }",
+      "category": "assets"
+    },
+    {
+      "hash": "0000000000000000000000000000000000000000000000000000000000000001"
+    }
+  ]
+}
