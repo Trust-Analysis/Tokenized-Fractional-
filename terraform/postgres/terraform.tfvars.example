@@ -1,0 +1,20 @@
+# Copy to terraform.tfvars (git-ignored) and edit for the target environment.
+#
+# Credentials do NOT belong here. The Render provider reads them from the
+# environment:
+#
+#   export RENDER_API_KEY=...     # Render dashboard → Account Settings → API Keys
+#   export RENDER_OWNER_ID=...    # usr-... or tea-..., from the dashboard URL
+
+# Production should override the development defaults.
+name_prefix       = "rwa-marketplace"
+plan              = "pro_4gb"
+region            = "oregon"
+postgres_version  = "16"
+high_availability = true
+
+# database_name = "rwa_marketplace"
+# database_user = "rwa_user"
+# disk_size_gb  = 0
+# parameter_overrides = { max_connections = "200" }
+# ip_allow_list = []

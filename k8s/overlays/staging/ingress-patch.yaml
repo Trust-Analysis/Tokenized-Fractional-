@@ -1,0 +1,45 @@
+# Environment-specific ingress for the staging overlay (Issue #890).
+# Full-list replacement of spec.rules / spec.tls keeps the patch independent
+# of list merge-key behavior and makes the per-environment hostname explicit.
+apiVersion: networking.k8s.io/v1
+kind: Ingress
+metadata:
+  name: rwa-marketplace-ingress
+  namespace: rwa-marketplace
+spec:
+  tls:
+    - hosts:
+        - rwa.staging.example.com
+      secretName: rwa-tls-secret
+  rules:
+    - host: rwa.staging.example.com
+      http:
+        paths:
+          - path: /api
+            pathType: Prefix
+            backend:
+              service:
+                name: rwa-backend-svc
+                port:
+                  number: 3001
+          - path: /api-docs
+            pathType: Prefix
+            backend:
+              service:
+                name: rwa-backend-svc
+                port:
+                  number: 3001
+          - path: /health
+            pathType: Prefix
+            backend:
+              service:
+                name: rwa-backend-svc
+                port:
+                  number: 3001
+          - path: /
+            pathType: Prefix
+            backend:
+              service:
+                name: rwa-frontend-svc
+                port:
+                  number: 80

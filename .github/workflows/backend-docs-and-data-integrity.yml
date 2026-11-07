@@ -1,0 +1,67 @@
+﻿# Issues #805 and #807: guard against documentation and data silently drifting.
+name: Backend Docs & Data Integrity
+
+on:
+  pull_request:
+    branches: [main, dev]
+    paths:
+      - 'README.md'
+      - 'backend/**'
+      - '.github/workflows/backend-docs-and-data-integrity.yml'
+  push:
+    branches: [main, dev]
+    paths:
+      - 'README.md'
+      - 'backend/**'
+      - '.github/workflows/backend-docs-and-data-integrity.yml'
+
+jobs:
+  # Issue #807: seed a data file with a wrong availableShares value, mock the
+  # Soroban RPC with the correct on-chain value, and assert the reconciliation
+  # logic flags the drift.
+  onchain-drift:
+    name: data.json vs On-Chain Drift Detection
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version-file: '.nvmrc'
+          cache: npm
+          cache-dependency-path: backend/package-lock.json
+      # npm install rather than npm ci: backend/package-lock.json is currently out
+      # of sync with package.json, which makes npm ci exit before any test runs.
+      - name: Install backend dependencies
+        run: npm install --no-audit --no-fund
+        working-directory: backend
+      - name: Run drift detection tests
+        run: npx jest --forceExit __tests__/onchainDrift.test.js --verbose
+        working-directory: backend
+        env:
+          NODE_ENV: test
+
+  # Issue #805: execute every README API example against a locally started
+  # backend and fail if any response no longer matches the documentation.
+  readme-api-examples:
+    name: README API Examples (docs as tests)
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version-file: '.nvmrc'
+          cache: npm
+          cache-dependency-path: backend/package-lock.json
+      # npm install rather than npm ci: backend/package-lock.json is currently out
+      # of sync with package.json, which makes npm ci exit before any test runs.
+      - name: Install backend dependencies
+        run: npm install --no-audit --no-fund
+        working-directory: backend
+      - name: Unit-test the example extractor
+        run: npx jest --forceExit __tests__/readmeExamples.test.js --verbose
+        working-directory: backend
+        env:
+          NODE_ENV: test
+      - name: Run README examples against a local backend
+        run: npm run docs:verify-examples
+        working-directory: backend

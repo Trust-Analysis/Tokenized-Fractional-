@@ -1,0 +1,74 @@
+/* Copyright (c) 2026 Tokenized Fractional RWA Marketplace Contributors */
+/* SPDX-License-Identifier: MIT */
+
+.breadcrumbs {
+  width: 100%;
+  padding: var(--spacing-xs, 0.5rem) var(--spacing-md, 1rem);
+  font-size: 0.8125rem;
+  color: var(--color-text-muted, #9ca3af);
+}
+
+.list {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 0;
+  list-style: none;
+  margin: 0;
+  padding: 0;
+}
+
+.item {
+  display: flex;
+  align-items: center;
+  gap: var(--spacing-xs, 0.5rem);
+}
+
+.separator {
+  margin: 0 var(--spacing-xs, 0.5rem);
+  color: var(--color-text-muted, #6b7280);
+  opacity: 0.5;
+  user-select: none;
+}
+
+.link {
+  color: var(--color-text-muted, #9ca3af);
+  text-decoration: none;
+  transition: color 0.15s ease;
+  padding: 0.125rem 0.25rem;
+  border-radius: var(--radius-sm, 0.25rem);
+}
+
+.link:hover {
+  color: var(--color-primary, #4a9eff);
+  background: var(--color-surface-hover, rgba(255, 255, 255, 0.05));
+}
+
+.link:focus-visible {
+  outline: 2px solid var(--color-primary, #4a9eff);
+  outline-offset: 2px;
+  border-radius: var(--radius-sm, 0.25rem);
+}
+
+.current {
+  color: var(--color-text, #e5e7eb);
+  font-weight: 600;
+  cursor: default;
+  padding: 0.125rem 0.25rem;
+}
+
+@media (max-width: 640px) {
+  .breadcrumbs {
+    font-size: 0.75rem;
+    padding: var(--spacing-xs, 0.5rem);
+  }
+  .list {
+    overflow-x: auto;
+    flex-wrap: nowrap;
+    -webkit-overflow-scrolling: touch;
+    scrollbar-width: none;
+  }
+  .list::-webkit-scrollbar {
+    display: none;
+  }
+}

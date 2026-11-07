@@ -1,0 +1,39 @@
+# Issue #715: guard the i18n layer — every language must stay in sync with English.
+#
+# The checker only uses Node builtins, so it runs straight after checkout with no
+# `npm install` step.
+name: i18n Locale Check
+
+on:
+  push:
+    branches: [ main, dev ]
+    paths:
+      - 'frontend/src/locales/**'
+      - 'frontend/src/i18n.js'
+      - 'frontend/src/i18n/**'
+      - 'frontend/scripts/check-locales.js'
+      - 'frontend/src/test/i18nLocaleParity.test.js'
+      - '.github/workflows/i18n-check.yml'
+  pull_request:
+    paths:
+      - 'frontend/src/locales/**'
+      - 'frontend/src/i18n.js'
+      - 'frontend/src/i18n/**'
+      - 'frontend/scripts/check-locales.js'
+      - 'frontend/src/test/i18nLocaleParity.test.js'
+      - '.github/workflows/i18n-check.yml'
+
+jobs:
+  locale-check:
+    name: Locale parity & key usage
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '20'
+
+      - name: Check locale parity
+        working-directory: ./frontend
+        run: npm run i18n:check

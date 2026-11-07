@@ -1,0 +1,111 @@
+.historyContainer {
+  background: var(--bg-surface, #1e222d);
+  border: 1px solid var(--border-color, #2a2e39);
+  border-radius: var(--radius-md, 8px);
+  padding: 1rem;
+  display: flex;
+  flex-direction: column;
+  height: 100%;
+  max-height: 500px;
+}
+
+.header {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  margin-bottom: 0.75rem;
+  padding-bottom: 0.5rem;
+  border-bottom: 1px solid var(--border-color, #2a2e39);
+}
+
+.title {
+  font-size: 1rem;
+  font-weight: 600;
+  color: var(--text-primary, #ffffff);
+}
+
+.totalBadge {
+  font-size: 0.75rem;
+  padding: 0.2rem 0.5rem;
+  border-radius: 9999px;
+  background: var(--bg-secondary, #2a2e39);
+  color: var(--text-secondary, #848e9c);
+}
+
+.tableHeader {
+  display: grid;
+  grid-template-columns: 1fr 1fr 1fr 1.5fr;
+  padding: 0.4rem 0.5rem;
+  font-size: 0.75rem;
+  font-weight: 500;
+  color: var(--text-muted, #5e6673);
+  text-transform: uppercase;
+  letter-spacing: 0.5px;
+}
+
+.scrollList {
+  flex: 1;
+  overflow-y: auto;
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+}
+
+.orderRow {
+  display: grid;
+  grid-template-columns: 1fr 1fr 1fr 1.5fr;
+  padding: 0.5rem;
+  font-size: 0.8125rem;
+  border-radius: 4px;
+  align-items: center;
+  transition: background 0.15s ease;
+}
+
+.orderRow:hover {
+  background: rgba(255, 255, 255, 0.03);
+}
+
+.buy {
+  color: var(--color-success, #0ecb81);
+}
+
+.sell {
+  color: var(--color-danger, #f6465d);
+}
+
+.time {
+  color: var(--text-muted, #848e9c);
+  font-size: 0.75rem;
+}
+
+.sentinel {
+  height: 20px;
+  margin-top: 5px;
+  display: flex;
+  justify-content: center;
+  align-items: center;
+}
+
+.loadingMore {
+  font-size: 0.75rem;
+  color: var(--text-muted, #848e9c);
+}
+
+.endMessage {
+  text-align: center;
+  font-size: 0.75rem;
+  color: var(--text-muted, #848e9c);
+  padding: 0.5rem 0;
+}
+
+.empty {
+  text-align: center;
+  padding: 2rem;
+  color: var(--text-secondary, #848e9c);
+}
+
+.error {
+  color: var(--color-danger, #f6465d);
+  padding: 1rem;
+  text-align: center;
+}

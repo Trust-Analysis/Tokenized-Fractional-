@@ -1,0 +1,100 @@
+.dot {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  position: relative;
+  width: var(--dot-size);
+  height: var(--dot-size);
+}
+
+.innerDot {
+  width: 100%;
+  height: 100%;
+  border-radius: 50%;
+  background-color: var(--dot-color);
+  transition: background-color var(--transition-normal);
+}
+
+.ripple {
+  position: absolute;
+  top: 50%;
+  left: 50%;
+  transform: translate(-50%, -50%);
+  width: 100%;
+  height: 100%;
+  border-radius: 50%;
+  background-color: var(--dot-color);
+  opacity: 0;
+}
+
+.animated .ripple {
+  animation: rippleEffect 1.5s ease-out infinite;
+}
+
+.animated .innerDot {
+  animation: pulseEffect 1.5s ease-in-out infinite;
+}
+
+@keyframes rippleEffect {
+  0% {
+    transform: translate(-50%, -50%) scale(1);
+    opacity: 0.6;
+  }
+  100% {
+    transform: translate(-50%, -50%) scale(2.5);
+    opacity: 0;
+  }
+}
+
+@keyframes pulseEffect {
+  0%, 100% {
+    opacity: 1;
+    transform: scale(1);
+  }
+  50% {
+    opacity: 0.8;
+    transform: scale(0.95);
+  }
+}
+
+/* Color variants */
+.success {
+  --dot-color: var(--success-text);
+}
+
+.warning {
+  --dot-color: var(--warning-text);
+}
+
+.error {
+  --dot-color: var(--error-text);
+}
+
+.info {
+  --dot-color: var(--info-text);
+}
+
+.primary {
+  --dot-color: var(--primary-text);
+}
+
+/* Size variants */
+.sm {
+  --dot-size: 8px;
+}
+
+.md {
+  --dot-size: 12px;
+}
+
+.lg {
+  --dot-size: 16px;
+}
+
+/* Reduced motion for accessibility */
+@media (prefers-reduced-motion: reduce) {
+  .animated .ripple,
+  .animated .innerDot {
+    animation: none;
+  }
+}

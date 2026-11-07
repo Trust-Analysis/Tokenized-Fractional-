@@ -1,0 +1,20 @@
+# Production overlay (Issue #890)
+#   kubectl apply -k k8s/overlays/prod
+# Values: 2 replicas per service (HA), production hostname, `stable` image
+# tag. These match the values that were previously hardcoded in the raw
+# manifests, so applying this overlay is equivalent to the previous
+# `kubectl apply -f k8s/` flow.
+apiVersion: kustomize.config.k8s.io/v1beta1
+kind: Kustomization
+
+resources:
+  - ../..
+
+images:
+  - name: rwa-backend
+    newTag: stable
+  - name: rwa-frontend
+    newTag: stable
+
+patches:
+  - path: ingress-patch.yaml

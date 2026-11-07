@@ -1,0 +1,49 @@
+name: Automated Data Backup
+
+on:
+  schedule:
+    - cron: "0 2 * * *" # Runs daily at 02:00 UTC
+  workflow_dispatch: # Allows manual triggering from GitHub Actions UI
+
+jobs:
+  backup-metadata:
+    runs-on: ubuntu-latest
+    permissions:
+      contents: write
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+
+      - name: Verify data.json existence
+        run: |
+          if [ -f "data.json" ]; then
+            echo "Found data.json at root."
+          elif [ -f "backend/data.json" ]; then
+            echo "Found data.json in backend/."
+          else
+            echo "Warning: data.json not found in standard locations."
+          fi
+
+      - name: Upload Backup Artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: data-json-snapshot-${{ github.run_id }}
+          path: |
+            data.json
+            backend/data.json
+          retention-days: 365
+
+      - name: Commit Snapshot to Backups Branch
+        run: |
+          git config --global user.name "github-actions[bot]"
+          git config --global user.email "github-actions[bot]@users.noreply.github.com"
+          
+          # Create or switch to backups branch
+          git checkout --orphan backup-storage || git checkout backup-storage
+          
+          # Ensure data files are preserved/tracked
+          git add -f data.json backend/data.json 2>/dev/null || true
+          git commit -m "chore(backup): automated daily snapshot of data.json [${{ github.sha }}]" || echo "No changes to commit"
+          
+          # Push backup branch
+          git push origin backup-storage --force || echo "Push skipped or configured without write access"

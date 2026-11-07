@@ -1,0 +1,73 @@
+name: Database Backup
+
+# Scheduled offsite backup of the production database.
+#
+# Runs daily at 03:00 UTC. The job creates a verified backup and uploads it to
+# S3 (a second, offsite location for disaster recovery). The backup artifact is
+# also attached to the workflow run as a third copy / audit trail.
+#
+# Required repository secrets (Settings → Secrets and variables → Actions):
+#   DATABASE_URL          PostgreSQL connection string of the production DB
+#   BACKUP_S3_BUCKET      target S3 bucket
+#   AWS_ACCESS_KEY_ID     credentials with s3:PutObject on the bucket
+#   AWS_SECRET_ACCESS_KEY
+# Optional:
+#   BACKUP_S3_PREFIX (default: backups), BACKUP_S3_REGION (default: us-east-1)
+
+on:
+  schedule:
+    - cron: '0 3 * * *' # daily at 03:00 UTC
+  workflow_dispatch: {} # allow manual runs from the Actions tab
+
+concurrency:
+  group: db-backup
+  cancel-in-progress: false
+
+jobs:
+  backup:
+    name: Create & upload backup
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 20
+          cache: npm
+          cache-dependency-path: backend/package-lock.json
+
+      - name: Install dependencies
+        working-directory: backend
+        run: npm ci
+
+      - name: Install S3 client
+        working-directory: backend
+        run: npm install --no-save @aws-sdk/client-s3
+
+      - name: Ensure PostgreSQL client is available
+        run: |
+          if ! command -v pg_dump >/dev/null; then
+            sudo apt-get update && sudo apt-get install -y postgresql-client
+          fi
+          pg_dump --version
+
+      - name: Run backup
+        working-directory: backend
+        env:
+          NODE_ENV: production
+          DATABASE_URL: ${{ secrets.DATABASE_URL }}
+          BACKUP_S3_BUCKET: ${{ secrets.BACKUP_S3_BUCKET }}
+          BACKUP_S3_PREFIX: ${{ secrets.BACKUP_S3_PREFIX }}
+          BACKUP_S3_REGION: ${{ secrets.BACKUP_S3_REGION }}
+          AWS_ACCESS_KEY_ID: ${{ secrets.AWS_ACCESS_KEY_ID }}
+          AWS_SECRET_ACCESS_KEY: ${{ secrets.AWS_SECRET_ACCESS_KEY }}
+        run: npm run backup
+
+      - name: Upload backup artifact (retained 30 days)
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: db-backup-${{ github.run_id }}
+          path: backend/backups/
+          retention-days: 30
+          if-no-files-found: warn

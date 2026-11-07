@@ -1,0 +1,21 @@
+{
+  "schema": "rwa.official-contracts/v1",
+  "signer": "qel0kmdcMCOMh5nuUDrxHN8jpxFe1C3prEU0AKw+FJE=",
+  "payload": {
+    "schema": "rwa.official-contracts/v1",
+    "version": 1,
+    "issuedAt": "2026-09-29T00:00:00Z",
+    "network": "TESTNET",
+    "networkPassphrase": "Test SDF Network ; September 2015",
+    "contracts": [
+      {
+        "id": "CA3D5KRYM6CB7OWQ6TWYRR3Z4T7GNZLKERYNZGGA5SOAOPIFY6YQGAXE",
+        "network": "TESTNET",
+        "asset": "marketplace",
+        "label": "RWA Marketplace — testnet reference deployment",
+        "status": "active"
+      }
+    ]
+  },
+  "signature": "TDBzXSStxjDr63sl43m97ekvWRhx4OC3knS4yUw/PyzYpu/jqnM9GT7+XOZ3fmCzZUYK+/oUnPyPZFFXQVDWDg=="
+}
