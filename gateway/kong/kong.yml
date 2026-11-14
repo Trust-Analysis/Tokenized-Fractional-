@@ -1,0 +1,220 @@
+"""
+Kong Declarative Configuration for RWA Marketplace API
+Defines services, routes, and plugins
+"""
+
+_format_version: "3.0"
+_transform: true
+
+services:
+  # RWA Backend Service
+  - name: rwa-backend
+    url: http://rwa-backend:3001
+    host: rwa-backend
+    port: 3001
+    protocol: http
+    connect_timeout: 60000
+    send_timeout: 60000
+    read_timeout: 60000
+    retries: 5
+    
+    # Routes for the RWA service
+    routes:
+      # GET /api/rwa - List all RWAs
+      - name: get-rwa-list
+        methods:
+          - GET
+        paths:
+          - /api/rwa
+        strip_path: false
+        preserve_host: true
+        plugins:
+          - name: rate-limiting
+            config:
+              minute: 60
+              hour: 1000
+              policy: local
+          - name: request-transformer
+            config:
+              add:
+                headers:
+                  - "X-Forwarded-By: Kong"
+                  - "X-Gateway-Version: 3.4"
+          - name: cors
+            config:
+              origins:
+                - "*"
+              methods:
+                - GET
+                - OPTIONS
+              headers:
+                - Accept
+                - Accept-Version
+                - Content-Length
+                - Content-MD5
+                - Content-Type
+                - Date
+                - X-Auth-Token
+              expose_headers:
+                - X-Auth-Token
+              credentials: true
+          - name: response-transformer
+            config:
+              add:
+                headers:
+                  - "X-Response-Time: $now"
+
+      # GET /api/rwa/{contractId} - Get specific RWA
+      - name: get-rwa-detail
+        methods:
+          - GET
+        paths:
+          - /api/rwa/:contractId
+        strip_path: false
+        preserve_host: true
+        plugins:
+          - name: rate-limiting
+            config:
+              minute: 100
+              hour: 2000
+              policy: local
+          - name: cors
+            config:
+              origins:
+                - "*"
+
+      # POST /api/rwa - Create RWA (requires auth)
+      - name: post-rwa-create
+        methods:
+          - POST
+        paths:
+          - /api/rwa
+        strip_path: false
+        preserve_host: true
+        plugins:
+          # JWT Authentication
+          - name: jwt
+            config:
+              key_claim_name: "iss"
+              secret_is_base64: false
+              algorithms:
+                - HS256
+          # Rate limiting for write operations (lower limit)
+          - name: rate-limiting
+            config:
+              minute: 10
+              hour: 100
+              policy: local
+          - name: request-transformer
+            config:
+              add:
+                headers:
+                  - "X-Admin-Request: true"
+          - name: request-size-limiting
+            config:
+              allowed_payload_size: 10
+
+      # DELETE /api/rwa/{contractId} - Delete RWA (requires auth)
+      - name: delete-rwa
+        methods:
+          - DELETE
+        paths:
+          - /api/rwa/:contractId
+        strip_path: false
+        preserve_host: true
+        plugins:
+          # JWT Authentication
+          - name: jwt
+            config:
+              key_claim_name: "iss"
+              secret_is_base64: false
+              algorithms:
+                - HS256
+          # Rate limiting for delete operations
+          - name: rate-limiting
+            config:
+              minute: 5
+              hour: 50
+              policy: local
+          - name: request-transformer
+            config:
+              add:
+                headers:
+                  - "X-Admin-Request: true"
+
+    # Upstreams for load balancing
+    upstreams:
+      - name: rwa-backend-lb
+        algorithm: round_robin
+        health_checks:
+          active:
+            timeout: 1
+            concurrency: 10
+            http_path: /health
+            type: http
+            healthy:
+              interval: 10
+              successes: 2
+            unhealthy:
+              interval: 10
+              timeouts: 3
+              http_statuses:
+                - 429
+                - 500
+                - 503
+        targets:
+          - target: rwa-backend:3001
+            weight: 100
+
+# Consumers (API users)
+consumers:
+  - username: admin-user
+    custom_id: admin-001
+    credentials:
+      - name: jwt
+        config:
+          algorithm: HS256
+          secret: ${JWT_SECRET}
+          key: admin-key
+
+  - username: public-user
+    custom_id: public-001
+
+# Global plugins
+plugins:
+  # Security plugin - add security headers
+  - name: cors
+    config:
+      origins:
+        - "*"
+      methods:
+        - GET
+        - POST
+        - PUT
+        - DELETE
+        - OPTIONS
+      headers:
+        - Accept
+        - Accept-Version
+        - Content-Length
+        - Content-MD5
+        - Content-Type
+        - Date
+        - X-Auth-Token
+        - Authorization
+      credentials: true
+      max_age: 3600
+
+  # Request logging plugin
+  - name: file-log
+    config:
+      path: /var/log/kong/access.log
+
+  # Prometheus metrics
+  - name: prometheus
+    config:
+      per_uris: true
+
+  # Basic auth for admin API
+  - name: basic-auth
+    config: {}

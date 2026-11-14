@@ -1,0 +1,101 @@
+.container {
+  display: flex;
+  flex-direction: column;
+  gap: var(--spacing-md);
+}
+
+.title {
+  font-size: var(--font-size-md);
+  font-weight: var(--font-weight-semibold);
+  color: var(--text-primary);
+  margin: 0;
+}
+
+.form {
+  display: flex;
+  flex-direction: column;
+  gap: var(--spacing-sm);
+}
+
+.typeRow {
+  display: flex;
+  gap: var(--spacing-xs);
+}
+
+.typeBtn {
+  flex: 1;
+  padding: 0.3rem 0.75rem;
+  font-size: var(--font-size-sm);
+  font-weight: var(--font-weight-medium);
+  color: var(--text-secondary);
+  background: var(--bg-surface-hover);
+  border: 1px solid var(--border-color);
+  border-radius: var(--radius-sm);
+  cursor: pointer;
+  transition: all var(--transition-fast);
+}
+
+.typeBtn:hover {
+  color: var(--text-primary);
+  border-color: var(--border-color-hover);
+}
+
+.typeActive {
+  color: var(--primary);
+  border-color: var(--primary);
+  background: color-mix(in srgb, var(--primary) 10%, var(--bg-surface));
+}
+
+.inputRow {
+  display: flex;
+  gap: var(--spacing-sm);
+  align-items: center;
+}
+
+.priceInput {
+  flex: 1;
+  min-width: 0;
+}
+
+.activeAlerts {
+  display: flex;
+  flex-direction: column;
+  gap: var(--spacing-xs);
+}
+
+.alertItem {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: var(--spacing-sm);
+  padding: var(--spacing-xs) var(--spacing-sm);
+  background: var(--bg-surface-hover);
+  border-radius: var(--radius-sm);
+  font-size: var(--font-size-sm);
+}
+
+.alertTriggered {
+  opacity: 0.5;
+  text-decoration: line-through;
+}
+
+.alertInfo {
+  color: var(--text-secondary);
+}
+
+.removeBtn {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  background: none;
+  border: none;
+  color: var(--text-muted);
+  cursor: pointer;
+  padding: 2px;
+  border-radius: var(--radius-sm);
+  transition: color var(--transition-fast);
+}
+
+.removeBtn:hover {
+  color: var(--danger);
+}

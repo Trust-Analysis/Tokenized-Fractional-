@@ -1,0 +1,150 @@
+.orderBook {
+  padding: 1.5rem;
+  background: var(--color-bg-card);
+  border-radius: 12px;
+  box-shadow: 0 2px 8px rgba(0, 0, 0, 0.1);
+}
+
+.header {
+  font-size: 1.25rem;
+  font-weight: 600;
+  margin-bottom: 1rem;
+  color: var(--color-text-primary);
+}
+
+.loading,
+.error,
+.empty {
+  padding: 2rem;
+  text-align: center;
+  color: var(--color-text-secondary);
+}
+
+.error {
+  color: var(--color-error);
+}
+
+.section {
+  margin-bottom: 1.5rem;
+}
+
+.section:last-child {
+  margin-bottom: 0;
+}
+
+.sectionHeader {
+  font-size: 0.875rem;
+  font-weight: 600;
+  text-transform: uppercase;
+  letter-spacing: 0.05em;
+  margin-bottom: 0.75rem;
+  color: var(--color-text-secondary);
+}
+
+.orderList {
+  display: flex;
+  flex-direction: column;
+  gap: 0.5rem;
+}
+
+/* Scrollable, padded wrapper for the virtualized lists (Issue #594). */
+.virtualList {
+  border: 1px solid var(--color-border, #2a3041);
+  border-radius: 8px;
+  margin-bottom: 0.25rem;
+}
+
+/* The VirtualList positions each row absolutely; rows fill their slot. */
+.orderRow {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  padding: 0 1rem;
+  margin: 0 0.5rem 0.5rem;
+  height: 48px;
+  box-sizing: border-box;
+  background: var(--color-bg-secondary);
+  border-radius: 8px;
+  border-left: 3px solid transparent;
+  transition: all 0.2s ease;
+}
+
+.orderRow.buy {
+  border-left-color: var(--color-success);
+}
+
+.orderRow.sell {
+  border-left-color: var(--color-error);
+}
+
+.orderRow.pending {
+  background: rgba(59, 130, 246, 0.1);
+  border-left-color: var(--color-primary);
+}
+
+.orderInfo {
+  display: flex;
+  flex-direction: column;
+  gap: 0.25rem;
+}
+
+.orderAmount {
+  font-weight: 600;
+  color: var(--color-text-primary);
+}
+
+.orderPrice {
+  font-size: 0.875rem;
+  color: var(--color-text-secondary);
+}
+
+.badgeContainer {
+  display: flex;
+  align-items: center;
+}
+
+.pulsingBadge {
+  display: inline-flex;
+  align-items: center;
+  padding: 0.25rem 0.75rem;
+  font-size: 0.75rem;
+  font-weight: 600;
+  text-transform: uppercase;
+  letter-spacing: 0.05em;
+  background: var(--color-primary);
+  color: white;
+  border-radius: 999px;
+  animation: pulse 2s cubic-bezier(0.4, 0, 0.6, 1) infinite;
+}
+
+@keyframes pulse {
+  0%,
+  100% {
+    opacity: 1;
+  }
+  50% {
+    opacity: 0.5;
+  }
+}
+
+.orderMeta {
+  display: flex;
+  flex-direction: column;
+  align-items: flex-end;
+  gap: 0.25rem;
+}
+
+.orderTime {
+  font-size: 0.75rem;
+  color: var(--color-text-tertiary);
+}
+
+.txLink {
+  font-size: 0.75rem;
+  color: var(--color-primary);
+  text-decoration: none;
+}
+
+.txLink:hover {
+  text-decoration: underline;
+}

@@ -1,0 +1,19 @@
+{
+  "name": "transactions-service",
+  "version": "1.0.0",
+  "description": "Federated Transactions Service for RWA Marketplace",
+  "type": "module",
+  "main": "server.js",
+  "scripts": {
+    "start": "node server.js",
+    "dev": "node --watch server.js"
+  },
+  "dependencies": {
+    "@apollo/server": "^4.10.1",
+    "graphql": "^16.8.1",
+    "graphql-tag": "^2.12.7"
+  },
+  "engines": {
+    "node": ">=18.0.0"
+  }
+}

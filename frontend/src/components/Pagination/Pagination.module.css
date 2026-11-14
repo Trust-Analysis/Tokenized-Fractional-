@@ -1,0 +1,149 @@
+/* Copyright (c) 2026 Tokenized Fractional RWA Marketplace Contributors */
+/* SPDX-License-Identifier: MIT */
+
+.pagination {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  justify-content: space-between;
+  gap: var(--spacing-md, 1rem);
+  padding: var(--spacing-md, 1rem) 0;
+  width: 100%;
+}
+
+.itemCount {
+  font-size: 0.8125rem;
+  color: var(--color-text-muted, #9ca3af);
+  margin: 0;
+  white-space: nowrap;
+}
+
+.controls {
+  display: flex;
+  align-items: center;
+  gap: var(--spacing-xs, 0.25rem);
+}
+
+.pageNumbers {
+  display: flex;
+  align-items: center;
+  gap: 2px;
+}
+
+.pageButton {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  min-width: 36px;
+  height: 36px;
+  padding: 0 0.5rem;
+  background: transparent;
+  border: 1px solid var(--color-border, #2a3041);
+  border-radius: var(--radius-sm, 0.375rem);
+  color: var(--color-text, #e5e7eb);
+  font-size: 0.875rem;
+  cursor: pointer;
+  transition: all 0.15s ease;
+}
+
+.pageButton:hover:not(:disabled) {
+  background: var(--color-surface-hover, #1e2433);
+  border-color: var(--color-primary, #4a9eff);
+}
+
+.pageButton:disabled {
+  opacity: 0.4;
+  cursor: not-allowed;
+}
+
+.pageButton:focus-visible {
+  outline: 2px solid var(--color-primary, #4a9eff);
+  outline-offset: 2px;
+}
+
+.activePage {
+  background: var(--color-primary, #4a9eff);
+  border-color: var(--color-primary, #4a9eff);
+  color: #fff;
+  font-weight: 600;
+}
+
+.activePage:hover:not(:disabled) {
+  background: var(--color-primary-dark, #3a8eef);
+}
+
+.navButton {
+  padding: 0 0.5rem;
+}
+
+.ellipsis {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  min-width: 36px;
+  height: 36px;
+  color: var(--color-text-muted, #9ca3af);
+  font-size: 0.875rem;
+}
+
+.pageSizeWrapper {
+  display: flex;
+  align-items: center;
+  gap: var(--spacing-xs, 0.5rem);
+}
+
+.pageSizeLabel {
+  font-size: 0.8125rem;
+  color: var(--color-text-muted, #9ca3af);
+  white-space: nowrap;
+}
+
+.pageSizeSelect {
+  padding: 0.375rem 0.5rem;
+  background: var(--color-surface, #141824);
+  border: 1px solid var(--color-border, #2a3041);
+  border-radius: var(--radius-sm, 0.375rem);
+  color: var(--color-text, #e5e7eb);
+  font-size: 0.875rem;
+  cursor: pointer;
+}
+
+.pageSizeSelect:focus-visible {
+  outline: 2px solid var(--color-primary, #4a9eff);
+  outline-offset: 2px;
+}
+
+/* Load More mode */
+.loadMoreContainer {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: var(--spacing-md, 1rem);
+  padding: var(--spacing-lg, 1.5rem) 0;
+}
+
+.loadMoreButton {
+  padding: 0.625rem 2rem;
+  background: var(--color-surface-elevated, #1e2433);
+  border: 1px solid var(--color-border, #2a3041);
+  border-radius: var(--radius-sm, 0.375rem);
+  color: var(--color-text, #e5e7eb);
+  font-size: 0.9rem;
+  cursor: pointer;
+  transition: all 0.15s ease;
+}
+
+.loadMoreButton:hover {
+  background: var(--color-surface-hover, #252b3d);
+  border-color: var(--color-primary, #4a9eff);
+}
+
+@media (max-width: 640px) {
+  .pagination {
+    justify-content: center;
+  }
+  .pageSizeWrapper {
+    width: 100%;
+    justify-content: center;
+  }
+}

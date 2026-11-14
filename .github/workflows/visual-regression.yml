@@ -1,0 +1,56 @@
+name: Visual Regression
+
+# Issue #794: flag unintended visual changes to the purchase flow for review.
+# Scoped to frontend paths so an unrelated backend change does not spend a
+# browser download, and so it is safe to make a *required* check later only if
+# it is first made to run on every PR.
+on:
+  pull_request:
+    paths:
+      - 'frontend/**'
+      - '.github/workflows/visual-regression.yml'
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  visual:
+    name: Playwright Visual Regression
+    runs-on: ubuntu-latest
+    defaults:
+      run:
+        working-directory: frontend
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+
+      - name: Set up Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: 20.18.0
+          cache: npm
+          cache-dependency-path: frontend/package-lock.json
+
+      - name: Install dependencies
+        run: npm ci
+
+      - name: Install Playwright browser
+        run: npx playwright install --with-deps chromium
+
+      - name: Run visual regression tests
+        run: npm run test:visual
+
+      # Always publish the evidence: on a failure the reviewer needs to see the
+      # actual/diff images, not just a red check.
+      - name: Upload visual diff artefacts
+        if: ${{ !cancelled() }}
+        uses: actions/upload-artifact@v4
+        with:
+          name: visual-regression-report
+          path: |
+            frontend/playwright-report-visual
+            frontend/e2e/visual/__screenshots__/**/*-actual.png
+            frontend/e2e/visual/__screenshots__/**/*-diff.png
+          if-no-files-found: ignore
+          retention-days: 14

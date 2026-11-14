@@ -1,0 +1,89 @@
+# Assets Service - Federated Schema
+# This service manages real-world asset metadata and ownership
+
+extend schema
+  @link(url: "https://specs.apollo.dev/federation/v2.3",
+        import: ["@key", "@shareable", "@inaccessible", "@override", "@provides", "@external"])
+
+type Asset @key(fields: "contractId") {
+  contractId: ID!
+  title: String!
+  location: String!
+  description: String!
+  assetType: AssetType!
+  totalShares: Int!
+  pricePerShare: Int!
+  availableShares: Int!
+  isPaused: Boolean!
+  documents: [DocumentHash!]!
+  createdAt: String!
+  updatedAt: String!
+  # Extended fields from other services
+  owner: User @provides(fields: "walletAddress")
+  transactions: [Transaction!] @provides(fields: "transactionId type status")
+}
+
+type DocumentHash {
+  name: String!
+  hash: String!
+  mimeType: String
+  uploadedAt: String!
+}
+
+enum AssetType {
+  COMMERCIAL_REAL_ESTATE
+  RESIDENTIAL
+  AGRICULTURAL
+  INFRASTRUCTURE
+  COMMODITIES
+  ART
+  OTHER
+}
+
+input AssetFilter {
+  search: String
+  assetType: AssetType
+  location: String
+  isPaused: Boolean
+}
+
+input AssetInput {
+  title: String!
+  location: String!
+  description: String!
+  assetType: AssetType!
+  totalShares: Int!
+  pricePerShare: Int!
+  availableShares: Int!
+}
+
+type Query {
+  assets(filter: AssetFilter, limit: Int, offset: Int): [Asset!]!
+  asset(contractId: ID!): Asset
+  assetsCount: Int!
+  searchAssets(query: String!, limit: Int): [Asset!]!
+  pendingAssets: [Asset!]!
+  assetStatistics: AssetStatistics!
+}
+
+type AssetStatistics {
+  totalAssets: Int!
+  pendingAssets: Int!
+  totalSharesAvailable: Int!
+  averagePricePerShare: Float!
+  assetsByType: [AssetTypeCount!]!
+}
+
+type AssetTypeCount {
+  assetType: AssetType!
+  count: Int!
+}
+
+type Mutation {
+  createAsset(input: AssetInput!): Asset!
+  updateAsset(contractId: ID!, input: AssetInput!): Asset!
+  deleteAsset(contractId: ID!): Boolean!
+  approveAsset(contractId: ID!): Asset!
+  pauseAsset(contractId: ID!): Asset!
+  unpauseAsset(contractId: ID!): Asset!
+}

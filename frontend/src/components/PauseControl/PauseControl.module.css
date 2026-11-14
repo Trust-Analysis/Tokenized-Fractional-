@@ -1,0 +1,44 @@
+.container {
+  background-color: var(--bg-surface);
+  border: 1px solid var(--border-color);
+  border-radius: var(--radius-md);
+  padding: var(--spacing-lg);
+  display: flex;
+  flex-direction: column;
+  gap: var(--spacing-md);
+}
+
+.heading {
+  font-size: var(--font-size-md);
+  font-weight: var(--font-weight-semibold);
+  color: var(--text-primary);
+  margin: 0;
+}
+
+.statusRow {
+  display: flex;
+  align-items: center;
+  gap: var(--spacing-sm);
+}
+
+.statusLabel {
+  font-size: var(--font-size-sm);
+  color: var(--text-secondary);
+}
+
+.statusValue {
+  font-size: var(--font-size-sm);
+  font-weight: var(--font-weight-semibold);
+  padding: 0.15rem 0.6rem;
+  border-radius: var(--radius-circle);
+}
+
+.active {
+  background-color: var(--success-bg);
+  color: var(--success-text);
+}
+
+.paused {
+  background-color: var(--error-bg);
+  color: var(--error-text);
+}

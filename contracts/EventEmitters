@@ -1,0 +1,356 @@
+#![no_std]
+
+use soroban_sdk::{
+    contract,
+    contractimpl,
+    contracttype,
+    symbol_short,
+    Address,
+    Env,
+    Symbol,
+};
+
+// ============================================================
+// CONTRACT
+// ============================================================
+
+#[contract]
+pub struct EventEmitterContract;
+
+// ============================================================
+// STORAGE TYPES
+// ============================================================
+
+#[contracttype]
+#[derive(Clone)]
+pub enum DataKey {
+    Counter,
+    Balance(Address),
+    Admin,
+}
+
+// ============================================================
+// CONTRACT IMPLEMENTATION
+// ============================================================
+
+#[contractimpl]
+impl EventEmitterContract {
+
+    // --------------------------------------------------------
+    // Initialize the contract
+    // --------------------------------------------------------
+
+    pub fn initialize(env: Env, admin: Address) {
+        admin.require_auth();
+
+        // Store admin address
+        env.storage()
+            .instance()
+            .set(&DataKey::Admin, &admin);
+
+        // Initialize counter
+        env.storage()
+            .instance()
+            .set(&DataKey::Counter, &0u32);
+
+        // Emit initialization event
+        env.events().publish(
+            (symbol_short!("init"),),
+            admin,
+        );
+    }
+
+    // --------------------------------------------------------
+    // Increment counter
+    // --------------------------------------------------------
+
+    pub fn increment(env: Env, user: Address) -> u32 {
+        user.require_auth();
+
+        let current: u32 = env
+            .storage()
+            .instance()
+            .get(&DataKey::Counter)
+            .unwrap_or(0);
+
+        let new_value = current + 1;
+
+        env.storage()
+            .instance()
+            .set(&DataKey::Counter, &new_value);
+
+        // Emit counter event
+        env.events().publish(
+            (symbol_short!("counter"),),
+            new_value,
+        );
+
+        new_value
+    }
+
+    // --------------------------------------------------------
+    // Set balance
+    // --------------------------------------------------------
+
+    pub fn set_balance(
+        env: Env,
+        user: Address,
+        amount: i128,
+    ) {
+        user.require_auth();
+
+        env.storage()
+            .persistent()
+            .set(
+                &DataKey::Balance(user.clone()),
+                &amount,
+            );
+
+        // Emit balance update event
+        env.events().publish(
+            (symbol_short!("balance"),),
+            (user, amount),
+        );
+    }
+
+    // --------------------------------------------------------
+    // Transfer
+    // --------------------------------------------------------
+
+    pub fn transfer(
+        env: Env,
+        from: Address,
+        to: Address,
+        amount: i128,
+    ) {
+        from.require_auth();
+
+        if amount <= 0 {
+            panic!("Amount must be greater than zero");
+        }
+
+        let from_balance: i128 = env
+            .storage()
+            .persistent()
+            .get(&DataKey::Balance(from.clone()))
+            .unwrap_or(0);
+
+        if from_balance < amount {
+            panic!("Insufficient balance");
+        }
+
+        let to_balance: i128 = env
+            .storage()
+            .persistent()
+            .get(&DataKey::Balance(to.clone()))
+            .unwrap_or(0);
+
+        let new_from_balance = from_balance - amount;
+        let new_to_balance = to_balance + amount;
+
+        // Update sender balance
+        env.storage()
+            .persistent()
+            .set(
+                &DataKey::Balance(from.clone()),
+                &new_from_balance,
+            );
+
+        // Update receiver balance
+        env.storage()
+            .persistent()
+            .set(
+                &DataKey::Balance(to.clone()),
+                &new_to_balance,
+            );
+
+        // ----------------------------------------------------
+        // TRANSFER EVENT
+        // ----------------------------------------------------
+
+        env.events().publish(
+            (symbol_short!("transfer"),),
+            (from, to, amount),
+        );
+    }
+
+    // --------------------------------------------------------
+    // Deposit
+    // --------------------------------------------------------
+
+    pub fn deposit(
+        env: Env,
+        user: Address,
+        amount: i128,
+    ) {
+        user.require_auth();
+
+        if amount <= 0 {
+            panic!("Invalid deposit amount");
+        }
+
+        let current_balance: i128 = env
+            .storage()
+            .persistent()
+            .get(&DataKey::Balance(user.clone()))
+            .unwrap_or(0);
+
+        let new_balance = current_balance + amount;
+
+        env.storage()
+            .persistent()
+            .set(
+                &DataKey::Balance(user.clone()),
+                &new_balance,
+            );
+
+        // Emit deposit event
+        env.events().publish(
+            (symbol_short!("deposit"),),
+            (user, amount),
+        );
+    }
+
+    // --------------------------------------------------------
+    // Withdraw
+    // --------------------------------------------------------
+
+    pub fn withdraw(
+        env: Env,
+        user: Address,
+        amount: i128,
+    ) {
+        user.require_auth();
+
+        if amount <= 0 {
+            panic!("Invalid withdrawal amount");
+        }
+
+        let current_balance: i128 = env
+            .storage()
+            .persistent()
+            .get(&DataKey::Balance(user.clone()))
+            .unwrap_or(0);
+
+        if current_balance < amount {
+            panic!("Insufficient balance");
+        }
+
+        let new_balance = current_balance - amount;
+
+        env.storage()
+            .persistent()
+            .set(
+                &DataKey::Balance(user.clone()),
+                &new_balance,
+            );
+
+        // Emit withdrawal event
+        env.events().publish(
+            (symbol_short!("withdraw"),),
+            (user, amount),
+        );
+    }
+
+    // --------------------------------------------------------
+    // Custom event
+    // --------------------------------------------------------
+
+    pub fn custom_event(
+        env: Env,
+        user: Address,
+        message: Symbol,
+    ) {
+        user.require_auth();
+
+        // Emit custom event
+        env.events().publish(
+            (symbol_short!("custom"),),
+            (user, message),
+        );
+    }
+
+    // --------------------------------------------------------
+    // User registration
+    // --------------------------------------------------------
+
+    pub fn register(
+        env: Env,
+        user: Address,
+    ) {
+        user.require_auth();
+
+        // Initialize user balance
+        env.storage()
+            .persistent()
+            .set(
+                &DataKey::Balance(user.clone()),
+                &0i128,
+            );
+
+        // Emit registration event
+        env.events().publish(
+            (symbol_short!("register"),),
+            user,
+        );
+    }
+
+    // --------------------------------------------------------
+    // Admin action
+    // --------------------------------------------------------
+
+    pub fn admin_action(
+        env: Env,
+        action: Symbol,
+    ) {
+        let admin: Address = env
+            .storage()
+            .instance()
+            .get(&DataKey::Admin)
+            .unwrap();
+
+        admin.require_auth();
+
+        // Emit admin event
+        env.events().publish(
+            (symbol_short!("admin"),),
+            (admin, action),
+        );
+    }
+
+    // --------------------------------------------------------
+    // Read counter
+    // --------------------------------------------------------
+
+    pub fn get_counter(env: Env) -> u32 {
+        env.storage()
+            .instance()
+            .get(&DataKey::Counter)
+            .unwrap_or(0)
+    }
+
+    // --------------------------------------------------------
+    // Read balance
+    // --------------------------------------------------------
+
+    pub fn get_balance(
+        env: Env,
+        user: Address,
+    ) -> i128 {
+        env.storage()
+            .persistent()
+            .get(&DataKey::Balance(user))
+            .unwrap_or(0)
+    }
+
+    // --------------------------------------------------------
+    // Get admin
+    // --------------------------------------------------------
+
+    pub fn get_admin(env: Env) -> Address {
+        env.storage()
+            .instance()
+            .get(&DataKey::Admin)
+            .unwrap()
+    }
+}
