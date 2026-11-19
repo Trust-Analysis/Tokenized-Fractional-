@@ -1,0 +1,41 @@
+name: Feature Request
+description: Suggest an idea or enhancement for Tokenized Fractional.
+title: "[Feature]: "
+labels: ["enhancement"]
+body:
+  - type: markdown
+    attributes:
+      value: |
+        Thank you for suggesting a feature! Please provide clear details and context.
+  - type: textarea
+    id: problem
+    attributes:
+      label: Problem Statement
+      description: What problem does this feature solve?
+      placeholder: I'm always frustrated when [...]
+    validations:
+      required: true
+  - type: textarea
+    id: solution
+    attributes:
+      label: Proposed Solution
+      description: Describe the solution you would like to see implemented.
+      placeholder: A clear and concise description of what you want to happen.
+    validations:
+      required: true
+  - type: textarea
+    id: alternatives
+    attributes:
+      label: Alternatives Considered
+      description: What alternative solutions, designs, or workarounds did you consider?
+      placeholder: A clear description of alternatives.
+  - type: dropdown
+    id: scope
+    attributes:
+      label: Scope
+      options:
+        - Small Enhancement
+        - Medium Feature
+        - Major Architectural Addition
+    validations:
+      required: true

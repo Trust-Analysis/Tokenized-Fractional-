@@ -1,0 +1,25 @@
+name: Documentation Request
+description: Propose improvements, additions, or updates to documentation.
+title: "[Docs]: "
+labels: ["documentation"]
+body:
+  - type: textarea
+    id: summary
+    attributes:
+      label: Target Documentation Area
+      description: Which part of the documentation needs attention?
+      placeholder: e.g. README.md, CONTRIBUTING.md, contract docs, API guides.
+    validations:
+      required: true
+  - type: textarea
+    id: current_issue
+    attributes:
+      label: What is missing or outdated?
+      description: Describe the outdated section, inaccurate guide, or missing documentation.
+    validations:
+      required: true
+  - type: textarea
+    id: proposed_changes
+    attributes:
+      label: Proposed Revisions
+      description: Provide the suggested text or outline of changes if available.
