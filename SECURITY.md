@@ -44,6 +44,7 @@ findings have been remediated (see below).
 
 ### Audit plan
 
+- [x] Publish comprehensive audit package, STRIDE threat model, and privileged-role matrix: see [Audit Readiness & Privileged Role Matrix](docs/audit-readiness.md).
 - [ ] Freeze the contract's public interface for the audit window.
 - [ ] Engage an independent auditor with Soroban/Rust experience.
 - [ ] Give the auditor the fund-handling and admin surface: `buy_shares`,
