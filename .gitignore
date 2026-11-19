@@ -48,9 +48,10 @@ PR_DESCRIPTION_ISSUE_*.md
 # Contract-manifest signing key (Issue #792) — release secret, never commit
 .contract-manifest-signing-key.json
 
-# Python bytecode
+# Python bytecode and ad-hoc scripts
 __pycache__/
 *.pyc
+/*.py
 
 # ELK stack data directories
 /elk/data/
