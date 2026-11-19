@@ -3,6 +3,14 @@ node_modules
 *.local
 *.log
 __tests__
+test
+tests
 coverage
 .DS_Store
 data.json
+*.md
+docs
+.git
+.github
+Dockerfile
+.dockerignore

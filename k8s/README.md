@@ -9,7 +9,7 @@ between environments without hand-editing YAML.
 k8s/
 ├── kustomization.yaml          # base — lists the canonical manifests below
 ├── namespace.yaml
-├── secrets.yaml                # placeholders; fill per environment (never commit real values)
+├── secrets.example.yaml        # TEMPLATE ONLY — not listed as a base resource, never applied
 ├── backend-configmap.yaml      # ┐
 ├── backend-deployment.yaml     # │ canonical manifests (source of truth),
 ├── backend-service.yaml        # │ referenced in place by the base
@@ -62,6 +62,72 @@ environments are unaffected.
 2. Edit the hostname in `ingress-patch.yaml` and adjust replicas/tags in
    `kustomization.yaml` / patch files as needed.
 3. `kubectl apply -k k8s/overlays/<new-env>`
+
+## Secret provisioning
+
+`secrets.example.yaml` is a **template only** — it is intentionally left out of
+`k8s/kustomization.yaml`'s `resources`, so no `kubectl apply -k` run (base or
+any overlay) ever creates a Secret from it, and the placeholder values in it
+(`REPLACE_WITH_STRONG_RANDOM_KEY`, `REPLACE_WITH_YOUR_CONTRACT_ID`) can never
+end up live in a cluster by accident. The Deployments reference the Secrets
+(`rwa-backend-secrets`, `rwa-frontend-secrets`) by name via `secretRef`, so the
+Pods simply fail to start until one of the following has provisioned them:
+
+- **External Secrets Operator** — sync `rwa-backend-secrets` /
+  `rwa-frontend-secrets` from your existing secret store (Vault, AWS/GCP/Azure
+  secrets manager, etc.) via an `ExternalSecret` resource per overlay.
+- **Sealed Secrets** — encrypt the real values with `kubeseal` against the
+  target cluster's public key and commit the resulting `SealedSecret` (safe to
+  commit; only the in-cluster controller can decrypt it) as an overlay
+  resource.
+- **SOPS** — encrypt a copy of `secrets.example.yaml` with `sops` (age/KMS/PGP)
+  and decrypt-and-apply as part of your deploy pipeline (e.g.
+  `sops -d secrets.enc.yaml | kubectl apply -f -`).
+- **Manual bootstrap** (dev/local only) — generate and apply once, out of
+  band:
+  ```bash
+  kubectl create secret generic rwa-backend-secrets -n rwa-marketplace \
+    --from-literal=ADMIN_API_KEY="$(openssl rand -hex 32)"
+  kubectl create secret generic rwa-frontend-secrets -n rwa-marketplace \
+    --from-literal=VITE_CONTRACT_ID="<your-contract-id>"
+  ```
+
+Before any of the above, verify a rendered manifest set carries no leftover
+placeholder:
+
+```bash
+kubectl kustomize k8s/overlays/<env> | k8s/scripts/check-secret-placeholders.sh
+```
+
+## Image tags and rollback
+
+Base `backend-deployment.yaml` / `frontend-deployment.yaml` intentionally
+reference a non-pullable `:unset` tag — every overlay's `kustomization.yaml`
+pins a real tag via its `images:` stanza (`dev`, `staging`, `stable`, or a
+specific release/digest), so `:latest` never appears anywhere in `k8s/` and a
+raw `kubectl apply -f k8s/<file>.yaml` cannot accidentally deploy an
+unpinned image.
+
+CI/CD should build and push an immutable, versioned tag (e.g. the release tag
+or `git sha`) and update the target overlay's `images.newTag` to that value as
+part of promotion — not retag `stable`/`dev` in place.
+
+**To roll back:**
+
+```bash
+# Point the overlay at the previous known-good tag/digest, then re-apply.
+kubectl set image deployment/rwa-backend rwa-backend=rwa-backend:<previous-tag> -n rwa-marketplace
+kubectl rollout status deployment/rwa-backend -n rwa-marketplace
+
+# Or, with kustomize: edit `images.newTag` in the overlay's kustomization.yaml
+# back to the previous tag and re-apply, which keeps the overlay as the
+# source of truth instead of drifting from an imperative `set image`.
+kubectl apply -k k8s/overlays/<env>
+
+# Kubernetes also tracks rollout history directly:
+kubectl rollout undo deployment/rwa-backend -n rwa-marketplace
+kubectl rollout undo deployment/rwa-frontend -n rwa-marketplace
+```
 
 ## Related infrastructure
 

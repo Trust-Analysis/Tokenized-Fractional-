@@ -28,7 +28,10 @@ spec:
         fsGroup: 1001
       containers:
         - name: rwa-frontend
-          image: rwa-frontend:latest
+          # No default tag is pullable here on purpose — always apply via an
+          # overlay (k8s/overlays/<env>), which pins a real, immutable tag
+          # through its `images:` stanza. See k8s/README.md.
+          image: rwa-frontend:unset
           imagePullPolicy: IfNotPresent
           ports:
             - containerPort: 80

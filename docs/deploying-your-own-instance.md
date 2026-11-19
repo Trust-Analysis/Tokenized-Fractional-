@@ -112,7 +112,9 @@ has its own CSP settings (`CSP_*` variables in `backend/.env.example`).
 
 Not using Render? The same configuration applies to
 [Kubernetes](kubernetes-deployment.md) (replace `rwa.example.com` in
-`k8s/ingress.yaml` and the values in `k8s/secrets.yaml`) or to a self-hosted
+`k8s/ingress.yaml`, and provision real secrets per
+`k8s/README.md#secret-provisioning` instead of applying
+`k8s/secrets.example.yaml`'s placeholder values) or to a self-hosted
 Nginx server ([README → Self-Hosted HTTPS](../README.md#8-self-hosted-https-with-nginx),
 replace `example.com` in `nginx/nginx.tls.conf`). Terraform for AWS lives in
 `terraform/`; review `variables.tf` before applying.
