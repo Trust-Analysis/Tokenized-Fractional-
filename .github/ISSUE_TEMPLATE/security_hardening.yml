@@ -1,0 +1,33 @@
+name: Security Hardening Request
+description: Propose non-vulnerability defensive hardening or security enhancements.
+title: "[Security]: "
+labels: ["security", "enhancement"]
+body:
+  - type: markdown
+    attributes:
+      value: |
+        > [!IMPORTANT]
+        > **Do not report security vulnerabilities here.**
+        > If you have discovered an active vulnerability, please follow our [Security Policy](https://github.com/Trust-Analysis/Tokenized-Fractional-/blob/main/SECURITY.md) to disclose privately.
+  - type: textarea
+    id: component
+    attributes:
+      label: Target Component
+      description: Which contracts, backend modules, or CI workflows does this hardening target?
+      placeholder: e.g. contracts/fractional_vault, backend/auth, .github/workflows
+    validations:
+      required: true
+  - type: textarea
+    id: threat_vector
+    attributes:
+      label: Defensive Gap / Threat Vector
+      description: What potential attack vector or defense-in-depth gap does this address?
+    validations:
+      required: true
+  - type: textarea
+    id: proposed_hardening
+    attributes:
+      label: Proposed Hardening Measure
+      description: Describe the security mitigation, invariant check, or validation logic.
+    validations:
+      required: true

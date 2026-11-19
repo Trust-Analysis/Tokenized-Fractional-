@@ -1,0 +1,17 @@
+# CODEOWNERS for Tokenized Fractional
+# Maintainer: @Fatimasanusi
+
+# Default fallback maintainer
+* @Fatimasanusi
+
+# Smart contracts
+/contracts/ @Fatimasanusi
+
+# Backend Authentication & Security
+/backend/auth* @Fatimasanusi
+
+# CI/CD and Governance Workflows
+/.github/ @Fatimasanusi
+
+# Security Policy
+/SECURITY.md @Fatimasanusi

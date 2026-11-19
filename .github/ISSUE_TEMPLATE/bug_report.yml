@@ -1,0 +1,59 @@
+name: Bug Report
+description: File a bug report to help us improve Tokenized Fractional.
+title: "[Bug]: "
+labels: ["bug"]
+body:
+  - type: markdown
+    attributes:
+      value: |
+        Thanks for taking the time to report a bug! Please fill out the form below to help us diagnose and resolve the issue.
+  - type: textarea
+    id: description
+    attributes:
+      label: Description
+      description: What happened? What did you expect to happen instead?
+      placeholder: Provide a clear and concise description of the bug.
+    validations:
+      required: true
+  - type: textarea
+    id: steps
+    attributes:
+      label: Steps to Reproduce
+      description: Step-by-step instructions to reproduce the issue.
+      placeholder: |
+        1. Go to '...'
+        2. Click on '....'
+        3. Scroll down to '....'
+        4. See error
+    validations:
+      required: true
+  - type: textarea
+    id: environment
+    attributes:
+      label: Environment
+      description: Provide runtime versions and operating system information.
+      placeholder: |
+        - OS: [e.g. macOS / Ubuntu / Windows]
+        - Browser (if frontend): [e.g. Chrome 120]
+        - Node.js Version: [e.g. 18.x / 20.x]
+        - Rust / Soroban CLI Version: [e.g. Soroban CLI 21.0]
+    validations:
+      required: true
+  - type: dropdown
+    id: severity
+    attributes:
+      label: Severity
+      description: How critical is this issue?
+      options:
+        - Cosmetic / UI Glitch
+        - Functional (Feature partially degraded)
+        - High (Blocks critical workflow)
+        - Crash / Panic
+    validations:
+      required: true
+  - type: textarea
+    id: logs
+    attributes:
+      label: Relevant Logs & Screenshots
+      description: Please paste terminal logs, console stack traces, or attach screenshots.
+      render: shell
