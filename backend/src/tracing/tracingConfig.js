@@ -12,7 +12,7 @@
 
 import { NodeTracerProvider } from '@opentelemetry/sdk-node';
 import { getNodeAutoInstrumentations } from '@opentelemetry/auto-instrumentations-node';
-import { BatchSpanProcessor } from '@opentelemetry/sdk-trace-node';
+import { BatchSpanProcessor, ParentBasedSampler, TraceIdRatioBasedSampler } from '@opentelemetry/sdk-trace-node';
 import { OTLPTraceExporter } from '@opentelemetry/exporter-trace-otlp-http';
 import { trace, context, metrics } from '@opentelemetry/api';
 import { MeterProvider, PeriodicExportingMetricReader } from '@opentelemetry/sdk-metrics';
@@ -70,10 +70,10 @@ export function initializeTracing() {
       })
     );
 
-    // Create tracer provider
+    // Create tracer provider with ParentBased(TraceIdRatioBased(sampleRate))
     const tracerProvider = new NodeTracerProvider({
       resource,
-      sampler: createProbabilitySampler(sampleRate),
+      sampler: createParentBasedSampler(sampleRate),
     });
 
     // Configure exporter based on environment variable
@@ -144,14 +144,65 @@ export function initializeTracing() {
 }
 
 /**
- * Create a probability sampler
+ * Create a ParentBased(TraceIdRatioBased(p)) sampler
+ *
+ * Ensures consistent sampling across distributed services (gateway -> subgraph -> services)
+ * by adhering to the OpenTelemetry specification:
+ * 1. Downstream services follow the parent's sampling decision (ParentBased).
+ * 2. Root spans are deterministically sampled using trace ID ratio hashing.
+ * 3. Tail sampling in the collector ensures errors and slow requests are preserved.
+ *
+ * @param {number} probability - Sampling ratio between 0.0 and 1.0
+ * @returns {object} Sampler instance
  */
-function createProbabilitySampler(probability) {
+export function createParentBasedSampler(probability) {
+  const ratio = Math.max(0, Math.min(1, typeof probability === 'number' ? probability : 0.1));
+
+  try {
+    if (typeof ParentBasedSampler === 'function' && typeof TraceIdRatioBasedSampler === 'function') {
+      return new ParentBasedSampler({
+        root: new TraceIdRatioBasedSampler(ratio),
+      });
+    }
+  } catch (e) {
+    // Fall through to deterministic implementation
+  }
+
+  // Deterministic TraceIdRatioBased sampler with parent-based propagation
   return {
-    shouldSample: () => ({
-      decision: Math.random() < probability ? 2 : 1, // 2=RECORD_AND_SAMPLE, 1=NOT_RECORD
-    }),
-    toString: () => `ProbabilitySampler(${probability})`,
+    shouldSample: (parentContext, traceId, spanName, spanKind, attributes, links) => {
+      // 1. If parent span exists, honor parent's sampling decision
+      if (parentContext) {
+        const parentSpan = trace.getSpan(parentContext);
+        if (parentSpan) {
+          const parentContextData = parentSpan.spanContext();
+          if (parentContextData && typeof parentContextData.traceFlags === 'number') {
+            const isSampled = (parentContextData.traceFlags & 1) === 1;
+            return {
+              decision: isSampled ? 2 : 1, // 2 = RECORD_AND_SAMPLE, 1 = NOT_RECORD
+            };
+          }
+        }
+      }
+
+      // 2. Deterministic root sampling based on traceId (hash lower 64 bits)
+      if (traceId && typeof traceId === 'string' && traceId.length >= 16) {
+        const idSlice = traceId.slice(-8);
+        const intVal = parseInt(idSlice, 16);
+        if (!Number.isNaN(intVal)) {
+          const threshold = Math.floor(0xffffffff * ratio);
+          return {
+            decision: intVal < threshold ? 2 : 1,
+          };
+        }
+      }
+
+      // 3. Fallback for edge cases without traceId
+      return {
+        decision: ratio >= 1.0 ? 2 : (ratio <= 0 ? 1 : 2),
+      };
+    },
+    toString: () => `ParentBased(TraceIdRatioBased(${ratio}))`,
   };
 }
 
