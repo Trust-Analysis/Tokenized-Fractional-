@@ -59,3 +59,6 @@ __pycache__/
 # the CI job uploads it as a build artifact rather than committing it)
 docs/chaos-engineering/latest-run.json
 backend/chaos-data-*.json
+
+# One-off fix scripts (ad-hoc, Windows-path) — issue #1062
+*.py

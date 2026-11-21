@@ -132,7 +132,7 @@ export function createTenantAdminRoutes(getTenantService, adminAuth, options = {
       const tenant = await getTenantService().updateTenantQuota(
         req.params.tenantId,
         { maxApiRequestsPerMin },
-        { updatedBy: req.headers['x-api-key'] ? 'admin-api' : 'unknown', reason }
+        { updatedBy: req.headers['x-api-key'] ? 'admin-api' : 'unknown', reason },
       );
       res.json({ data: tenant, message: 'Tenant quota updated' });
     } catch (error) {

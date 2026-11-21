@@ -43,7 +43,8 @@ export function getVaultMetricsRefreshIntervalMs(env = process.env) {
  *          serves a live VIEW instead, so there is nothing to refresh).
  */
 export async function refreshVaultMetrics(db, logger = console) {
-  const isPostgres = db?.client?.config?.client === 'pg' || db?.client?.config?.client === 'postgresql';
+  const isPostgres =
+    db?.client?.config?.client === 'pg' || db?.client?.config?.client === 'postgresql';
   if (!isPostgres) {
     return { refreshed: false, durationMs: 0, view: MATERIALIZED_VIEW_NAME };
   }
@@ -54,7 +55,7 @@ export async function refreshVaultMetrics(db, logger = console) {
 
   logger.info?.(
     { view: MATERIALIZED_VIEW_NAME, durationMs },
-    'Materialized view refreshed in background'
+    'Materialized view refreshed in background',
   );
 
   return { refreshed: true, durationMs, view: MATERIALIZED_VIEW_NAME };
@@ -68,7 +69,11 @@ export async function refreshVaultMetrics(db, logger = console) {
  * @param {Object} [logger]
  * @param {number} [intervalMs] - Defaults to getVaultMetricsRefreshIntervalMs()
  */
-export function startVaultMetricsRefreshCron(getDb, logger = console, intervalMs) {
+export function startVaultMetricsRefreshCron(
+  getDb,
+  logger = console,
+  intervalMs = getVaultMetricsRefreshIntervalMs(),
+) {
   const interval = intervalMs ?? getVaultMetricsRefreshIntervalMs();
 
   return setInterval(async () => {
