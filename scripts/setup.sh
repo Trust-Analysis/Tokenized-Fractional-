@@ -230,3 +230,21 @@ if [ "${1:-}" = "--gitleaks" ]; then
   install_gitleaks_helper
   exit $?
 fi
+
+# Issue #1106: read toolchain manifest and support --env-only parity mode
+sync_env_from_manifest() {
+  node -e "
+    const fs = require('node:fs');
+    const m = JSON.parse(fs.readFileSync('scripts/toolchain.json', 'utf8'));
+    for (const e of m.envFiles || []) {
+      if (fs.existsSync(e.source) && !fs.existsSync(e.target)) {
+        fs.copyFileSync(e.source, e.target);
+        console.log('Created ' + e.target + ' from ' + e.source);
+      }
+    }
+  "
+}
+if [ "${1:-}" = "--env-only" ]; then
+  sync_env_from_manifest
+  exit 0
+fi
