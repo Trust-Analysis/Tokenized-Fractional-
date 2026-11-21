@@ -17,6 +17,17 @@ k8s/
 ├── frontend-deployment.yaml    # │
 ├── frontend-service.yaml       # ┘
 ├── ingress.yaml                # base ingress (default host)
+├── backend-serviceaccount.yaml # per-workload identities, no API token mounted
+├── frontend-serviceaccount.yaml
+├── backend-pdb.yaml            # minAvailable: 1
+├── frontend-pdb.yaml
+├── backend-hpa.yaml            # CPU + RPS
+├── frontend-hpa.yaml
+├── networkpolicy-default-deny.yaml
+├── networkpolicy-allow-dns.yaml
+├── networkpolicy-allow-ingress-backend.yaml
+├── networkpolicy-allow-ingress-frontend.yaml
+├── networkpolicy-allow-backend-datastores.yaml
 └── overlays/
     ├── dev/                    # host: rwa.dev.example.com,    1 replica, tag: dev
     ├── staging/                # host: rwa.staging.example.com, 1 replica, tag: staging
@@ -62,6 +73,28 @@ environments are unaffected.
 2. Edit the hostname in `ingress-patch.yaml` and adjust replicas/tags in
    `kustomization.yaml` / patch files as needed.
 3. `kubectl apply -k k8s/overlays/<new-env>`
+
+## Resilience, scaling and network isolation
+
+- **PodDisruptionBudgets** (`minAvailable: 1` in the base/prod) stop a node
+  drain from evicting both replicas of a workload. Dev and staging run one
+  replica, so their overlays patch `minAvailable: 0` to keep drains possible.
+- **HorizontalPodAutoscalers** scale each Deployment between 2 and 10 replicas
+  (1–3 in dev/staging) on CPU utilisation (70%) and an
+  `http_requests_per_second` pod metric (10 RPS per pod). `metrics-server` and
+  a Prometheus Adapter exposing that pod metric are prerequisites; the HPA
+  reports `MissingMetrics` for the RPS signal until the adapter is installed.
+  Once an HPA is applied it owns the replica count — the Deployment's
+  `replicas` field only matters for the raw `kubectl apply -f` flow.
+- **NetworkPolicies** default-deny ingress and egress in the namespace, then
+  allow only: DNS to `kube-dns`; the nginx ingress controller (and the
+  frontend pod) to the backend on 3001; the ingress controller to the
+  frontend on 80; and backend egress to PostgreSQL (5432) and Redis (6379).
+  The datastore policy uses `10.0.0.0/8` as the example private VPC CIDR —
+  replace it in an overlay with the actual Postgres/Redis subnet CIDRs for
+  your deployment (Render/AWS endpoints are outside the cluster). Add a
+  separate egress allow for any other external API (e.g. HTTPS to a Stellar
+  RPC host) that a deployment requires.
 
 ## Secret provisioning
 

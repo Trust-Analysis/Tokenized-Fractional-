@@ -8,9 +8,9 @@ services:
     startCommand: npm start
     healthCheckPath: /health
     envVars:
-      # Pinned to match .nvmrc / .node-version and CI (node-version: 20)
+      # Pinned to match .nvmrc / .node-version and CI (node-version-file: '.nvmrc')
       - key: NODE_VERSION
-        value: 20.18.0
+        value: 26.13.1
       - key: NODE_ENV
         value: production
       - key: PORT
@@ -54,9 +54,9 @@ services:
     startCommand: npm start
     healthCheckPath: /health
     envVars:
-      # Pinned to match .nvmrc / .node-version and CI (node-version: 20)
+      # Pinned to match .nvmrc / .node-version and CI (node-version-file: '.nvmrc')
       - key: NODE_VERSION
-        value: 20.18.0
+        value: 26.13.1
       - key: NODE_ENV
         value: production
       - key: PORT
@@ -104,9 +104,9 @@ services:
         source: /*
         destination: /index.html
     envVars:
-      # Pinned to match .nvmrc / .node-version and CI (node-version: 20)
+      # Pinned to match .nvmrc / .node-version and CI (node-version-file: '.nvmrc')
       - key: NODE_VERSION
-        value: 20.18.0
+        value: 26.13.1
       - key: VITE_CONTRACT_ID
         sync: false   # set in Render dashboard
       - key: VITE_RPC_URL
@@ -142,9 +142,9 @@ services:
         source: /*
         destination: /index.html
     envVars:
-      # Pinned to match .nvmrc / .node-version and CI (node-version: 20)
+      # Pinned to match .nvmrc / .node-version and CI (node-version-file: '.nvmrc')
       - key: NODE_VERSION
-        value: 20.18.0
+        value: 26.13.1
       - key: VITE_CONTRACT_ID
         sync: false   # set in Render dashboard
       - key: VITE_RPC_URL

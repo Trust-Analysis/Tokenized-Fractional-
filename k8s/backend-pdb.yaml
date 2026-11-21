@@ -1,0 +1,15 @@
+apiVersion: policy/v1
+kind: PodDisruptionBudget
+metadata:
+  name: rwa-backend-pdb
+  namespace: rwa-marketplace
+  labels:
+    app: rwa-backend
+    component: backend
+spec:
+  # A voluntary drain must never take down both backend replicas (Issue #1094).
+  # Single-replica overlays patch this to 0 so their one pod can still be evicted.
+  minAvailable: 1
+  selector:
+    matchLabels:
+      app: rwa-backend
