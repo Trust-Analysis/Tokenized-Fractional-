@@ -77,7 +77,7 @@ mod tests {
         // 6. Assert buyer receives $10,000
         //
         // let c = RwaMarketplaceClient::new(&te.env, &te.contract_id);
-        // c.init(&te.admin, &te.token_id, &100, &1000, &None);
+        // c.init(&te.admin, &te.token_id, &100, &1000, &None, &172_800);
         // 
         // let buyer = Address::generate(&te.env);
         // mint_tokens(&te, &buyer, 100_000);
@@ -108,7 +108,7 @@ mod tests {
         
         // Would implement:
         // let c = RwaMarketplaceClient::new(&te.env, &te.contract_id);
-        // c.init(&te.admin, &te.token_id, &100, &1000, &None);
+        // c.init(&te.admin, &te.token_id, &100, &1000, &None, &172_800);
         // 
         // let buyer1 = Address::generate(&te.env);
         // let buyer2 = Address::generate(&te.env);

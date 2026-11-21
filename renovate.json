@@ -7,7 +7,7 @@
     ":timezone(Etc/UTC)"
   ],
   "schedule": ["before 6am on monday"],
-  "enabledManagers": ["npm", "cargo"],
+  "enabledManagers": ["npm", "cargo", "docker"],
   "automerge": false,
   "platformAutomerge": false,
   "prConcurrentLimit": 5,
@@ -65,6 +65,13 @@
       "matchDepTypes": ["devDependencies"],
       "groupName": "npm devDependencies",
       "addLabels": ["dependencies", "deps:npm", "deps:dev"]
+    },
+    {
+      "description": "Docker base images stay digest-pinned so a tag can never be silently retagged under us; Renovate proposes digest updates on the weekly schedule.",
+      "matchManagers": ["docker"],
+      "pinDigests": true,
+      "groupName": "docker base images",
+      "addLabels": ["dependencies", "deps:docker"]
     },
     {
       "description": "Nothing is merged by a bot. Every dependency PR waits for a green required check and a human merge — see docs/dependency-updates.md.",

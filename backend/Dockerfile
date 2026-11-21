@@ -1,11 +1,12 @@
 # ── Stage 1: Install production dependencies ───────────────────────────────────
-FROM node:20-alpine AS deps
+# Node 26 (Active LTS). Tag + digest pin; Renovate updates both together.
+FROM node:26.13.1-alpine@sha256:6bd9ab43c0ec0190ca7b2d193906cb8b7edf6e7f4afa43ddeccd6452710bffb5 AS deps
 WORKDIR /app
 COPY package*.json ./
 RUN npm ci --omit=dev
 
 # ── Stage 2: Production runtime ────────────────────────────────────────────────
-FROM node:20-alpine AS runtime
+FROM node:26.13.1-alpine@sha256:6bd9ab43c0ec0190ca7b2d193906cb8b7edf6e7f4afa43ddeccd6452710bffb5 AS runtime
 WORKDIR /app
 
 # Security: run as non-root

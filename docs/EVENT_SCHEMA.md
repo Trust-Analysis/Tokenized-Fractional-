@@ -120,6 +120,14 @@ The contract ID is always the marketplace contract itself.
 | `EventOperationCancelled` | `cancel_operation()` | `action: AdminAction` |
 | `EventOperationExecuted` | `execute_operation()` | `action: AdminAction` |
 
+The delay applied by `schedule_operation()` is read from instance storage via
+`get_timelock_delay()`. `init` accepts a `timelock_delay` in seconds between
+86,400 (24 hours) and 2,592,000 (30 days); deployments that predate the stored
+setting fall back to 172,800 seconds (48 hours). A change to the delay uses
+`AdminAction::SetTimelockDelay(u64)` and is subject to the currently configured
+delay, so `execute_after` always reflects the setting active when the operation
+was scheduled.
+
 ---
 
 ## Off-Chain Indexing Guide

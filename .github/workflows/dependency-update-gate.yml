@@ -48,7 +48,7 @@ jobs:
       - name: Setup Node
         uses: actions/setup-node@v4
         with:
-          node-version: '20'
+          node-version-file: '.nvmrc'
 
       # `npm ci` fails when package.json and package-lock.json disagree, and
       # --dry-run makes that a pure assertion with no install side effects.
@@ -124,7 +124,7 @@ jobs:
       - name: Setup Node
         uses: actions/setup-node@v4
         with:
-          node-version: '20'
+          node-version-file: '.nvmrc'
 
       - name: Root test suite (Python)
         run: python3 -m unittest discover -s tests -v

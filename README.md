@@ -155,7 +155,7 @@ graph TB
 
 ## Prerequisites
 
-- Node.js 20.18.0 (pinned in `.nvmrc` / `.node-version`; CI and the Render Blueprint pin the same version — any 20.x >= 20.18.0 works locally)
+- Node.js 26.13.1 (Active LTS; pinned in `.nvmrc` / `.node-version`, used by CI via `node-version-file`, and pinned in the Render Blueprint and Dockerfiles)
 - Rust
 - Soroban CLI (`cargo install --locked soroban-cli`)
 - Freighter Wallet browser extension
@@ -272,7 +272,8 @@ soroban contract invoke \
   --admin $(soroban keys address admin) \
   --payment_token CDLZFC3SYJYDZT7K67VZ75HPJVIEUVNIXF47ZG2FB2RMQQVU2HHGCYSC \
   --price 10000000 \
-  --total_shares 100
+  --total_shares 100 \
+  --timelock_delay 172800
 ```
 
 The allowlist is **enabled by default**, so immediately after `init` nobody can buy —

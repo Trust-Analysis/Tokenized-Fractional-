@@ -18,6 +18,9 @@ contractmeta!(key = "sep", val = "41");
 const DIVIDEND_TYPE_CASH: u32 = 0;
 const DIVIDEND_TYPE_TOKEN_BASED: u32 = 1;
 const DIVIDEND_WITHHOLDING_MAX_BPS: u32 = 10_000;
+const MIN_TIMELOCK_DELAY: u64 = 86_400;
+const MAX_TIMELOCK_DELAY: u64 = 2_592_000;
+const DEFAULT_TIMELOCK_DELAY: u64 = 172_800;
 
 /// Minimal interface for calling the deployed ShareCertificate NFT contract.
 #[contractclient(name = "NftContractClient")]
@@ -177,6 +180,7 @@ pub enum DataKey {
     /// Issue #768: address holding the MetadataManager role (NFT/metadata
     /// configuration).
     MetadataManagerRole,
+    TimelockDelay,
 }
 
 #[contracttype]
@@ -497,6 +501,22 @@ pub struct EventInit {
     payment_token: Address,
     price: i128,
     total_shares: u32,
+}
+
+#[contractevent(data_format = "vec")]
+pub struct EventOperationScheduled {
+    action: AdminAction,
+    execute_after: u64,
+}
+
+#[contractevent(data_format = "vec")]
+pub struct EventOperationCancelled {
+    action: AdminAction,
+}
+
+#[contractevent(data_format = "vec")]
+pub struct EventOperationExecuted {
+    action: AdminAction,
 }
 
 #[contractevent(data_format = "vec")]
@@ -1301,6 +1321,19 @@ fn _update_purchase_history(env: &Env, buyer: &Address, history: UserPurchaseHis
     env.storage().persistent().set(&DataKey::UserPurchaseHistory(buyer.clone()), &history);
 }
 
+fn validate_timelock_delay(env: &Env, delay: u64) {
+    if delay < MIN_TIMELOCK_DELAY || delay > MAX_TIMELOCK_DELAY {
+        soroban_sdk::panic_with_error!(&env, TimelockError::InvalidDelay);
+    }
+}
+
+fn stored_timelock_delay(env: &Env) -> u64 {
+    env.storage()
+        .instance()
+        .get(&DataKey::TimelockDelay)
+        .unwrap_or(DEFAULT_TIMELOCK_DELAY)
+}
+
 #[contractimpl]
 impl RwaMarketplace {
     /// Initialize the marketplace configuration.
@@ -1308,7 +1341,8 @@ impl RwaMarketplace {
     /// `lockup_period` (Issue #767) is optional: when `Some(seconds)` every
     /// purchase records an unlock timestamp of `now + seconds` on the buyer's
     /// balance, and that balance cannot be transferred or redeemed until the
-    /// timestamp passes. `None` disables lock-ups.
+    /// timestamp passes. `None` disables lock-ups. `timelock_delay` is the
+    /// admin-operation delay in seconds and must be between 86_400 and 2_592_000.
     pub fn init(
         env: Env,
         admin: Address,
@@ -1316,6 +1350,7 @@ impl RwaMarketplace {
         price: i128,
         total_shares: u32,
         lockup_period: Option<u64>,
+        timelock_delay: u64,
     ) {
         admin.require_auth();
 
@@ -1339,6 +1374,8 @@ impl RwaMarketplace {
             }
         }
 
+        validate_timelock_delay(&env, timelock_delay);
+
         // Issue #636: Validate payment_token is a deployed token contract
         let token_client = token::TokenClient::new(&env, &payment_token);
         token_client.symbol();
@@ -1354,6 +1391,7 @@ impl RwaMarketplace {
 
         // Issue #767: persist the optional lock-up period.
         env.storage().instance().set(&DataKey::LockupPeriod, &lockup_period.unwrap_or(0u64));
+        env.storage().instance().set(&DataKey::TimelockDelay, &timelock_delay);
 
         // Issue #768: roles default to the admin address so an existing
         // single-key deployment keeps working unchanged. Duty separation is
@@ -5120,7 +5158,7 @@ mod test {
     fn test_init_and_query() {
         let te = setup();
         let c = client(&te);
-        c.init(&te.admin, &te.token_id, &100, &1000, &None);
+        c.init(&te.admin, &te.token_id, &100, &1000, &None, &DEFAULT_TIMELOCK_DELAY);
 
         assert_eq!(c.get_total_shares(), 1000);
         assert_eq!(c.get_available_shares(), 1000);
@@ -5139,7 +5177,7 @@ mod test {
     fn test_get_admin_returns_init_admin() {
         let te = setup();
         let c = client(&te);
-        c.init(&te.admin, &te.token_id, &100, &1000, &None);
+        c.init(&te.admin, &te.token_id, &100, &1000, &None, &DEFAULT_TIMELOCK_DELAY);
 
         assert_eq!(c.get_admin(), te.admin);
     }
@@ -5158,7 +5196,7 @@ mod test {
     fn test_transfer_admin_sets_pending() {
         let te = setup();
         let c = client(&te);
-        c.init(&te.admin, &te.token_id, &100, &1000, &None);
+        c.init(&te.admin, &te.token_id, &100, &1000, &None, &DEFAULT_TIMELOCK_DELAY);
         let new_admin = Address::generate(&te.env);
         c.transfer_admin(&new_admin);
         assert_eq!(c.get_pending_admin(), Some(new_admin));
@@ -5170,7 +5208,7 @@ mod test {
     fn test_accept_admin_completes_transfer() {
         let te = setup();
         let c = client(&te);
-        c.init(&te.admin, &te.token_id, &100, &1000, &None);
+        c.init(&te.admin, &te.token_id, &100, &1000, &None, &DEFAULT_TIMELOCK_DELAY);
         let new_admin = Address::generate(&te.env);
         c.transfer_admin(&new_admin);
         c.accept_admin();
@@ -5183,7 +5221,7 @@ mod test {
     fn test_accept_admin_without_transfer_panics() {
         let te = setup();
         let c = client(&te);
-        c.init(&te.admin, &te.token_id, &100, &1000, &None);
+        c.init(&te.admin, &te.token_id, &100, &1000, &None, &DEFAULT_TIMELOCK_DELAY);
         c.accept_admin();
     }
 
@@ -5192,7 +5230,7 @@ mod test {
     fn test_old_admin_loses_privileges_after_transfer() {
         let te = setup();
         let c = client(&te);
-        c.init(&te.admin, &te.token_id, &100, &1000, &None);
+        c.init(&te.admin, &te.token_id, &100, &1000, &None, &DEFAULT_TIMELOCK_DELAY);
         let new_admin = Address::generate(&te.env);
         c.transfer_admin(&new_admin);
         c.accept_admin();
@@ -5205,7 +5243,7 @@ mod test {
     fn test_buy_shares_requires_whitelist() {
         let te = setup();
         let c = client(&te);
-        c.init(&te.admin, &te.token_id, &100, &1000, &None);
+        c.init(&te.admin, &te.token_id, &100, &1000, &None, &DEFAULT_TIMELOCK_DELAY);
         mint(&te, &te.buyer, 100000);
         c.buy_shares(&te.buyer, &25, &te.token_id, &None);
     }
@@ -5214,7 +5252,7 @@ mod test {
     fn test_whitelist_admin_can_add_and_buy() {
         let te = setup();
         let c = client(&te);
-        c.init(&te.admin, &te.token_id, &100, &1000, &None);
+        c.init(&te.admin, &te.token_id, &100, &1000, &None, &DEFAULT_TIMELOCK_DELAY);
         mint(&te, &te.buyer, 100000);
 
         assert!(!c.is_whitelisted(&te.buyer));
@@ -5231,7 +5269,7 @@ mod test {
     fn test_remove_from_whitelist_blocks_buy() {
         let te = setup();
         let c = client(&te);
-        c.init(&te.admin, &te.token_id, &100, &1000, &None);
+        c.init(&te.admin, &te.token_id, &100, &1000, &None, &DEFAULT_TIMELOCK_DELAY);
         mint(&te, &te.buyer, 100000);
 
         c.add_to_whitelist(&te.buyer);
@@ -5248,7 +5286,7 @@ mod test {
     fn test_allowlist_enforced_by_default() {
         let te = setup();
         let c = client(&te);
-        c.init(&te.admin, &te.token_id, &100, &1000, &None);
+        c.init(&te.admin, &te.token_id, &100, &1000, &None, &DEFAULT_TIMELOCK_DELAY);
 
         // Deployments that never call the setter must keep the pre-#700
         // behavior of enforcing the allowlist.
@@ -5259,7 +5297,7 @@ mod test {
     fn test_allowlist_disabled_permits_unlisted_buyer() {
         let te = setup();
         let c = client(&te);
-        c.init(&te.admin, &te.token_id, &100, &1000, &None);
+        c.init(&te.admin, &te.token_id, &100, &1000, &None, &DEFAULT_TIMELOCK_DELAY);
         mint(&te, &te.buyer, 100000);
 
         assert!(!c.is_whitelisted(&te.buyer));
@@ -5275,7 +5313,7 @@ mod test {
     fn test_allowlist_reenabled_blocks_unlisted_buyer() {
         let te = setup();
         let c = client(&te);
-        c.init(&te.admin, &te.token_id, &100, &1000, &None);
+        c.init(&te.admin, &te.token_id, &100, &1000, &None, &DEFAULT_TIMELOCK_DELAY);
         mint(&te, &te.buyer, 100000);
 
         c.set_allowlist_enabled(&false);
@@ -5290,7 +5328,7 @@ mod test {
     fn test_allowlist_alias_add_and_remove() {
         let te = setup();
         let c = client(&te);
-        c.init(&te.admin, &te.token_id, &100, &1000, &None);
+        c.init(&te.admin, &te.token_id, &100, &1000, &None, &DEFAULT_TIMELOCK_DELAY);
         mint(&te, &te.buyer, 100000);
 
         // The *_allowlist names must drive the same storage as *_whitelist.
@@ -5310,7 +5348,7 @@ mod test {
     fn test_allowlist_respected_by_whitelist_named_api() {
         let te = setup();
         let c = client(&te);
-        c.init(&te.admin, &te.token_id, &100, &1000, &None);
+        c.init(&te.admin, &te.token_id, &100, &1000, &None, &DEFAULT_TIMELOCK_DELAY);
         mint(&te, &te.buyer, 100000);
 
         // An address added via the legacy name is still honored by the gate.
@@ -5324,7 +5362,7 @@ mod test {
     fn test_multiple_buys() {
         let te = setup();
         let c = client(&te);
-        c.init(&te.admin, &te.token_id, &100, &1000, &None);
+        c.init(&te.admin, &te.token_id, &100, &1000, &None, &DEFAULT_TIMELOCK_DELAY);
         mint(&te, &te.buyer, 100000);
         c.add_to_whitelist(&te.buyer);
 
@@ -5338,7 +5376,7 @@ mod test {
     fn test_pause_unpause() {
         let te = setup();
         let c = client(&te);
-        c.init(&te.admin, &te.token_id, &100, &1000, &None);
+        c.init(&te.admin, &te.token_id, &100, &1000, &None, &DEFAULT_TIMELOCK_DELAY);
 
         assert!(!c.is_paused());
         c.pause();
@@ -5352,7 +5390,7 @@ mod test {
     fn test_buy_when_paused() {
         let te = setup();
         let c = client(&te);
-        c.init(&te.admin, &te.token_id, &100, &1000, &None);
+        c.init(&te.admin, &te.token_id, &100, &1000, &None, &DEFAULT_TIMELOCK_DELAY);
         c.pause();
         c.buy_shares(&te.buyer, &1, &te.token_id, &None);
     }
@@ -5362,8 +5400,8 @@ mod test {
     fn test_double_init() {
         let te = setup();
         let c = client(&te);
-        c.init(&te.admin, &te.token_id, &100, &1000, &None);
-        c.init(&te.admin, &te.token_id, &100, &1000, &None);
+        c.init(&te.admin, &te.token_id, &100, &1000, &None, &DEFAULT_TIMELOCK_DELAY);
+        c.init(&te.admin, &te.token_id, &100, &1000, &None, &DEFAULT_TIMELOCK_DELAY);
     }
 
     #[test]
@@ -5371,7 +5409,7 @@ mod test {
     fn test_init_zero_price() {
         let te = setup();
         let c = client(&te);
-        c.init(&te.admin, &te.token_id, &0, &1000, &None);
+        c.init(&te.admin, &te.token_id, &0, &1000, &None, &DEFAULT_TIMELOCK_DELAY);
     }
 
     #[test]
@@ -5379,7 +5417,7 @@ mod test {
     fn test_init_negative_price() {
         let te = setup();
         let c = client(&te);
-        c.init(&te.admin, &te.token_id, &-50, &1000, &None);
+        c.init(&te.admin, &te.token_id, &-50, &1000, &None, &DEFAULT_TIMELOCK_DELAY);
     }
 
     #[test]
@@ -5387,7 +5425,7 @@ mod test {
     fn test_init_zero_total_shares() {
         let te = setup();
         let c = client(&te);
-        c.init(&te.admin, &te.token_id, &100, &0, &None);
+        c.init(&te.admin, &te.token_id, &100, &0, &None, &DEFAULT_TIMELOCK_DELAY);
     }
 
     #[test]
@@ -5396,7 +5434,7 @@ mod test {
         let te = setup();
         let c = client(&te);
         let bogus = Address::generate(&te.env);
-        c.init(&te.admin, &bogus, &100, &1000, &None);
+        c.init(&te.admin, &bogus, &100, &1000, &None, &DEFAULT_TIMELOCK_DELAY);
     }
 
     #[test]
@@ -5404,7 +5442,7 @@ mod test {
     fn test_overbuy() {
         let te = setup();
         let c = client(&te);
-        c.init(&te.admin, &te.token_id, &100, &10, &None);
+        c.init(&te.admin, &te.token_id, &100, &10, &None, &DEFAULT_TIMELOCK_DELAY);
         c.add_to_whitelist(&te.buyer);
         mint(&te, &te.buyer, 100000);
         c.add_to_whitelist(&te.buyer);
@@ -5416,7 +5454,7 @@ mod test {
     fn test_zero_shares() {
         let te = setup();
         let c = client(&te);
-        c.init(&te.admin, &te.token_id, &100, &1000, &None);
+        c.init(&te.admin, &te.token_id, &100, &1000, &None, &DEFAULT_TIMELOCK_DELAY);
         c.add_to_whitelist(&te.buyer);
         c.buy_shares(&te.buyer, &0, &te.token_id, &None);
     }
@@ -5425,7 +5463,7 @@ mod test {
     fn test_emergency_withdraw() {
         let te = setup();
         let c = client(&te);
-        c.init(&te.admin, &te.token_id, &100, &1000, &None);
+        c.init(&te.admin, &te.token_id, &100, &1000, &None, &DEFAULT_TIMELOCK_DELAY);
         c.emergency_withdraw(&te.admin, &0);
     }
 
@@ -5435,7 +5473,7 @@ mod test {
     fn test_holders_registered_on_buy() {
         let te = setup();
         let c = client(&te);
-        c.init(&te.admin, &te.token_id, &100, &1000, &None);
+        c.init(&te.admin, &te.token_id, &100, &1000, &None, &DEFAULT_TIMELOCK_DELAY);
         mint(&te, &te.buyer, 100_000);
         c.add_to_whitelist(&te.buyer);
 
@@ -5454,7 +5492,7 @@ mod test {
     fn test_multiple_holders_registered() {
         let te = setup();
         let c = client(&te);
-        c.init(&te.admin, &te.token_id, &100, &1000, &None);
+        c.init(&te.admin, &te.token_id, &100, &1000, &None, &DEFAULT_TIMELOCK_DELAY);
 
         let buyer2 = Address::generate(&te.env);
         mint(&te, &te.buyer, 100_000);
@@ -5472,7 +5510,7 @@ mod test {
     fn test_distribute_dividends_single_holder() {
         let te = setup();
         let c = client(&te);
-        c.init(&te.admin, &te.token_id, &100, &1000, &None);
+        c.init(&te.admin, &te.token_id, &100, &1000, &None, &DEFAULT_TIMELOCK_DELAY);
         mint(&te, &te.buyer, 100_000);
         c.add_to_whitelist(&te.buyer);
 
@@ -5494,7 +5532,7 @@ mod test {
     fn test_distribute_dividends_multiple_holders() {
         let te = setup();
         let c = client(&te);
-        c.init(&te.admin, &te.token_id, &100, &1000, &None);
+        c.init(&te.admin, &te.token_id, &100, &1000, &None, &DEFAULT_TIMELOCK_DELAY);
 
         let buyer2 = Address::generate(&te.env);
         mint(&te, &te.buyer, 100_000);
@@ -5529,7 +5567,7 @@ mod test {
     fn test_distribute_cleans_up_zero_balance_holders() {
         let te = setup();
         let c = client(&te);
-        c.init(&te.admin, &te.token_id, &100, &1000, &None);
+        c.init(&te.admin, &te.token_id, &100, &1000, &None, &DEFAULT_TIMELOCK_DELAY);
 
         let buyer2 = Address::generate(&te.env);
         mint(&te, &te.buyer, 100_000);
@@ -5561,7 +5599,7 @@ mod test {
     fn test_dividend_policy_withholding_and_claims() {
         let te = setup();
         let c = client(&te);
-        c.init(&te.admin, &te.token_id, &100, &1000, &None);
+        c.init(&te.admin, &te.token_id, &100, &1000, &None, &DEFAULT_TIMELOCK_DELAY);
 
         let buyer2 = Address::generate(&te.env);
         mint(&te, &te.buyer, 100_000);
@@ -5596,7 +5634,7 @@ mod test {
     fn test_dividend_reinvestment_toggle() {
         let te = setup();
         let c = client(&te);
-        c.init(&te.admin, &te.token_id, &100, &1000, &None);
+        c.init(&te.admin, &te.token_id, &100, &1000, &None, &DEFAULT_TIMELOCK_DELAY);
         mint(&te, &te.buyer, 100_000);
         c.add_to_whitelist(&te.buyer);
         c.buy_shares(&te.buyer, &500, &te.token_id, &None);
@@ -5613,7 +5651,7 @@ mod test {
     fn test_distribute_zero_amount() {
         let te = setup();
         let c = client(&te);
-        c.init(&te.admin, &te.token_id, &100, &1000, &None);
+        c.init(&te.admin, &te.token_id, &100, &1000, &None, &DEFAULT_TIMELOCK_DELAY);
         c.distribute_dividends(&te.token_id, &0);
     }
 
@@ -5622,7 +5660,7 @@ mod test {
     fn test_distribute_no_holders() {
         let te = setup();
         let c = client(&te);
-        c.init(&te.admin, &te.token_id, &100, &1000, &None);
+        c.init(&te.admin, &te.token_id, &100, &1000, &None, &DEFAULT_TIMELOCK_DELAY);
         c.distribute_dividends(&te.token_id, &1000);
     }
 
@@ -5632,7 +5670,7 @@ mod test {
     fn test_set_price() {
         let te = setup();
         let c = client(&te);
-        c.init(&te.admin, &te.token_id, &100, &1000, &None);
+        c.init(&te.admin, &te.token_id, &100, &1000, &None, &DEFAULT_TIMELOCK_DELAY);
 
         c.set_price(&200);
         assert_eq!(c.get_price(), 200);
@@ -5642,7 +5680,7 @@ mod test {
     fn test_set_price_affects_future_buys() {
         let te = setup();
         let c = client(&te);
-        c.init(&te.admin, &te.token_id, &100, &1000, &None);
+        c.init(&te.admin, &te.token_id, &100, &1000, &None, &DEFAULT_TIMELOCK_DELAY);
         mint(&te, &te.buyer, 100_000);
         c.add_to_whitelist(&te.buyer);
 
@@ -5658,7 +5696,7 @@ mod test {
     fn test_set_price_zero() {
         let te = setup();
         let c = client(&te);
-        c.init(&te.admin, &te.token_id, &100, &1000, &None);
+        c.init(&te.admin, &te.token_id, &100, &1000, &None, &DEFAULT_TIMELOCK_DELAY);
         c.set_price(&0);
     }
 
@@ -5667,7 +5705,7 @@ mod test {
     fn test_set_price_negative() {
         let te = setup();
         let c = client(&te);
-        c.init(&te.admin, &te.token_id, &100, &1000, &None);
+        c.init(&te.admin, &te.token_id, &100, &1000, &None, &DEFAULT_TIMELOCK_DELAY);
         c.set_price(&-50);
     }
 
@@ -5675,7 +5713,7 @@ mod test {
     fn test_set_total_shares_increase() {
         let te = setup();
         let c = client(&te);
-        c.init(&te.admin, &te.token_id, &100, &1000, &None);
+        c.init(&te.admin, &te.token_id, &100, &1000, &None, &DEFAULT_TIMELOCK_DELAY);
 
         c.set_total_shares(&1500);
         assert_eq!(c.get_total_shares(), 1500);
@@ -5686,7 +5724,7 @@ mod test {
     fn test_set_total_shares_after_partial_sale() {
         let te = setup();
         let c = client(&te);
-        c.init(&te.admin, &te.token_id, &100, &1000, &None);
+        c.init(&te.admin, &te.token_id, &100, &1000, &None, &DEFAULT_TIMELOCK_DELAY);
         mint(&te, &te.buyer, 100_000);
         c.add_to_whitelist(&te.buyer);
 
@@ -5703,7 +5741,7 @@ mod test {
     fn test_set_total_shares_same_as_current() {
         let te = setup();
         let c = client(&te);
-        c.init(&te.admin, &te.token_id, &100, &1000, &None);
+        c.init(&te.admin, &te.token_id, &100, &1000, &None, &DEFAULT_TIMELOCK_DELAY);
 
         c.set_total_shares(&1000);
         assert_eq!(c.get_total_shares(), 1000);
@@ -5715,7 +5753,7 @@ mod test {
     fn test_set_total_shares_below_available() {
         let te = setup();
         let c = client(&te);
-        c.init(&te.admin, &te.token_id, &100, &1000, &None);
+        c.init(&te.admin, &te.token_id, &100, &1000, &None, &DEFAULT_TIMELOCK_DELAY);
         c.set_total_shares(&500);
     }
 
@@ -5725,7 +5763,7 @@ mod test {
         let te = setup();
         let c = client(&te);
         // Use very high price that will overflow when multiplied by shares
-        c.init(&te.admin, &te.token_id, &i128::MAX, &1000, &None);
+        c.init(&te.admin, &te.token_id, &i128::MAX, &1000, &None, &DEFAULT_TIMELOCK_DELAY);
         c.add_to_whitelist(&te.buyer);
         mint(&te, &te.buyer, i128::MAX);
         c.add_to_whitelist(&te.buyer);
@@ -5739,7 +5777,7 @@ mod test {
     fn test_buy_shares_overbuy() {
         let te = setup();
         let c = client(&te);
-        c.init(&te.admin, &te.token_id, &100, &1000, &None);
+        c.init(&te.admin, &te.token_id, &100, &1000, &None, &DEFAULT_TIMELOCK_DELAY);
         c.add_to_whitelist(&te.buyer);
         mint(&te, &te.buyer, 100_000);
         c.add_to_whitelist(&te.buyer);
@@ -5753,7 +5791,7 @@ mod test {
     fn test_buy_shares_balance_overflow() {
         let te = setup();
         let c = client(&te);
-        c.init(&te.admin, &te.token_id, &1, &u32::MAX, &None);
+        c.init(&te.admin, &te.token_id, &1, &u32::MAX, &None, &DEFAULT_TIMELOCK_DELAY);
         c.add_to_whitelist(&te.buyer);
         mint(&te, &te.buyer, i128::MAX);
         c.add_to_whitelist(&te.buyer);
@@ -5774,7 +5812,7 @@ mod test {
     fn test_distribute_dividends_multiply_overflow() {
         let te = setup();
         let c = client(&te);
-        c.init(&te.admin, &te.token_id, &100, &1000, &None);
+        c.init(&te.admin, &te.token_id, &100, &1000, &None, &DEFAULT_TIMELOCK_DELAY);
         c.add_to_whitelist(&te.buyer);
         mint(&te, &te.buyer, 100_000);
         c.add_to_whitelist(&te.buyer);
@@ -5794,7 +5832,7 @@ mod test {
     fn test_set_total_shares_below_issued_logic_check() {
         let te = setup();
         let c = client(&te);
-        c.init(&te.admin, &te.token_id, &100, &1000, &None);
+        c.init(&te.admin, &te.token_id, &100, &1000, &None, &DEFAULT_TIMELOCK_DELAY);
         c.add_to_whitelist(&te.buyer);
         mint(&te, &te.buyer, 100_000);
         c.add_to_whitelist(&te.buyer);
@@ -5820,7 +5858,7 @@ mod test {
     fn test_update_price_while_paused() {
         let te = setup();
         let c = client(&te);
-        c.init(&te.admin, &te.token_id, &100, &1000, &None);
+        c.init(&te.admin, &te.token_id, &100, &1000, &None, &DEFAULT_TIMELOCK_DELAY);
         assert_eq!(c.get_price(), 100);
 
         c.pause();
@@ -5841,7 +5879,7 @@ mod test {
     fn test_update_price_requires_paused_marketplace() {
         let te = setup();
         let c = client(&te);
-        c.init(&te.admin, &te.token_id, &100, &1000, &None);
+        c.init(&te.admin, &te.token_id, &100, &1000, &None, &DEFAULT_TIMELOCK_DELAY);
 
         // No pause() call: the live marketplace must never be re-priced.
         c.update_price(&250);
@@ -5852,7 +5890,7 @@ mod test {
     fn test_update_price_rejected_again_after_unpause() {
         let te = setup();
         let c = client(&te);
-        c.init(&te.admin, &te.token_id, &100, &1000, &None);
+        c.init(&te.admin, &te.token_id, &100, &1000, &None, &DEFAULT_TIMELOCK_DELAY);
 
         c.pause();
         c.update_price(&250);
@@ -5869,7 +5907,7 @@ mod test {
     fn test_update_price_rejects_zero() {
         let te = setup();
         let c = client(&te);
-        c.init(&te.admin, &te.token_id, &100, &1000, &None);
+        c.init(&te.admin, &te.token_id, &100, &1000, &None, &DEFAULT_TIMELOCK_DELAY);
         c.pause();
         c.update_price(&0);
     }
@@ -5879,7 +5917,7 @@ mod test {
     fn test_update_price_rejects_negative() {
         let te = setup();
         let c = client(&te);
-        c.init(&te.admin, &te.token_id, &100, &1000, &None);
+        c.init(&te.admin, &te.token_id, &100, &1000, &None, &DEFAULT_TIMELOCK_DELAY);
         c.pause();
         c.update_price(&-250);
     }
@@ -5890,7 +5928,7 @@ mod test {
     fn test_update_price_rejects_unauthorized_caller() {
         let te = setup();
         let c = client(&te);
-        c.init(&te.admin, &te.token_id, &100, &1000, &None);
+        c.init(&te.admin, &te.token_id, &100, &1000, &None, &DEFAULT_TIMELOCK_DELAY);
         c.pause();
 
         // Replace "allow every signature" with "allow none".
@@ -5908,7 +5946,7 @@ mod test {
     fn test_increase_total_shares_while_paused() {
         let te = setup();
         let c = client(&te);
-        c.init(&te.admin, &te.token_id, &100, &1000, &None);
+        c.init(&te.admin, &te.token_id, &100, &1000, &None, &DEFAULT_TIMELOCK_DELAY);
         mint(&te, &te.buyer, 100_000);
         c.add_to_whitelist(&te.buyer);
 
@@ -5938,7 +5976,7 @@ mod test {
     fn test_increase_total_shares_requires_paused_marketplace() {
         let te = setup();
         let c = client(&te);
-        c.init(&te.admin, &te.token_id, &100, &1000, &None);
+        c.init(&te.admin, &te.token_id, &100, &1000, &None, &DEFAULT_TIMELOCK_DELAY);
 
         c.increase_total_shares(&500);
     }
@@ -5948,7 +5986,7 @@ mod test {
     fn test_increase_total_shares_rejects_zero() {
         let te = setup();
         let c = client(&te);
-        c.init(&te.admin, &te.token_id, &100, &1000, &None);
+        c.init(&te.admin, &te.token_id, &100, &1000, &None, &DEFAULT_TIMELOCK_DELAY);
         c.pause();
         c.increase_total_shares(&0);
     }
@@ -5957,7 +5995,7 @@ mod test {
     fn test_increase_total_shares_rejects_unauthorized_caller() {
         let te = setup();
         let c = client(&te);
-        c.init(&te.admin, &te.token_id, &100, &1000, &None);
+        c.init(&te.admin, &te.token_id, &100, &1000, &None, &DEFAULT_TIMELOCK_DELAY);
         c.pause();
 
         te.env.mock_auths(&[]);
@@ -5972,7 +6010,7 @@ mod test {
     fn test_increase_total_shares_preserves_issued_shares() {
         let te = setup();
         let c = client(&te);
-        c.init(&te.admin, &te.token_id, &100, &1000, &None);
+        c.init(&te.admin, &te.token_id, &100, &1000, &None, &DEFAULT_TIMELOCK_DELAY);
         mint(&te, &te.buyer, 100_000);
         c.add_to_whitelist(&te.buyer);
         c.buy_shares(&te.buyer, &1000, &te.token_id, &None);
@@ -5990,7 +6028,7 @@ mod test {
     fn test_increase_total_shares_rejects_overflow() {
         let te = setup();
         let c = client(&te);
-        c.init(&te.admin, &te.token_id, &100, &u32::MAX, &None);
+        c.init(&te.admin, &te.token_id, &100, &u32::MAX, &None, &DEFAULT_TIMELOCK_DELAY);
         c.pause();
         // Would wrap to 0 without the checked add.
         c.increase_total_shares(&1);
@@ -6001,7 +6039,7 @@ mod test {
     fn test_increase_total_shares_rejected_after_delisting() {
         let te = setup();
         let c = client(&te);
-        c.init(&te.admin, &te.token_id, &100, &1000, &None);
+        c.init(&te.admin, &te.token_id, &100, &1000, &None, &DEFAULT_TIMELOCK_DELAY);
 
         let reason = soroban_sdk::Bytes::from_slice(&te.env, b"delisting");
         c.delist_asset(&reason);
@@ -6120,7 +6158,7 @@ mod test {
     fn test_set_and_get_metadata_uri() {
         let te = setup();
         let c = client(&te);
-        c.init(&te.admin, &te.token_id, &100, &1000, &None);
+        c.init(&te.admin, &te.token_id, &100, &1000, &None, &DEFAULT_TIMELOCK_DELAY);
 
         let uri = soroban_sdk::Bytes::from_slice(&te.env, b"ipfs://QmTest");
         c.set_metadata_uri(&uri);
@@ -6131,7 +6169,7 @@ mod test {
     fn test_get_metadata_uri_default_empty() {
         let te = setup();
         let c = client(&te);
-        c.init(&te.admin, &te.token_id, &100, &1000, &None);
+        c.init(&te.admin, &te.token_id, &100, &1000, &None, &DEFAULT_TIMELOCK_DELAY);
 
         assert_eq!(c.get_metadata_uri(), soroban_sdk::Bytes::new(&te.env));
     }
@@ -6140,7 +6178,7 @@ mod test {
     fn test_set_metadata_uri_overwrites() {
         let te = setup();
         let c = client(&te);
-        c.init(&te.admin, &te.token_id, &100, &1000, &None);
+        c.init(&te.admin, &te.token_id, &100, &1000, &None, &DEFAULT_TIMELOCK_DELAY);
 
         c.set_metadata_uri(&soroban_sdk::Bytes::from_slice(&te.env, b"ipfs://old"));
         let new_uri = soroban_sdk::Bytes::from_slice(&te.env, b"ipfs://new");
@@ -6154,7 +6192,7 @@ mod test {
     fn test_set_dividend_schedule() {
         let te = setup();
         let c = client(&te);
-        c.init(&te.admin, &te.token_id, &100, &1000, &None);
+        c.init(&te.admin, &te.token_id, &100, &1000, &None, &DEFAULT_TIMELOCK_DELAY);
 
         c.set_dividend_schedule(&10_i128, &86400_u64);
         let schedule = c.get_dividend_schedule().unwrap();
@@ -6166,7 +6204,7 @@ mod test {
     fn test_get_dividend_schedule_default_none() {
         let te = setup();
         let c = client(&te);
-        c.init(&te.admin, &te.token_id, &100, &1000, &None);
+        c.init(&te.admin, &te.token_id, &100, &1000, &None, &DEFAULT_TIMELOCK_DELAY);
 
         assert!(c.get_dividend_schedule().is_none());
     }
@@ -6176,7 +6214,7 @@ mod test {
     fn test_set_dividend_schedule_zero_amount() {
         let te = setup();
         let c = client(&te);
-        c.init(&te.admin, &te.token_id, &100, &1000, &None);
+        c.init(&te.admin, &te.token_id, &100, &1000, &None, &DEFAULT_TIMELOCK_DELAY);
 
         c.set_dividend_schedule(&0, &86400);
     }
@@ -6186,7 +6224,7 @@ mod test {
     fn test_set_dividend_schedule_negative_amount() {
         let te = setup();
         let c = client(&te);
-        c.init(&te.admin, &te.token_id, &100, &1000, &None);
+        c.init(&te.admin, &te.token_id, &100, &1000, &None, &DEFAULT_TIMELOCK_DELAY);
 
         c.set_dividend_schedule(&-1, &86400);
     }
@@ -6196,7 +6234,7 @@ mod test {
     fn test_set_dividend_schedule_zero_interval() {
         let te = setup();
         let c = client(&te);
-        c.init(&te.admin, &te.token_id, &100, &1000, &None);
+        c.init(&te.admin, &te.token_id, &100, &1000, &None, &DEFAULT_TIMELOCK_DELAY);
 
         c.set_dividend_schedule(&10, &0);
     }
@@ -6206,7 +6244,7 @@ mod test {
     fn test_process_scheduled_dividend_no_schedule() {
         let te = setup();
         let c = client(&te);
-        c.init(&te.admin, &te.token_id, &100, &1000, &None);
+        c.init(&te.admin, &te.token_id, &100, &1000, &None, &DEFAULT_TIMELOCK_DELAY);
 
         c.process_scheduled_dividend();
     }
@@ -6216,7 +6254,7 @@ mod test {
     fn test_process_scheduled_dividend_interval_not_elapsed() {
         let te = setup();
         let c = client(&te);
-        c.init(&te.admin, &te.token_id, &100, &1000, &None);
+        c.init(&te.admin, &te.token_id, &100, &1000, &None, &DEFAULT_TIMELOCK_DELAY);
 
         c.set_dividend_schedule(&10, &86400);
         // Call immediately â€” interval (86400s = 1 day) has not elapsed
@@ -6227,7 +6265,7 @@ mod test {
     fn test_process_scheduled_dividend_distributes() {
         let te = setup();
         let c = client(&te);
-        c.init(&te.admin, &te.token_id, &100, &1000, &None);
+        c.init(&te.admin, &te.token_id, &100, &1000, &None, &DEFAULT_TIMELOCK_DELAY);
 
         let buyer2 = Address::generate(&te.env);
         mint(&te, &te.buyer, 100_000);
@@ -6262,7 +6300,7 @@ mod test {
     fn test_process_scheduled_dividend_updates_last_distribution() {
         let te = setup();
         let c = client(&te);
-        c.init(&te.admin, &te.token_id, &100, &1000, &None);
+        c.init(&te.admin, &te.token_id, &100, &1000, &None, &DEFAULT_TIMELOCK_DELAY);
 
         mint(&te, &te.buyer, 100_000);
         c.add_to_whitelist(&te.buyer);
@@ -6280,7 +6318,7 @@ mod test {
     fn test_process_scheduled_dividend_second_call_too_soon() {
         let te = setup();
         let c = client(&te);
-        c.init(&te.admin, &te.token_id, &100, &1000, &None);
+        c.init(&te.admin, &te.token_id, &100, &1000, &None, &DEFAULT_TIMELOCK_DELAY);
 
         mint(&te, &te.buyer, 100_000);
         c.add_to_whitelist(&te.buyer);
@@ -6300,7 +6338,7 @@ mod test {
     fn test_process_scheduled_dividend_after_multiple_intervals() {
         let te = setup();
         let c = client(&te);
-        c.init(&te.admin, &te.token_id, &100, &1000, &None);
+        c.init(&te.admin, &te.token_id, &100, &1000, &None, &DEFAULT_TIMELOCK_DELAY);
 
         mint(&te, &te.buyer, 100_000);
         c.add_to_whitelist(&te.buyer);
@@ -6329,7 +6367,7 @@ mod test {
     fn test_process_scheduled_dividend_honors_policy_withholding_and_history() {
         let te = setup();
         let c = client(&te);
-        c.init(&te.admin, &te.token_id, &100, &1000, &None);
+        c.init(&te.admin, &te.token_id, &100, &1000, &None, &DEFAULT_TIMELOCK_DELAY);
 
         mint(&te, &te.buyer, 100_000);
         c.add_to_whitelist(&te.buyer);
@@ -6356,7 +6394,7 @@ mod test {
     fn test_set_dividend_policy_rejects_unsupported_type() {
         let te = setup();
         let c = client(&te);
-        c.init(&te.admin, &te.token_id, &100, &1000, &None);
+        c.init(&te.admin, &te.token_id, &100, &1000, &None, &DEFAULT_TIMELOCK_DELAY);
 
         c.set_dividend_policy(&2, &te.token_id, &0, &false);
     }
@@ -6366,7 +6404,7 @@ mod test {
     fn test_process_scheduled_dividend_no_holders() {
         let te = setup();
         let c = client(&te);
-        c.init(&te.admin, &te.token_id, &100, &1000, &None);
+        c.init(&te.admin, &te.token_id, &100, &1000, &None, &DEFAULT_TIMELOCK_DELAY);
 
         c.set_dividend_schedule(&10, &1);
         te.env.ledger().set_timestamp(te.env.ledger().timestamp() + 2);
@@ -6379,7 +6417,7 @@ mod test {
     fn test_max_shares_per_user_default_unlimited() {
         let te = setup();
         let c = client(&te);
-        c.init(&te.admin, &te.token_id, &100, &1000, &None);
+        c.init(&te.admin, &te.token_id, &100, &1000, &None, &DEFAULT_TIMELOCK_DELAY);
 
         // Defaults to 0, meaning no cap is enforced.
         assert_eq!(c.get_max_shares_per_user(), 0);
@@ -6389,7 +6427,7 @@ mod test {
     fn test_set_and_get_max_shares_per_user() {
         let te = setup();
         let c = client(&te);
-        c.init(&te.admin, &te.token_id, &100, &1000, &None);
+        c.init(&te.admin, &te.token_id, &100, &1000, &None, &DEFAULT_TIMELOCK_DELAY);
 
         c.set_max_shares_per_user(&50);
         assert_eq!(c.get_max_shares_per_user(), 50);
@@ -6399,7 +6437,7 @@ mod test {
     fn test_buy_within_cap_succeeds() {
         let te = setup();
         let c = client(&te);
-        c.init(&te.admin, &te.token_id, &100, &1000, &None);
+        c.init(&te.admin, &te.token_id, &100, &1000, &None, &DEFAULT_TIMELOCK_DELAY);
         mint(&te, &te.buyer, 100_000);
         c.add_to_whitelist(&te.buyer);
 
@@ -6413,7 +6451,7 @@ mod test {
     fn test_buy_exceeding_cap_single_purchase() {
         let te = setup();
         let c = client(&te);
-        c.init(&te.admin, &te.token_id, &100, &1000, &None);
+        c.init(&te.admin, &te.token_id, &100, &1000, &None, &DEFAULT_TIMELOCK_DELAY);
         mint(&te, &te.buyer, 100_000);
         c.add_to_whitelist(&te.buyer);
 
@@ -6426,7 +6464,7 @@ mod test {
     fn test_cap_checks_current_holdings_plus_purchase() {
         let te = setup();
         let c = client(&te);
-        c.init(&te.admin, &te.token_id, &100, &1000, &None);
+        c.init(&te.admin, &te.token_id, &100, &1000, &None, &DEFAULT_TIMELOCK_DELAY);
         mint(&te, &te.buyer, 100_000);
         c.add_to_whitelist(&te.buyer);
 
@@ -6442,7 +6480,7 @@ mod test {
     fn test_buy_up_to_cap_across_multiple_purchases() {
         let te = setup();
         let c = client(&te);
-        c.init(&te.admin, &te.token_id, &100, &1000, &None);
+        c.init(&te.admin, &te.token_id, &100, &1000, &None, &DEFAULT_TIMELOCK_DELAY);
         mint(&te, &te.buyer, 100_000);
         c.add_to_whitelist(&te.buyer);
 
@@ -6456,7 +6494,7 @@ mod test {
     fn test_cap_does_not_block_transfer_when_rejected() {
         let te = setup();
         let c = client(&te);
-        c.init(&te.admin, &te.token_id, &100, &1000, &None);
+        c.init(&te.admin, &te.token_id, &100, &1000, &None, &DEFAULT_TIMELOCK_DELAY);
         mint(&te, &te.buyer, 100_000);
         c.add_to_whitelist(&te.buyer);
 
@@ -6478,7 +6516,7 @@ mod test {
     fn test_cap_zero_means_unlimited() {
         let te = setup();
         let c = client(&te);
-        c.init(&te.admin, &te.token_id, &100, &1000, &None);
+        c.init(&te.admin, &te.token_id, &100, &1000, &None, &DEFAULT_TIMELOCK_DELAY);
         mint(&te, &te.buyer, 1_000_000);
         c.add_to_whitelist(&te.buyer);
 
@@ -6492,7 +6530,7 @@ mod test {
     fn test_raising_cap_allows_more_purchases() {
         let te = setup();
         let c = client(&te);
-        c.init(&te.admin, &te.token_id, &100, &1000, &None);
+        c.init(&te.admin, &te.token_id, &100, &1000, &None, &DEFAULT_TIMELOCK_DELAY);
         mint(&te, &te.buyer, 100_000);
         c.add_to_whitelist(&te.buyer);
 
@@ -6508,7 +6546,7 @@ mod test {
     fn test_cap_is_per_address_not_global() {
         let te = setup();
         let c = client(&te);
-        c.init(&te.admin, &te.token_id, &100, &1000, &None);
+        c.init(&te.admin, &te.token_id, &100, &1000, &None, &DEFAULT_TIMELOCK_DELAY);
 
         let buyer2 = Address::generate(&te.env);
         mint(&te, &te.buyer, 100_000);
@@ -6536,7 +6574,7 @@ mod test {
     fn test_transfer_shares_basic() {
         let te = setup();
         let c = client(&te);
-        c.init(&te.admin, &te.token_id, &100, &1000, &None);
+        c.init(&te.admin, &te.token_id, &100, &1000, &None, &DEFAULT_TIMELOCK_DELAY);
         mint(&te, &te.buyer, 100_000);
         c.add_to_whitelist(&te.buyer);
         c.buy_shares(&te.buyer, &50, &te.token_id, &None);
@@ -6553,7 +6591,7 @@ mod test {
     fn test_transfer_shares_insufficient_balance() {
         let te = setup();
         let c = client(&te);
-        c.init(&te.admin, &te.token_id, &100, &1000, &None);
+        c.init(&te.admin, &te.token_id, &100, &1000, &None, &DEFAULT_TIMELOCK_DELAY);
         mint(&te, &te.buyer, 100_000);
         c.add_to_whitelist(&te.buyer);
         c.buy_shares(&te.buyer, &10, &te.token_id, &None);
@@ -6567,7 +6605,7 @@ mod test {
     fn test_transfer_shares_zero_amount() {
         let te = setup();
         let c = client(&te);
-        c.init(&te.admin, &te.token_id, &100, &1000, &None);
+        c.init(&te.admin, &te.token_id, &100, &1000, &None, &DEFAULT_TIMELOCK_DELAY);
         mint(&te, &te.buyer, 100_000);
         c.add_to_whitelist(&te.buyer);
         c.buy_shares(&te.buyer, &10, &te.token_id, &None);
@@ -6580,7 +6618,7 @@ mod test {
     fn test_approve_and_transfer_from() {
         let te = setup();
         let c = client(&te);
-        c.init(&te.admin, &te.token_id, &100, &1000, &None);
+        c.init(&te.admin, &te.token_id, &100, &1000, &None, &DEFAULT_TIMELOCK_DELAY);
         mint(&te, &te.buyer, 100_000);
         c.add_to_whitelist(&te.buyer);
         c.buy_shares(&te.buyer, &50, &te.token_id, &None);
@@ -6604,7 +6642,7 @@ mod test {
     fn test_transfer_from_exceeds_allowance() {
         let te = setup();
         let c = client(&te);
-        c.init(&te.admin, &te.token_id, &100, &1000, &None);
+        c.init(&te.admin, &te.token_id, &100, &1000, &None, &DEFAULT_TIMELOCK_DELAY);
         mint(&te, &te.buyer, 100_000);
         c.add_to_whitelist(&te.buyer);
         c.buy_shares(&te.buyer, &50, &te.token_id, &None);
@@ -6620,7 +6658,7 @@ mod test {
     fn test_transfer_registers_recipient_as_holder() {
         let te = setup();
         let c = client(&te);
-        c.init(&te.admin, &te.token_id, &100, &1000, &None);
+        c.init(&te.admin, &te.token_id, &100, &1000, &None, &DEFAULT_TIMELOCK_DELAY);
         mint(&te, &te.buyer, 100_000);
         c.add_to_whitelist(&te.buyer);
         c.buy_shares(&te.buyer, &50, &te.token_id, &None);
@@ -6638,7 +6676,7 @@ mod test {
     fn test_buyback_shares_basic() {
         let te = setup();
         let c = client(&te);
-        c.init(&te.admin, &te.token_id, &100, &1000, &None);
+        c.init(&te.admin, &te.token_id, &100, &1000, &None, &DEFAULT_TIMELOCK_DELAY);
         mint(&te, &te.buyer, 100_000);
         c.add_to_whitelist(&te.buyer);
         c.buy_shares(&te.buyer, &100, &te.token_id, &None);
@@ -6664,7 +6702,7 @@ mod test {
     fn test_buyback_shares_zero() {
         let te = setup();
         let c = client(&te);
-        c.init(&te.admin, &te.token_id, &100, &1000, &None);
+        c.init(&te.admin, &te.token_id, &100, &1000, &None, &DEFAULT_TIMELOCK_DELAY);
         mint(&te, &te.buyer, 100_000);
         c.add_to_whitelist(&te.buyer);
         c.buy_shares(&te.buyer, &10, &te.token_id, &None);
@@ -6676,7 +6714,7 @@ mod test {
     fn test_buyback_shares_insufficient() {
         let te = setup();
         let c = client(&te);
-        c.init(&te.admin, &te.token_id, &100, &1000, &None);
+        c.init(&te.admin, &te.token_id, &100, &1000, &None, &DEFAULT_TIMELOCK_DELAY);
         mint(&te, &te.buyer, 100_000);
         c.add_to_whitelist(&te.buyer);
         c.buy_shares(&te.buyer, &10, &te.token_id, &None);
@@ -6688,7 +6726,7 @@ mod test {
     fn test_auto_buyback_config_sets_values() {
         let te = setup();
         let c = client(&te);
-        c.init(&te.admin, &te.token_id, &100, &1000, &None);
+        c.init(&te.admin, &te.token_id, &100, &1000, &None, &DEFAULT_TIMELOCK_DELAY);
         c.auto_buyback_config(&3600_u64, &50_u32, &100_000_i128);
         // Config set without error; process should succeed after interval
     }
@@ -6698,7 +6736,7 @@ mod test {
     fn test_auto_buyback_config_zero_interval() {
         let te = setup();
         let c = client(&te);
-        c.init(&te.admin, &te.token_id, &100, &1000, &None);
+        c.init(&te.admin, &te.token_id, &100, &1000, &None, &DEFAULT_TIMELOCK_DELAY);
         c.auto_buyback_config(&0_u64, &10_u32, &1000_i128);
     }
 
@@ -6707,7 +6745,7 @@ mod test {
     fn test_auto_buyback_config_zero_max_amount() {
         let te = setup();
         let c = client(&te);
-        c.init(&te.admin, &te.token_id, &100, &1000, &None);
+        c.init(&te.admin, &te.token_id, &100, &1000, &None, &DEFAULT_TIMELOCK_DELAY);
         c.auto_buyback_config(&3600_u64, &0_u32, &1000_i128);
     }
 
@@ -6716,7 +6754,7 @@ mod test {
     fn test_auto_buyback_config_zero_budget() {
         let te = setup();
         let c = client(&te);
-        c.init(&te.admin, &te.token_id, &100, &1000, &None);
+        c.init(&te.admin, &te.token_id, &100, &1000, &None, &DEFAULT_TIMELOCK_DELAY);
         c.auto_buyback_config(&3600_u64, &10_u32, &0_i128);
     }
 
@@ -6724,7 +6762,7 @@ mod test {
     fn test_process_auto_buyback_succeeds() {
         let te = setup();
         let c = client(&te);
-        c.init(&te.admin, &te.token_id, &100, &1000, &None);
+        c.init(&te.admin, &te.token_id, &100, &1000, &None, &DEFAULT_TIMELOCK_DELAY);
         mint(&te, &te.buyer, 100_000);
         c.add_to_whitelist(&te.buyer);
         c.buy_shares(&te.buyer, &100, &te.token_id, &None);
@@ -6747,7 +6785,7 @@ mod test {
     fn test_process_auto_buyback_too_soon() {
         let te = setup();
         let c = client(&te);
-        c.init(&te.admin, &te.token_id, &100, &1000, &None);
+        c.init(&te.admin, &te.token_id, &100, &1000, &None, &DEFAULT_TIMELOCK_DELAY);
         mint(&te, &te.buyer, 100_000);
         c.add_to_whitelist(&te.buyer);
         c.buy_shares(&te.buyer, &100, &te.token_id, &None);
@@ -6763,7 +6801,7 @@ mod test {
     fn test_process_auto_buyback_exceeds_max() {
         let te = setup();
         let c = client(&te);
-        c.init(&te.admin, &te.token_id, &100, &1000, &None);
+        c.init(&te.admin, &te.token_id, &100, &1000, &None, &DEFAULT_TIMELOCK_DELAY);
         mint(&te, &te.buyer, 100_000);
         c.add_to_whitelist(&te.buyer);
         c.buy_shares(&te.buyer, &100, &te.token_id, &None);
@@ -6779,7 +6817,7 @@ mod test {
     fn test_process_auto_buyback_exceeds_budget() {
         let te = setup();
         let c = client(&te);
-        c.init(&te.admin, &te.token_id, &100, &1000, &None);
+        c.init(&te.admin, &te.token_id, &100, &1000, &None, &DEFAULT_TIMELOCK_DELAY);
         mint(&te, &te.buyer, 100_000);
         c.add_to_whitelist(&te.buyer);
         c.buy_shares(&te.buyer, &100, &te.token_id, &None);
@@ -6797,7 +6835,7 @@ mod test {
     fn test_process_auto_buyback_not_configured() {
         let te = setup();
         let c = client(&te);
-        c.init(&te.admin, &te.token_id, &100, &1000, &None);
+        c.init(&te.admin, &te.token_id, &100, &1000, &None, &DEFAULT_TIMELOCK_DELAY);
         c.process_auto_buyback(&te.buyer, &10);
     }
 
@@ -6821,7 +6859,7 @@ mod test {
     fn test_set_and_get_nft_contract() {
         let te = setup();
         let c = client(&te);
-        c.init(&te.admin, &te.token_id, &100, &1000, &None);
+        c.init(&te.admin, &te.token_id, &100, &1000, &None, &DEFAULT_TIMELOCK_DELAY);
 
         let nft_id = setup_nft(&te);
         c.set_nft_contract(&nft_id);
@@ -6832,7 +6870,7 @@ mod test {
     fn test_get_nft_contract_default_none() {
         let te = setup();
         let c = client(&te);
-        c.init(&te.admin, &te.token_id, &100, &1000, &None);
+        c.init(&te.admin, &te.token_id, &100, &1000, &None, &DEFAULT_TIMELOCK_DELAY);
 
         assert_eq!(c.get_nft_contract(), None);
     }
@@ -6841,7 +6879,7 @@ mod test {
     fn test_buy_shares_mints_nfts() {
         let te = setup();
         let c = client(&te);
-        c.init(&te.admin, &te.token_id, &100, &1000, &None);
+        c.init(&te.admin, &te.token_id, &100, &1000, &None, &DEFAULT_TIMELOCK_DELAY);
         mint(&te, &te.buyer, 100_000);
         c.add_to_whitelist(&te.buyer);
 
@@ -6861,7 +6899,7 @@ mod test {
     fn test_buy_shares_without_nft_contract_still_works() {
         let te = setup();
         let c = client(&te);
-        c.init(&te.admin, &te.token_id, &100, &1000, &None);
+        c.init(&te.admin, &te.token_id, &100, &1000, &None, &DEFAULT_TIMELOCK_DELAY);
         mint(&te, &te.buyer, 100_000);
         c.add_to_whitelist(&te.buyer);
 
@@ -6874,7 +6912,7 @@ mod test {
     fn test_nft_owner_is_buyer() {
         let te = setup();
         let c = client(&te);
-        c.init(&te.admin, &te.token_id, &100, &1000, &None);
+        c.init(&te.admin, &te.token_id, &100, &1000, &None, &DEFAULT_TIMELOCK_DELAY);
         mint(&te, &te.buyer, 100_000);
         c.add_to_whitelist(&te.buyer);
 
@@ -6915,7 +6953,7 @@ mod test {
     fn test_set_transfer_fee_config() {
         let te = setup();
         let c = client(&te);
-        c.init(&te.admin, &te.token_id, &100, &1000, &None);
+        c.init(&te.admin, &te.token_id, &100, &1000, &None, &DEFAULT_TIMELOCK_DELAY);
 
         c.set_transfer_fee_config(&100, &te.admin, &1000);
         let config = c.get_transfer_fee_config().unwrap();
@@ -6929,7 +6967,7 @@ mod test {
     fn test_set_transfer_fee_config_too_high() {
         let te = setup();
         let c = client(&te);
-        c.init(&te.admin, &te.token_id, &100, &1000, &None);
+        c.init(&te.admin, &te.token_id, &100, &1000, &None, &DEFAULT_TIMELOCK_DELAY);
         c.set_transfer_fee_config(&10001, &te.admin, &1000);
     }
 
@@ -6938,7 +6976,7 @@ mod test {
     fn test_set_transfer_fee_config_negative_max() {
         let te = setup();
         let c = client(&te);
-        c.init(&te.admin, &te.token_id, &100, &1000, &None);
+        c.init(&te.admin, &te.token_id, &100, &1000, &None, &DEFAULT_TIMELOCK_DELAY);
         c.set_transfer_fee_config(&100, &te.admin, &-1);
     }
 
@@ -6946,7 +6984,7 @@ mod test {
     fn test_transfer_with_fee() {
         let te = setup();
         let c = client(&te);
-        c.init(&te.admin, &te.token_id, &100, &1000, &None);
+        c.init(&te.admin, &te.token_id, &100, &1000, &None, &DEFAULT_TIMELOCK_DELAY);
         mint(&te, &te.buyer, 100_000);
         c.add_to_whitelist(&te.buyer);
 
@@ -6974,7 +7012,7 @@ mod test {
     fn test_batch_transfer() {
         let te = setup();
         let c = client(&te);
-        c.init(&te.admin, &te.token_id, &100, &1000, &None);
+        c.init(&te.admin, &te.token_id, &100, &1000, &None, &DEFAULT_TIMELOCK_DELAY);
         mint(&te, &te.buyer, 100_000);
         c.add_to_whitelist(&te.buyer);
         c.buy_shares(&te.buyer, &100, &te.token_id, &None);
@@ -7004,7 +7042,7 @@ mod test {
     fn test_batch_transfer_empty_recipients() {
         let te = setup();
         let c = client(&te);
-        c.init(&te.admin, &te.token_id, &100, &1000, &None);
+        c.init(&te.admin, &te.token_id, &100, &1000, &None, &DEFAULT_TIMELOCK_DELAY);
         mint(&te, &te.buyer, 100_000);
         c.add_to_whitelist(&te.buyer);
         c.buy_shares(&te.buyer, &50, &te.token_id, &None);
@@ -7019,7 +7057,7 @@ mod test {
     fn test_batch_transfer_mismatched_lengths() {
         let te = setup();
         let c = client(&te);
-        c.init(&te.admin, &te.token_id, &100, &1000, &None);
+        c.init(&te.admin, &te.token_id, &100, &1000, &None, &DEFAULT_TIMELOCK_DELAY);
         mint(&te, &te.buyer, 100_000);
         c.add_to_whitelist(&te.buyer);
         c.buy_shares(&te.buyer, &50, &te.token_id, &None);
@@ -7038,7 +7076,7 @@ mod test {
     fn test_set_transfer_restrictions() {
         let te = setup();
         let c = client(&te);
-        c.init(&te.admin, &te.token_id, &100, &1000, &None);
+        c.init(&te.admin, &te.token_id, &100, &1000, &None, &DEFAULT_TIMELOCK_DELAY);
 
         let restricted_addr = Address::generate(&te.env);
         c.set_transfer_restrictions(&restricted_addr, &1000, &50, &true);
@@ -7053,7 +7091,7 @@ mod test {
     fn test_remove_transfer_restrictions() {
         let te = setup();
         let c = client(&te);
-        c.init(&te.admin, &te.token_id, &100, &1000, &None);
+        c.init(&te.admin, &te.token_id, &100, &1000, &None, &DEFAULT_TIMELOCK_DELAY);
 
         let restricted_addr = Address::generate(&te.env);
         c.set_transfer_restrictions(&restricted_addr, &1000, &50, &true);
@@ -7068,7 +7106,7 @@ mod test {
     fn test_transfer_restriction_time_based() {
         let te = setup();
         let c = client(&te);
-        c.init(&te.admin, &te.token_id, &100, &1000, &None);
+        c.init(&te.admin, &te.token_id, &100, &1000, &None, &DEFAULT_TIMELOCK_DELAY);
         mint(&te, &te.buyer, 100_000);
         c.add_to_whitelist(&te.buyer);
         c.buy_shares(&te.buyer, &50, &te.token_id, &None);
@@ -7086,7 +7124,7 @@ mod test {
     fn test_transfer_restriction_max_amount() {
         let te = setup();
         let c = client(&te);
-        c.init(&te.admin, &te.token_id, &100, &1000, &None);
+        c.init(&te.admin, &te.token_id, &100, &1000, &None, &DEFAULT_TIMELOCK_DELAY);
         mint(&te, &te.buyer, 100_000);
         c.add_to_whitelist(&te.buyer);
         c.buy_shares(&te.buyer, &50, &te.token_id, &None);
@@ -7104,7 +7142,7 @@ mod test {
     fn test_transfer_requires_approval() {
         let te = setup();
         let c = client(&te);
-        c.init(&te.admin, &te.token_id, &100, &1000, &None);
+        c.init(&te.admin, &te.token_id, &100, &1000, &None, &DEFAULT_TIMELOCK_DELAY);
         mint(&te, &te.buyer, 100_000);
         c.add_to_whitelist(&te.buyer);
         c.buy_shares(&te.buyer, &50, &te.token_id, &None);
@@ -7121,7 +7159,7 @@ mod test {
     fn test_request_transfer_approval() {
         let te = setup();
         let c = client(&te);
-        c.init(&te.admin, &te.token_id, &100, &1000, &None);
+        c.init(&te.admin, &te.token_id, &100, &1000, &None, &DEFAULT_TIMELOCK_DELAY);
         mint(&te, &te.buyer, 100_000);
         c.add_to_whitelist(&te.buyer);
         c.buy_shares(&te.buyer, &50, &te.token_id, &None);
@@ -7141,7 +7179,7 @@ mod test {
     fn test_grant_and_execute_transfer_approval() {
         let te = setup();
         let c = client(&te);
-        c.init(&te.admin, &te.token_id, &100, &1000, &None);
+        c.init(&te.admin, &te.token_id, &100, &1000, &None, &DEFAULT_TIMELOCK_DELAY);
         mint(&te, &te.buyer, 100_000);
         c.add_to_whitelist(&te.buyer);
         c.buy_shares(&te.buyer, &50, &te.token_id, &None);
@@ -7164,7 +7202,7 @@ mod test {
     fn test_execute_unapproved_transfer() {
         let te = setup();
         let c = client(&te);
-        c.init(&te.admin, &te.token_id, &100, &1000, &None);
+        c.init(&te.admin, &te.token_id, &100, &1000, &None, &DEFAULT_TIMELOCK_DELAY);
         mint(&te, &te.buyer, 100_000);
         c.add_to_whitelist(&te.buyer);
         c.buy_shares(&te.buyer, &50, &te.token_id, &None);
@@ -7180,7 +7218,7 @@ mod test {
     fn test_transfer_whitelist() {
         let te = setup();
         let c = client(&te);
-        c.init(&te.admin, &te.token_id, &100, &1000, &None);
+        c.init(&te.admin, &te.token_id, &100, &1000, &None, &DEFAULT_TIMELOCK_DELAY);
 
         let addr = Address::generate(&te.env);
         assert!(c.is_transfer_whitelisted_public(&addr)); // Default is true
@@ -7197,7 +7235,7 @@ mod test {
     fn test_transfer_blocked_by_whitelist() {
         let te = setup();
         let c = client(&te);
-        c.init(&te.admin, &te.token_id, &100, &1000, &None);
+        c.init(&te.admin, &te.token_id, &100, &1000, &None, &DEFAULT_TIMELOCK_DELAY);
         mint(&te, &te.buyer, 100_000);
         c.add_to_whitelist(&te.buyer);
         c.buy_shares(&te.buyer, &50, &te.token_id, &None);
@@ -7213,7 +7251,7 @@ mod test {
     fn test_transfer_history_tracking() {
         let te = setup();
         let c = client(&te);
-        c.init(&te.admin, &te.token_id, &100, &1000, &None);
+        c.init(&te.admin, &te.token_id, &100, &1000, &None, &DEFAULT_TIMELOCK_DELAY);
         mint(&te, &te.buyer, 100_000);
         c.add_to_whitelist(&te.buyer);
         c.buy_shares(&te.buyer, &50, &te.token_id, &None);
@@ -7235,7 +7273,7 @@ mod test {
     fn test_reentrancy_protection() {
         let te = setup();
         let c = client(&te);
-        c.init(&te.admin, &te.token_id, &100, &1000, &None);
+        c.init(&te.admin, &te.token_id, &100, &1000, &None, &DEFAULT_TIMELOCK_DELAY);
         mint(&te, &te.buyer, 100_000);
         c.add_to_whitelist(&te.buyer);
         c.buy_shares(&te.buyer, &50, &te.token_id, &None);
@@ -7257,7 +7295,7 @@ mod test {
     fn test_transfer_vested_shares_blocked() {
         let te = setup();
         let c = client(&te);
-        c.init(&te.admin, &te.token_id, &100, &1000, &None);
+        c.init(&te.admin, &te.token_id, &100, &1000, &None, &DEFAULT_TIMELOCK_DELAY);
         mint(&te, &te.buyer, 100_000);
         c.add_to_whitelist(&te.buyer);
 
@@ -7274,7 +7312,7 @@ mod test {
     fn test_transfer_liquid_shares_after_vesting() {
         let te = setup();
         let c = client(&te);
-        c.init(&te.admin, &te.token_id, &100, &1000, &None);
+        c.init(&te.admin, &te.token_id, &100, &1000, &None, &DEFAULT_TIMELOCK_DELAY);
         mint(&te, &te.buyer, 100_000);
         c.add_to_whitelist(&te.buyer);
 
@@ -7295,7 +7333,7 @@ mod test {
     fn test_transfer_from_with_restrictions() {
         let te = setup();
         let c = client(&te);
-        c.init(&te.admin, &te.token_id, &100, &1000, &None);
+        c.init(&te.admin, &te.token_id, &100, &1000, &None, &DEFAULT_TIMELOCK_DELAY);
         mint(&te, &te.buyer, 100_000);
         c.add_to_whitelist(&te.buyer);
         c.buy_shares(&te.buyer, &50, &te.token_id, &None);
@@ -7315,7 +7353,7 @@ mod test {
     fn test_batch_transfer_with_fee() {
         let te = setup();
         let c = client(&te);
-        c.init(&te.admin, &te.token_id, &100, &1000, &None);
+        c.init(&te.admin, &te.token_id, &100, &1000, &None, &DEFAULT_TIMELOCK_DELAY);
         mint(&te, &te.buyer, 100_000);
         c.add_to_whitelist(&te.buyer);
         c.buy_shares(&te.buyer, &100, &te.token_id, &None);
@@ -7351,7 +7389,7 @@ mod test {
     fn test_reentrancy_is_blocked() {
         let te = setup();
         let c = client(&te);
-        c.init(&te.admin, &te.token_id, &100, &1000, &None);
+        c.init(&te.admin, &te.token_id, &100, &1000, &None, &DEFAULT_TIMELOCK_DELAY);
         mint(&te, &te.buyer, 100_000);
         c.add_to_whitelist(&te.buyer);
 
@@ -7368,7 +7406,7 @@ mod test {
     fn test_reentrancy_guard_cleared_after_successful_buy() {
         let te = setup();
         let c = client(&te);
-        c.init(&te.admin, &te.token_id, &100, &1000, &None);
+        c.init(&te.admin, &te.token_id, &100, &1000, &None, &DEFAULT_TIMELOCK_DELAY);
         mint(&te, &te.buyer, 100_000);
         c.add_to_whitelist(&te.buyer);
 
@@ -7390,7 +7428,7 @@ mod test {
     fn test_reentrancy_blocked_on_panic_path() {
         let te = setup();
         let c = client(&te);
-        c.init(&te.admin, &te.token_id, &100, &1000, &None);
+        c.init(&te.admin, &te.token_id, &100, &1000, &None, &DEFAULT_TIMELOCK_DELAY);
         mint(&te, &te.buyer, 100_000);
         c.add_to_whitelist(&te.buyer);
 
@@ -7408,7 +7446,7 @@ mod test {
     fn test_reentrancy_guard_default_false() {
         let te = setup();
         let c = client(&te);
-        c.init(&te.admin, &te.token_id, &100, &1000, &None);
+        c.init(&te.admin, &te.token_id, &100, &1000, &None, &DEFAULT_TIMELOCK_DELAY);
 
         // Check that reentrancy guard is not set by default after init
         te.env.as_contract(&te.contract_id, || {
@@ -7421,7 +7459,7 @@ mod test {
     fn test_double_reentrancy_blocked() {
         let te = setup();
         let c = client(&te);
-        c.init(&te.admin, &te.token_id, &100, &1000, &None);
+        c.init(&te.admin, &te.token_id, &100, &1000, &None, &DEFAULT_TIMELOCK_DELAY);
         mint(&te, &te.buyer, 100_000);
         c.add_to_whitelist(&te.buyer);
 
@@ -7443,7 +7481,7 @@ mod test {
     fn test_reentrancy_blocked_on_emergency_withdraw() {
         let te = setup();
         let c = client(&te);
-        c.init(&te.admin, &te.token_id, &100, &1000, &None);
+        c.init(&te.admin, &te.token_id, &100, &1000, &None, &DEFAULT_TIMELOCK_DELAY);
         mint(&te, &te.admin, 100_000);
 
         // Manually lock the guard
@@ -7459,7 +7497,7 @@ mod test {
     fn test_reentrancy_blocked_on_distribute_dividends() {
         let te = setup();
         let c = client(&te);
-        c.init(&te.admin, &te.token_id, &100, &1000, &None);
+        c.init(&te.admin, &te.token_id, &100, &1000, &None, &DEFAULT_TIMELOCK_DELAY);
         mint(&te, &te.buyer, 100_000);
         c.add_to_whitelist(&te.buyer);
         c.buy_shares(&te.buyer, &100, &te.token_id, &None);
@@ -7477,7 +7515,7 @@ mod test {
     fn test_reentrancy_blocked_on_claim_dividends() {
         let te = setup();
         let c = client(&te);
-        c.init(&te.admin, &te.token_id, &100, &1000, &None);
+        c.init(&te.admin, &te.token_id, &100, &1000, &None, &DEFAULT_TIMELOCK_DELAY);
         mint(&te, &te.buyer, 100_000);
         c.add_to_whitelist(&te.buyer);
         c.buy_shares(&te.buyer, &100, &te.token_id, &None);
@@ -7498,7 +7536,7 @@ mod test {
     fn test_reentrancy_blocked_on_buy_from_order() {
         let te = setup();
         let c = client(&te);
-        c.init(&te.admin, &te.token_id, &100, &1000, &None);
+        c.init(&te.admin, &te.token_id, &100, &1000, &None, &DEFAULT_TIMELOCK_DELAY);
         mint(&te, &te.buyer, 100_000);
         c.add_to_whitelist(&te.buyer);
         c.buy_shares(&te.buyer, &100, &te.token_id, &None);
@@ -7519,7 +7557,7 @@ mod test {
     fn test_reentrancy_blocked_on_buyback_shares() {
         let te = setup();
         let c = client(&te);
-        c.init(&te.admin, &te.token_id, &100, &1000, &None);
+        c.init(&te.admin, &te.token_id, &100, &1000, &None, &DEFAULT_TIMELOCK_DELAY);
         mint(&te, &te.buyer, 100_000);
         c.add_to_whitelist(&te.buyer);
         c.buy_shares(&te.buyer, &100, &te.token_id, &None);
@@ -7540,7 +7578,7 @@ mod test {
     fn test_reentrancy_blocked_on_buy_vested_shares() {
         let te = setup();
         let c = client(&te);
-        c.init(&te.admin, &te.token_id, &100, &1000, &None);
+        c.init(&te.admin, &te.token_id, &100, &1000, &None, &DEFAULT_TIMELOCK_DELAY);
         mint(&te, &te.buyer, 100_000);
         c.add_to_whitelist(&te.buyer);
 
@@ -7556,7 +7594,7 @@ mod test {
     fn test_reentrancy_guard_cleared_after_emergency_withdraw() {
         let te = setup();
         let c = client(&te);
-        c.init(&te.admin, &te.token_id, &100, &1000, &None);
+        c.init(&te.admin, &te.token_id, &100, &1000, &None, &DEFAULT_TIMELOCK_DELAY);
         mint(&te, &te.admin, 100_000);
 
         c.emergency_withdraw(&te.admin, &0);
@@ -7571,7 +7609,7 @@ mod test {
     fn test_reentrancy_guard_cleared_after_distribute_dividends() {
         let te = setup();
         let c = client(&te);
-        c.init(&te.admin, &te.token_id, &100, &1000, &None);
+        c.init(&te.admin, &te.token_id, &100, &1000, &None, &DEFAULT_TIMELOCK_DELAY);
         mint(&te, &te.buyer, 100_000);
         c.add_to_whitelist(&te.buyer);
         c.buy_shares(&te.buyer, &100, &te.token_id, &None);
@@ -7594,7 +7632,7 @@ mod test {
     fn test_event_emission_on_init() {
         let te = setup();
         let c = client(&te);
-        c.init(&te.admin, &te.token_id, &100, &1000, &None);
+        c.init(&te.admin, &te.token_id, &100, &1000, &None, &DEFAULT_TIMELOCK_DELAY);
         // init emits EventInit â€“ no panic means success
     }
 
@@ -7602,7 +7640,7 @@ mod test {
     fn test_event_emission_on_buy_shares() {
         let te = setup();
         let c = client(&te);
-        c.init(&te.admin, &te.token_id, &100, &1000, &None);
+        c.init(&te.admin, &te.token_id, &100, &1000, &None, &DEFAULT_TIMELOCK_DELAY);
         mint(&te, &te.buyer, 100_000);
         c.add_to_whitelist(&te.buyer);
         c.buy_shares(&te.buyer, &10, &te.token_id, &None);
@@ -7612,7 +7650,7 @@ mod test {
     fn test_event_emission_on_pause() {
         let te = setup();
         let c = client(&te);
-        c.init(&te.admin, &te.token_id, &100, &1000, &None);
+        c.init(&te.admin, &te.token_id, &100, &1000, &None, &DEFAULT_TIMELOCK_DELAY);
         c.pause();
     }
 
@@ -7620,7 +7658,7 @@ mod test {
     fn test_event_emission_on_unpause() {
         let te = setup();
         let c = client(&te);
-        c.init(&te.admin, &te.token_id, &100, &1000, &None);
+        c.init(&te.admin, &te.token_id, &100, &1000, &None, &DEFAULT_TIMELOCK_DELAY);
         c.pause();
         c.unpause();
     }
@@ -7629,7 +7667,7 @@ mod test {
     fn test_event_emission_on_set_price() {
         let te = setup();
         let c = client(&te);
-        c.init(&te.admin, &te.token_id, &100, &1000, &None);
+        c.init(&te.admin, &te.token_id, &100, &1000, &None, &DEFAULT_TIMELOCK_DELAY);
         c.set_price(&200);
     }
 
@@ -7637,7 +7675,7 @@ mod test {
     fn test_event_emission_on_set_total_shares() {
         let te = setup();
         let c = client(&te);
-        c.init(&te.admin, &te.token_id, &100, &1000, &None);
+        c.init(&te.admin, &te.token_id, &100, &1000, &None, &DEFAULT_TIMELOCK_DELAY);
         c.set_total_shares(&2000);
     }
 
@@ -7645,7 +7683,7 @@ mod test {
     fn test_event_emission_on_transfer() {
         let te = setup();
         let c = client(&te);
-        c.init(&te.admin, &te.token_id, &100, &1000, &None);
+        c.init(&te.admin, &te.token_id, &100, &1000, &None, &DEFAULT_TIMELOCK_DELAY);
         mint(&te, &te.buyer, 100_000);
         c.add_to_whitelist(&te.buyer);
         c.buy_shares(&te.buyer, &50, &te.token_id, &None);
@@ -7657,7 +7695,7 @@ mod test {
     fn test_event_emission_on_approve() {
         let te = setup();
         let c = client(&te);
-        c.init(&te.admin, &te.token_id, &100, &1000, &None);
+        c.init(&te.admin, &te.token_id, &100, &1000, &None, &DEFAULT_TIMELOCK_DELAY);
         mint(&te, &te.buyer, 100_000);
         c.add_to_whitelist(&te.buyer);
         c.buy_shares(&te.buyer, &50, &te.token_id, &None);
@@ -7669,7 +7707,7 @@ mod test {
     fn test_event_emission_on_sell_order_flow() {
         let te = setup();
         let c = client(&te);
-        c.init(&te.admin, &te.token_id, &100, &1000, &None);
+        c.init(&te.admin, &te.token_id, &100, &1000, &None, &DEFAULT_TIMELOCK_DELAY);
         mint(&te, &te.buyer, 100_000);
         c.add_to_whitelist(&te.buyer);
         c.buy_shares(&te.buyer, &50, &te.token_id, &None);
@@ -7681,7 +7719,7 @@ mod test {
     fn test_event_emission_on_buyback() {
         let te = setup();
         let c = client(&te);
-        c.init(&te.admin, &te.token_id, &100, &1000, &None);
+        c.init(&te.admin, &te.token_id, &100, &1000, &None, &DEFAULT_TIMELOCK_DELAY);
         mint(&te, &te.buyer, 100_000);
         c.add_to_whitelist(&te.buyer);
         c.buy_shares(&te.buyer, &100, &te.token_id, &None);
@@ -7693,7 +7731,7 @@ mod test {
     fn test_event_emission_on_auto_buyback_config() {
         let te = setup();
         let c = client(&te);
-        c.init(&te.admin, &te.token_id, &100, &1000, &None);
+        c.init(&te.admin, &te.token_id, &100, &1000, &None, &DEFAULT_TIMELOCK_DELAY);
         c.auto_buyback_config(&3600_u64, &50_u32, &100_000_i128);
     }
 
@@ -7701,7 +7739,7 @@ mod test {
     fn test_event_emission_on_set_max_shares_per_user() {
         let te = setup();
         let c = client(&te);
-        c.init(&te.admin, &te.token_id, &100, &1000, &None);
+        c.init(&te.admin, &te.token_id, &100, &1000, &None, &DEFAULT_TIMELOCK_DELAY);
         c.set_max_shares_per_user(&100);
     }
 
@@ -7709,7 +7747,7 @@ mod test {
     fn test_event_emission_on_emergency_withdraw() {
         let te = setup();
         let c = client(&te);
-        c.init(&te.admin, &te.token_id, &100, &1000, &None);
+        c.init(&te.admin, &te.token_id, &100, &1000, &None, &DEFAULT_TIMELOCK_DELAY);
         c.emergency_withdraw(&te.admin, &0);
     }
 
@@ -7717,7 +7755,7 @@ mod test {
     fn test_event_emission_on_distribute_dividends() {
         let te = setup();
         let c = client(&te);
-        c.init(&te.admin, &te.token_id, &100, &1000, &None);
+        c.init(&te.admin, &te.token_id, &100, &1000, &None, &DEFAULT_TIMELOCK_DELAY);
         mint(&te, &te.buyer, 100_000);
         c.add_to_whitelist(&te.buyer);
         c.buy_shares(&te.buyer, &500, &te.token_id, &None);
@@ -7730,7 +7768,7 @@ mod test {
     fn test_event_emission_on_set_dividend_schedule() {
         let te = setup();
         let c = client(&te);
-        c.init(&te.admin, &te.token_id, &100, &1000, &None);
+        c.init(&te.admin, &te.token_id, &100, &1000, &None, &DEFAULT_TIMELOCK_DELAY);
         c.set_dividend_schedule(&10_i128, &86400_u64);
     }
 
@@ -7738,7 +7776,7 @@ mod test {
     fn test_event_emission_on_process_scheduled_dividend() {
         let te = setup();
         let c = client(&te);
-        c.init(&te.admin, &te.token_id, &100, &1000, &None);
+        c.init(&te.admin, &te.token_id, &100, &1000, &None, &DEFAULT_TIMELOCK_DELAY);
         mint(&te, &te.buyer, 100_000);
         c.add_to_whitelist(&te.buyer);
         c.buy_shares(&te.buyer, &500, &te.token_id, &None);
@@ -7754,7 +7792,7 @@ mod test {
     fn test_event_emission_on_set_nft_contract() {
         let te = setup();
         let c = client(&te);
-        c.init(&te.admin, &te.token_id, &100, &1000, &None);
+        c.init(&te.admin, &te.token_id, &100, &1000, &None, &DEFAULT_TIMELOCK_DELAY);
         let nft_id = te.env.register(share_certificate_nft::ShareCertificate, ());
         c.set_nft_contract(&nft_id);
     }
@@ -7763,7 +7801,7 @@ mod test {
     fn test_event_emission_on_whitelist_ops() {
         let te = setup();
         let c = client(&te);
-        c.init(&te.admin, &te.token_id, &100, &1000, &None);
+        c.init(&te.admin, &te.token_id, &100, &1000, &None, &DEFAULT_TIMELOCK_DELAY);
         let addr = Address::generate(&te.env);
         c.add_to_whitelist(&addr);
         c.remove_from_whitelist(&addr);
@@ -7773,7 +7811,7 @@ mod test {
     fn test_event_emission_on_set_metadata_uri() {
         let te = setup();
         let c = client(&te);
-        c.init(&te.admin, &te.token_id, &100, &1000, &None);
+        c.init(&te.admin, &te.token_id, &100, &1000, &None, &DEFAULT_TIMELOCK_DELAY);
         let uri = soroban_sdk::Bytes::from_slice(&te.env, b"ipfs://QmTest");
         c.set_metadata_uri(&uri);
     }
@@ -7782,7 +7820,7 @@ mod test {
     fn test_event_emission_on_claim_vested_shares() {
         let te = setup();
         let c = client(&te);
-        c.init(&te.admin, &te.token_id, &100, &1000, &None);
+        c.init(&te.admin, &te.token_id, &100, &1000, &None, &DEFAULT_TIMELOCK_DELAY);
         mint(&te, &te.buyer, 100_000);
         c.add_to_whitelist(&te.buyer);
         c.buy_vested_shares(&te.buyer, &10, &1, &te.token_id);
@@ -7803,6 +7841,7 @@ pub enum AdminAction {
     /// Permanent emergency asset delisting (Issue #570), restricted to the
     /// multi-sig / timelock-guarded admin flow.
     DelistAsset(soroban_sdk::Bytes),
+    SetTimelockDelay(u64),
 }
 
 #[soroban_sdk::contracttype]
@@ -7817,19 +7856,27 @@ pub enum TimelockError {
     NotScheduled = 1,
     TimelockNotExpired = 2,
     AlreadyScheduled = 3,
+    InvalidDelay = 4,
 }
 
 #[soroban_sdk::contractimpl]
 impl RwaMarketplace {
+    pub fn get_timelock_delay(env: soroban_sdk::Env) -> u64 {
+        stored_timelock_delay(&env)
+    }
+
     pub fn schedule_operation(env: soroban_sdk::Env, admin: soroban_sdk::Address, action: AdminAction) {
         admin.require_auth();
+        if let AdminAction::SetTimelockDelay(delay) = &action {
+            validate_timelock_delay(&env, *delay);
+        }
         let timelock_key = TimelockDataKey::TimelockOp(action.clone());
-        
+
         if env.storage().persistent().has(&timelock_key) {
             soroban_sdk::panic_with_error!(&env, TimelockError::AlreadyScheduled);
         }
-        
-        let execute_after = env.ledger().timestamp() + 172_800; // 48 hours
+
+        let execute_after = env.ledger().timestamp().saturating_add(stored_timelock_delay(&env));
         env.storage().persistent().set(&timelock_key, &execute_after);
 
         EventOperationScheduled { action, execute_after }.publish(&env);
@@ -7877,6 +7924,16 @@ impl RwaMarketplace {
             },
             AdminAction::DelistAsset(reason) => {
                 RwaMarketplace::delist_asset(env.clone(), reason);
+            },
+            AdminAction::SetTimelockDelay(delay) => {
+                let contract_admin: soroban_sdk::Address = env
+                    .storage()
+                    .instance()
+                    .get(&DataKey::Admin)
+                    .unwrap_or_else(|| panic!("Contract not initialized: admin"));
+                contract_admin.require_auth();
+                validate_timelock_delay(&env, delay);
+                env.storage().instance().set(&DataKey::TimelockDelay, &delay);
             }
         }
 
@@ -7889,7 +7946,7 @@ impl RwaMarketplace {
     fn test_pause_blocks_buy_shares() {
         let te = setup();
         let c = client(&te);
-        c.init(&te.admin, &te.token_id, &100, &1000, &None);
+        c.init(&te.admin, &te.token_id, &100, &1000, &None, &DEFAULT_TIMELOCK_DELAY);
         mint(&te, &te.buyer, 100_000);
         c.add_to_whitelist(&te.buyer);
 
@@ -7905,7 +7962,7 @@ impl RwaMarketplace {
     fn test_unpause_restores_buy_shares() {
         let te = setup();
         let c = client(&te);
-        c.init(&te.admin, &te.token_id, &100, &1000, &None);
+        c.init(&te.admin, &te.token_id, &100, &1000, &None, &DEFAULT_TIMELOCK_DELAY);
         mint(&te, &te.buyer, 100_000);
         c.add_to_whitelist(&te.buyer);
 
@@ -7925,7 +7982,7 @@ impl RwaMarketplace {
     fn test_function_pause_blocks_buy_shares() {
         let te = setup();
         let c = client(&te);
-        c.init(&te.admin, &te.token_id, &100, &1000, &None);
+        c.init(&te.admin, &te.token_id, &100, &1000, &None, &DEFAULT_TIMELOCK_DELAY);
         mint(&te, &te.buyer, 100_000);
         c.add_to_whitelist(&te.buyer);
 
@@ -7940,7 +7997,7 @@ impl RwaMarketplace {
     fn test_function_unpause_restores_buy_shares() {
         let te = setup();
         let c = client(&te);
-        c.init(&te.admin, &te.token_id, &100, &1000, &None);
+        c.init(&te.admin, &te.token_id, &100, &1000, &None, &DEFAULT_TIMELOCK_DELAY);
         mint(&te, &te.buyer, 100_000);
         c.add_to_whitelist(&te.buyer);
 
@@ -7958,82 +8015,188 @@ impl RwaMarketplace {
 #[cfg(test)]
 mod timelock_tests {
     use super::*;
-    use soroban_sdk::{Env, testutils::{Address as _, Ledger as _}};
-    
-    #[test]
-    fn test_timelock_delay() {
+    use soroban_sdk::{
+        testutils::{Address as _, Ledger as _, MockAuth, MockAuthInvoke},
+        Address, Env, IntoVal,
+    };
+
+    fn new_contract() -> (Env, Address, Address, Address) {
         let env = Env::default();
         env.mock_all_auths();
-        
-        let admin = soroban_sdk::Address::generate(&env);
-        let payment_token = soroban_sdk::Address::generate(&env);
-        
+        let admin = Address::generate(&env);
+        let payment_token = env.register_stellar_asset_contract_v2(admin.clone()).address();
+        let contract_id = env.register(RwaMarketplace, ());
+        (env, admin, payment_token, contract_id)
+    }
+
+    fn setup(delay: u64) -> (Env, Address, Address) {
+        let (env, admin, payment_token, contract_id) = new_contract();
+        RwaMarketplaceClient::new(&env, &contract_id).init(
+            &admin,
+            &payment_token,
+            &100_i128,
+            &1000_u32,
+            &None,
+            &delay,
+        );
+        (env, admin, contract_id)
+    }
+
+    #[test]
+    fn test_timelock_delay() {
+        let (env, admin, contract_id) = setup(MIN_TIMELOCK_DELAY);
+        let client = RwaMarketplaceClient::new(&env, &contract_id);
+        assert_eq!(client.get_timelock_delay(), MIN_TIMELOCK_DELAY);
+
+        let action = AdminAction::Pause;
+        client.schedule_operation(&admin, &action);
+        let start = env.ledger().timestamp();
+        env.ledger().set_timestamp(start + MIN_TIMELOCK_DELAY - 1);
+        assert!(client.try_execute_operation(&admin, &action).is_err());
+        env.ledger().set_timestamp(start + MIN_TIMELOCK_DELAY);
+        client.execute_operation(&admin, &action);
+        assert!(client.is_paused());
+    }
+
+    #[test]
+    fn test_timelock_max_delay() {
+        let (env, admin, contract_id) = setup(MAX_TIMELOCK_DELAY);
+        let client = RwaMarketplaceClient::new(&env, &contract_id);
+        assert_eq!(client.get_timelock_delay(), MAX_TIMELOCK_DELAY);
+
+        let action = AdminAction::Pause;
+        client.schedule_operation(&admin, &action);
+        env.ledger().set_timestamp(env.ledger().timestamp() + DEFAULT_TIMELOCK_DELAY);
+        assert!(client.try_execute_operation(&admin, &action).is_err());
+        env.ledger().set_timestamp(MAX_TIMELOCK_DELAY);
+        client.execute_operation(&admin, &action);
+        assert!(client.is_paused());
+    }
+
+    #[test]
+    #[should_panic(expected = "Error(Contract, #4)")]
+    fn test_init_rejects_delay_below_min() {
+        let (env, admin, payment_token, contract_id) = new_contract();
+        RwaMarketplaceClient::new(&env, &contract_id).init(
+            &admin,
+            &payment_token,
+            &100_i128,
+            &1000_u32,
+            &None,
+            &(MIN_TIMELOCK_DELAY - 1),
+        );
+    }
+
+    #[test]
+    #[should_panic(expected = "Error(Contract, #4)")]
+    fn test_init_rejects_delay_above_max() {
+        let (env, admin, payment_token, contract_id) = new_contract();
+        RwaMarketplaceClient::new(&env, &contract_id).init(
+            &admin,
+            &payment_token,
+            &100_i128,
+            &1000_u32,
+            &None,
+            &(MAX_TIMELOCK_DELAY + 1),
+        );
+    }
+
+    #[test]
+    #[should_panic(expected = "Error(Contract, #4)")]
+    fn test_schedule_rejects_delay_below_min() {
+        let (env, admin, contract_id) = setup(DEFAULT_TIMELOCK_DELAY);
+        RwaMarketplaceClient::new(&env, &contract_id).schedule_operation(
+            &admin,
+            &AdminAction::SetTimelockDelay(MIN_TIMELOCK_DELAY - 1),
+        );
+    }
+
+    #[test]
+    #[should_panic(expected = "Error(Contract, #4)")]
+    fn test_schedule_rejects_delay_above_max() {
+        let (env, admin, contract_id) = setup(DEFAULT_TIMELOCK_DELAY);
+        RwaMarketplaceClient::new(&env, &contract_id).schedule_operation(
+            &admin,
+            &AdminAction::SetTimelockDelay(MAX_TIMELOCK_DELAY + 1),
+        );
+    }
+
+    #[test]
+    fn test_timelocked_delay_change() {
+        let (env, admin, contract_id) = setup(DEFAULT_TIMELOCK_DELAY);
+        let client = RwaMarketplaceClient::new(&env, &contract_id);
+        let set_delay = AdminAction::SetTimelockDelay(MIN_TIMELOCK_DELAY);
+        client.schedule_operation(&admin, &set_delay);
+        env.ledger().set_timestamp(env.ledger().timestamp() + DEFAULT_TIMELOCK_DELAY);
+        client.execute_operation(&admin, &set_delay);
+        assert_eq!(client.get_timelock_delay(), MIN_TIMELOCK_DELAY);
+
+        let pause = AdminAction::Pause;
+        client.schedule_operation(&admin, &pause);
+        let start = env.ledger().timestamp();
+        env.ledger().set_timestamp(start + MIN_TIMELOCK_DELAY - 1);
+        assert!(client.try_execute_operation(&admin, &pause).is_err());
+        env.ledger().set_timestamp(start + MIN_TIMELOCK_DELAY);
+        client.execute_operation(&admin, &pause);
+        assert!(client.is_paused());
+    }
+
+    #[test]
+    fn test_execute_set_timelock_delay_requires_contract_admin() {
+        let (env, admin, contract_id) = setup(DEFAULT_TIMELOCK_DELAY);
+        let client = RwaMarketplaceClient::new(&env, &contract_id);
+        let attacker = Address::generate(&env);
+        let action = AdminAction::SetTimelockDelay(MIN_TIMELOCK_DELAY);
+        client.schedule_operation(&admin, &action);
+        env.ledger().set_timestamp(env.ledger().timestamp() + DEFAULT_TIMELOCK_DELAY);
+        env.mock_auths(&[MockAuth {
+            address: &attacker,
+            invoke: &MockAuthInvoke {
+                contract: &contract_id,
+                fn_name: "execute_operation",
+                args: (attacker.clone(), action.clone()).into_val(&env),
+                sub_invokes: &[],
+            },
+        }]);
+        assert!(client.try_execute_operation(&attacker, &action).is_err());
+        assert_eq!(client.get_timelock_delay(), DEFAULT_TIMELOCK_DELAY);
+    }
+
+    #[test]
+    fn test_legacy_timelock_delay_fallback() {
+        let env = Env::default();
         let contract_id = env.register(RwaMarketplace, ());
         let client = RwaMarketplaceClient::new(&env, &contract_id);
-        
-        client.init(&admin, &payment_token, &100_i128, &1000_u32, &None);
-        
-        let action = AdminAction::Pause;
-        
-        client.schedule_operation(&admin, &action);
-        env.ledger().set_timestamp(env.ledger().timestamp() + 176_400); // Forward 49 hours
-        client.execute_operation(&admin, &action);
-        
-        assert_eq!(client.is_paused(), true);
+        assert_eq!(client.get_timelock_delay(), DEFAULT_TIMELOCK_DELAY);
     }
 
     #[test]
     fn test_timelock_schedule_event() {
-        let env = Env::default();
-        env.mock_all_auths();
-        
-        let admin = soroban_sdk::Address::generate(&env);
-        let payment_token = soroban_sdk::Address::generate(&env);
-        
-        let contract_id = env.register(RwaMarketplace, ());
+        let (env, admin, contract_id) = setup(DEFAULT_TIMELOCK_DELAY);
         let client = RwaMarketplaceClient::new(&env, &contract_id);
-        
-        client.init(&admin, &payment_token, &100_i128, &1000_u32, &None);
-        
-        let action = AdminAction::Pause;
-        client.schedule_operation(&admin, &action);
+        client.schedule_operation(&admin, &AdminAction::Pause);
+        assert!(client.try_execute_operation(&admin, &AdminAction::Pause).is_err());
     }
 
     #[test]
     fn test_timelock_cancel_event() {
-        let env = Env::default();
-        env.mock_all_auths();
-        
-        let admin = soroban_sdk::Address::generate(&env);
-        let payment_token = soroban_sdk::Address::generate(&env);
-        
-        let contract_id = env.register(RwaMarketplace, ());
+        let (env, admin, contract_id) = setup(DEFAULT_TIMELOCK_DELAY);
         let client = RwaMarketplaceClient::new(&env, &contract_id);
-        
-        client.init(&admin, &payment_token, &100_i128, &1000_u32, &None);
-        
         let action = AdminAction::Pause;
         client.schedule_operation(&admin, &action);
         client.cancel_operation(&admin, &action);
+        assert!(client.try_execute_operation(&admin, &action).is_err());
     }
 
     #[test]
     fn test_timelock_execute_event() {
-        let env = Env::default();
-        env.mock_all_auths();
-        
-        let admin = soroban_sdk::Address::generate(&env);
-        let payment_token = soroban_sdk::Address::generate(&env);
-        
-        let contract_id = env.register(RwaMarketplace, ());
+        let (env, admin, contract_id) = setup(DEFAULT_TIMELOCK_DELAY);
         let client = RwaMarketplaceClient::new(&env, &contract_id);
-        
-        client.init(&admin, &payment_token, &100_i128, &1000_u32, &None);
-        
         let action = AdminAction::Unpause;
         client.schedule_operation(&admin, &action);
-        env.ledger().set_timestamp(env.ledger().timestamp() + 176_400);
+        env.ledger().set_timestamp(env.ledger().timestamp() + DEFAULT_TIMELOCK_DELAY);
         client.execute_operation(&admin, &action);
+        assert!(!client.is_paused());
     }
 }
 
@@ -8088,7 +8251,7 @@ mod property_tests {
                 token::StellarAssetClient::new(&env, &token_id).mint(b, &1_000_000_000);
             }
 
-            client.init(&admin, &token_id, &INIT_PRICE, &INIT_TOTAL, &None);
+            client.init(&admin, &token_id, &INIT_PRICE, &INIT_TOTAL, &None, &DEFAULT_TIMELOCK_DELAY);
 
             for b in buyers.iter() {
                 client.add_to_whitelist(b);
@@ -8168,7 +8331,7 @@ mod property_tests {
                 .address();
             let contract_id = env.register(RwaMarketplace, ());
             let client = RwaMarketplaceClient::new(&env, &contract_id);
-            client.init(&admin, &token_id, &INIT_PRICE, &INIT_TOTAL, &None);
+            client.init(&admin, &token_id, &INIT_PRICE, &INIT_TOTAL, &None, &DEFAULT_TIMELOCK_DELAY);
 
             for should_pause in pauses {
                 if should_pause {
@@ -8197,7 +8360,7 @@ mod property_tests {
 
             let buyer = Address::generate(&env);
             token::StellarAssetClient::new(&env, &token_id).mint(&buyer, &1_000_000_000);
-            client.init(&admin, &token_id, &INIT_PRICE, &INIT_TOTAL, &None);
+            client.init(&admin, &token_id, &INIT_PRICE, &INIT_TOTAL, &None, &DEFAULT_TIMELOCK_DELAY);
             client.add_to_whitelist(&buyer);
 
             let mut total_bought = 0u32;
@@ -8320,7 +8483,7 @@ mod fuzz_order_book_transitions {
             token::StellarAssetClient::new(&env, &token_id).mint(&buyer, &100_000_000);
             token::StellarAssetClient::new(&env, &token_id).mint(&seller, &100_000_000);
 
-            client.init(&admin, &token_id, &INIT_PRICE, &INIT_TOTAL, &None);
+            client.init(&admin, &token_id, &INIT_PRICE, &INIT_TOTAL, &None, &DEFAULT_TIMELOCK_DELAY);
             client.add_to_whitelist(&buyer);
             client.add_to_whitelist(&seller);
 
@@ -8397,7 +8560,7 @@ mod fuzz_dividend_distribution {
             token::StellarAssetClient::new(&env, &token_id).mint(&buyer, &100_000_000);
             token::StellarAssetClient::new(&env, &token_id).mint(&contract_id, &1_000_000_000);
 
-            client.init(&admin, &token_id, &INIT_PRICE, &INIT_TOTAL, &None);
+            client.init(&admin, &token_id, &INIT_PRICE, &INIT_TOTAL, &None, &DEFAULT_TIMELOCK_DELAY);
             client.add_to_whitelist(&buyer);
 
             let actual_shares = buyer_shares.min(INIT_TOTAL - 1);
@@ -8442,7 +8605,7 @@ mod vesting_analytics_tests {
 
         let contract_id = env.register(RwaMarketplace, ());
         let c = RwaMarketplaceClient::new(&env, &contract_id);
-        c.init(&admin, &token_id, &100, &1000, &None);
+        c.init(&admin, &token_id, &100, &1000, &None, &DEFAULT_TIMELOCK_DELAY);
 
         // Mint tokens and whitelist buyer for test setup
         let token_client = StellarAssetClient::new(&env, &token_id);
@@ -8791,7 +8954,7 @@ mod oracle_bridge_tests {
 
     fn init(te: &TestEnv) {
         let c = client(te);
-        c.init(&te.admin, &te.token_id, &INIT_PRICE, &INIT_TOTAL, &None);
+        c.init(&te.admin, &te.token_id, &INIT_PRICE, &INIT_TOTAL, &None, &DEFAULT_TIMELOCK_DELAY);
         c.add_to_whitelist(&te.buyer);
     }
 
@@ -9039,7 +9202,7 @@ mod sip4_metadata_tests {
 
     fn init(te: &TestEnv) {
         let c = client(te);
-        c.init(&te.admin, &te.token_id, &INIT_PRICE, &INIT_TOTAL, &None);
+        c.init(&te.admin, &te.token_id, &INIT_PRICE, &INIT_TOTAL, &None, &DEFAULT_TIMELOCK_DELAY);
         c.add_to_whitelist(&te.buyer);
     }
 
@@ -9073,7 +9236,7 @@ mod sip4_metadata_tests {
     fn test_batch_buy_shares_basic() {
         let te = setup();
         let c = client(&te);
-        c.init(&te.admin, &te.token_id, &100, &1000, &None);
+        c.init(&te.admin, &te.token_id, &100, &1000, &None, &DEFAULT_TIMELOCK_DELAY);
         mint(&te, &te.buyer, 1_000_000);
         c.add_to_whitelist(&te.buyer);
 
@@ -9116,7 +9279,7 @@ mod sip4_metadata_tests {
     fn test_batch_buy_shares_partial_fulfillment() {
         let te = setup();
         let c = client(&te);
-        c.init(&te.admin, &te.token_id, &100, &1000, &None);
+        c.init(&te.admin, &te.token_id, &100, &1000, &None, &DEFAULT_TIMELOCK_DELAY);
         mint(&te, &te.buyer, 1_000_000);
         c.add_to_whitelist(&te.buyer);
 
@@ -9151,7 +9314,7 @@ mod sip4_metadata_tests {
     fn test_batch_buy_shares_exceeds_available() {
         let te = setup();
         let c = client(&te);
-        c.init(&te.admin, &te.token_id, &100, &50, &None); // Only 50 shares
+        c.init(&te.admin, &te.token_id, &100, &50, &None, &DEFAULT_TIMELOCK_DELAY); // Only 50 shares
         mint(&te, &te.buyer, 1_000_000);
         c.add_to_whitelist(&te.buyer);
 
@@ -9180,7 +9343,7 @@ mod sip4_metadata_tests {
     fn test_batch_buy_shares_empty_batch() {
         let te = setup();
         let c = client(&te);
-        c.init(&te.admin, &te.token_id, &100, &1000, &None);
+        c.init(&te.admin, &te.token_id, &100, &1000, &None, &DEFAULT_TIMELOCK_DELAY);
         c.add_to_whitelist(&te.buyer);
 
         let requests: Vec<BatchPurchaseRequest> = Vec::new(&te.env);
@@ -9192,7 +9355,7 @@ mod sip4_metadata_tests {
     fn test_batch_buy_shares_exceeds_max_batch_size() {
         let te = setup();
         let c = client(&te);
-        c.init(&te.admin, &te.token_id, &100, &1000, &None);
+        c.init(&te.admin, &te.token_id, &100, &1000, &None, &DEFAULT_TIMELOCK_DELAY);
         mint(&te, &te.buyer, 1_000_000);
         c.add_to_whitelist(&te.buyer);
 
@@ -9212,7 +9375,7 @@ mod sip4_metadata_tests {
     fn test_batch_buy_shares_requires_whitelist() {
         let te = setup();
         let c = client(&te);
-        c.init(&te.admin, &te.token_id, &100, &1000, &None);
+        c.init(&te.admin, &te.token_id, &100, &1000, &None, &DEFAULT_TIMELOCK_DELAY);
         mint(&te, &te.buyer, 1_000_000);
         // Not whitelisted
 
@@ -9229,7 +9392,7 @@ mod sip4_metadata_tests {
     fn test_batch_buy_shares_when_paused() {
         let te = setup();
         let c = client(&te);
-        c.init(&te.admin, &te.token_id, &100, &1000, &None);
+        c.init(&te.admin, &te.token_id, &100, &1000, &None, &DEFAULT_TIMELOCK_DELAY);
         mint(&te, &te.buyer, 1_000_000);
         c.add_to_whitelist(&te.buyer);
         c.pause();
@@ -9246,7 +9409,7 @@ mod sip4_metadata_tests {
     fn test_batch_buy_shares_all_fail() {
         let te = setup();
         let c = client(&te);
-        c.init(&te.admin, &te.token_id, &100, &1000, &None);
+        c.init(&te.admin, &te.token_id, &100, &1000, &None, &DEFAULT_TIMELOCK_DELAY);
         mint(&te, &te.buyer, 1_000_000);
         c.add_to_whitelist(&te.buyer);
 
@@ -9275,7 +9438,7 @@ mod sip4_metadata_tests {
     fn test_get_batch_quote_accuracy() {
         let te = setup();
         let c = client(&te);
-        c.init(&te.admin, &te.token_id, &100, &1000, &None);
+        c.init(&te.admin, &te.token_id, &100, &1000, &None, &DEFAULT_TIMELOCK_DELAY);
         mint(&te, &te.buyer, 1_000_000);
         c.add_to_whitelist(&te.buyer);
 
@@ -9313,7 +9476,7 @@ mod sip4_metadata_tests {
     fn test_batch_buy_shares_single_item() {
         let te = setup();
         let c = client(&te);
-        c.init(&te.admin, &te.token_id, &100, &1000, &None);
+        c.init(&te.admin, &te.token_id, &100, &1000, &None, &DEFAULT_TIMELOCK_DELAY);
         mint(&te, &te.buyer, 1_000_000);
         c.add_to_whitelist(&te.buyer);
 
@@ -9336,7 +9499,7 @@ mod sip4_metadata_tests {
     fn test_batch_buy_shares_max_batch_size() {
         let te = setup();
         let c = client(&te);
-        c.init(&te.admin, &te.token_id, &100, &1000, &None);
+        c.init(&te.admin, &te.token_id, &100, &1000, &None, &DEFAULT_TIMELOCK_DELAY);
         mint(&te, &te.buyer, 1_000_000);
         c.add_to_whitelist(&te.buyer);
 
@@ -9363,7 +9526,7 @@ mod sip4_metadata_tests {
     fn test_add_to_whitelist_batch() {
         let te = setup();
         let c = client(&te);
-        c.init(&te.admin, &te.token_id, &100, &1000, &None);
+        c.init(&te.admin, &te.token_id, &100, &1000, &None, &DEFAULT_TIMELOCK_DELAY);
         let a1 = Address::generate(&te.env);
         let a2 = Address::generate(&te.env);
         let mut addrs: Vec<Address> = Vec::new(&te.env);
@@ -9378,7 +9541,7 @@ mod sip4_metadata_tests {
     fn test_set_whitelist_expiry() {
         let te = setup();
         let c = client(&te);
-        c.init(&te.admin, &te.token_id, &100, &1000, &None);
+        c.init(&te.admin, &te.token_id, &100, &1000, &None, &DEFAULT_TIMELOCK_DELAY);
         let addr = Address::generate(&te.env);
         c.add_to_whitelist(&addr);
         let far_future = te.env.ledger().timestamp() + 86_400;
@@ -9393,7 +9556,7 @@ mod sip4_metadata_tests {
     fn test_set_whitelist_tier_invalid() {
         let te = setup();
         let c = client(&te);
-        c.init(&te.admin, &te.token_id, &100, &1000, &None);
+        c.init(&te.admin, &te.token_id, &100, &1000, &None, &DEFAULT_TIMELOCK_DELAY);
         let addr = Address::generate(&te.env);
         c.set_whitelist_tier(&addr, &5_u32);
     }
@@ -9404,7 +9567,7 @@ mod sip4_metadata_tests {
     fn test_set_and_get_transfer_fee() {
         let te = setup();
         let c = client(&te);
-        c.init(&te.admin, &te.token_id, &100, &1000, &None);
+        c.init(&te.admin, &te.token_id, &100, &1000, &None, &DEFAULT_TIMELOCK_DELAY);
         let collector = Address::generate(&te.env);
         c.set_transfer_fee(&30_u32, &collector);
         let (fee_bps, fee_collector) = c.get_transfer_fee();
@@ -9417,7 +9580,7 @@ mod sip4_metadata_tests {
     fn test_set_transfer_fee_too_high() {
         let te = setup();
         let c = client(&te);
-        c.init(&te.admin, &te.token_id, &100, &1000, &None);
+        c.init(&te.admin, &te.token_id, &100, &1000, &None, &DEFAULT_TIMELOCK_DELAY);
         let collector = Address::generate(&te.env);
         c.set_transfer_fee(&2000_u32, &collector);
     }
@@ -9428,7 +9591,7 @@ mod sip4_metadata_tests {
     fn test_request_buyback() {
         let te = setup();
         let c = client(&te);
-        c.init(&te.admin, &te.token_id, &100, &1000, &None);
+        c.init(&te.admin, &te.token_id, &100, &1000, &None, &DEFAULT_TIMELOCK_DELAY);
         mint(&te, &te.buyer, 100_000);
         c.add_to_whitelist(&te.buyer);
         c.buy_shares(&te.buyer, &100, &te.token_id, &None);
@@ -9442,7 +9605,7 @@ mod sip4_metadata_tests {
     fn test_buyback_paused() {
         let te = setup();
         let c = client(&te);
-        c.init(&te.admin, &te.token_id, &100, &1000, &None);
+        c.init(&te.admin, &te.token_id, &100, &1000, &None, &DEFAULT_TIMELOCK_DELAY);
         mint(&te, &te.buyer, 100_000);
         c.add_to_whitelist(&te.buyer);
         c.buy_shares(&te.buyer, &100, &te.token_id, &None);
@@ -9458,7 +9621,7 @@ mod sip4_metadata_tests {
     fn test_transfer_shares_when_paused() {
         let te = setup();
         let c = client(&te);
-        c.init(&te.admin, &te.token_id, &100, &1000, &None);
+        c.init(&te.admin, &te.token_id, &100, &1000, &None, &DEFAULT_TIMELOCK_DELAY);
         mint(&te, &te.buyer, 100_000);
         c.add_to_whitelist(&te.buyer);
         c.buy_shares(&te.buyer, &10, &te.token_id, &None);
@@ -9471,7 +9634,7 @@ mod sip4_metadata_tests {
     fn test_place_sell_order_when_paused() {
         let te = setup();
         let c = client(&te);
-        c.init(&te.admin, &te.token_id, &100, &1000, &None);
+        c.init(&te.admin, &te.token_id, &100, &1000, &None, &DEFAULT_TIMELOCK_DELAY);
         mint(&te, &te.buyer, 100_000);
         c.add_to_whitelist(&te.buyer);
         c.buy_shares(&te.buyer, &10, &te.token_id, &None);
@@ -9484,7 +9647,7 @@ mod sip4_metadata_tests {
     fn test_buy_from_order_when_paused() {
         let te = setup();
         let c = client(&te);
-        c.init(&te.admin, &te.token_id, &100, &1000, &None);
+        c.init(&te.admin, &te.token_id, &100, &1000, &None, &DEFAULT_TIMELOCK_DELAY);
         mint(&te, &te.buyer, 100_000);
         c.add_to_whitelist(&te.buyer);
         c.buy_shares(&te.buyer, &10, &te.token_id, &None);
@@ -9498,7 +9661,7 @@ mod sip4_metadata_tests {
     fn test_buyback_shares_when_paused() {
         let te = setup();
         let c = client(&te);
-        c.init(&te.admin, &te.token_id, &100, &1000, &None);
+        c.init(&te.admin, &te.token_id, &100, &1000, &None, &DEFAULT_TIMELOCK_DELAY);
         mint(&te, &te.buyer, 100_000);
         c.add_to_whitelist(&te.buyer);
         c.buy_shares(&te.buyer, &100, &te.token_id, &None);
@@ -9513,7 +9676,7 @@ mod sip4_metadata_tests {
     fn test_delist_asset_halts_trading_and_cancels_orders() {
         let te = setup();
         let c = client(&te);
-        c.init(&te.admin, &te.token_id, &100, &1000, &None);
+        c.init(&te.admin, &te.token_id, &100, &1000, &None, &DEFAULT_TIMELOCK_DELAY);
         mint(&te, &te.buyer, 100_000);
         c.add_to_whitelist(&te.buyer);
         c.buy_shares(&te.buyer, &50, &te.token_id, &None);
@@ -9545,7 +9708,7 @@ mod sip4_metadata_tests {
     fn test_delist_asset_is_irreversible() {
         let te = setup();
         let c = client(&te);
-        c.init(&te.admin, &te.token_id, &100, &1000, &None);
+        c.init(&te.admin, &te.token_id, &100, &1000, &None, &DEFAULT_TIMELOCK_DELAY);
         let reason = soroban_sdk::Bytes::from_slice(&te.env, b"legal-dispute");
         c.delist_asset(&reason);
         c.delist_asset(&reason);
@@ -9557,7 +9720,7 @@ mod sip4_metadata_tests {
     fn test_buy_shares_with_slippage_protection_passes_when_price_ok() {
         let te = setup();
         let c = client(&te);
-        c.init(&te.admin, &te.token_id, &100, &1000, &None);
+        c.init(&te.admin, &te.token_id, &100, &1000, &None, &DEFAULT_TIMELOCK_DELAY);
 
         // max_price_per_share = 100 matches the set price, so it should pass
         c.buy_shares(&te.buyer, &10, &te.token_id, &Some(100));
@@ -9568,7 +9731,7 @@ mod sip4_metadata_tests {
     fn test_buy_shares_with_slippage_protection_passes_when_price_below_max() {
         let te = setup();
         let c = client(&te);
-        c.init(&te.admin, &te.token_id, &100, &1000, &None);
+        c.init(&te.admin, &te.token_id, &100, &1000, &None, &DEFAULT_TIMELOCK_DELAY);
 
         // max_price_per_share = 200 is above the set price of 100, so it should pass
         c.buy_shares(&te.buyer, &10, &te.token_id, &Some(200));
@@ -9580,7 +9743,7 @@ mod sip4_metadata_tests {
     fn test_buy_shares_slippage_protection_reverts_when_price_exceeds_max() {
         let te = setup();
         let c = client(&te);
-        c.init(&te.admin, &te.token_id, &100, &1000, &None);
+        c.init(&te.admin, &te.token_id, &100, &1000, &None, &DEFAULT_TIMELOCK_DELAY);
 
         // max_price_per_share = 50 is below the set price of 100, so it should revert
         c.buy_shares(&te.buyer, &10, &te.token_id, &Some(50));
@@ -9590,7 +9753,7 @@ mod sip4_metadata_tests {
     fn test_buy_shares_no_slippage_check_when_none() {
         let te = setup();
         let c = client(&te);
-        c.init(&te.admin, &te.token_id, &100, &1000, &None);
+        c.init(&te.admin, &te.token_id, &100, &1000, &None, &DEFAULT_TIMELOCK_DELAY);
 
         // None means no slippage check â€” should pass regardless of price
         c.buy_shares(&te.buyer, &10, &te.token_id, &None);

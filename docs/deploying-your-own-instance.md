@@ -84,7 +84,7 @@ examples. Never reuse them.
 
 - [ ] Generate a dedicated admin identity for each environment (`soroban keys generate ...`). For mainnet, keep the admin secret in a hardware wallet or secrets manager, not on a developer laptop.
 - [ ] Build and deploy the contract to testnet for staging and to mainnet for production (see [README → Configure Testnet & Deploy](../README.md#3-configure-testnet--deploy); for mainnet use `https://soroban.stellar.org:443` and the passphrase `Public Global Stellar Network ; September 2015`).
-- [ ] Call `init` with **your** admin, the payment token you actually accept (e.g. a USDC SAC on mainnet), price, and total shares.
+- [ ] Call `init` with **your** admin, the payment token you actually accept (e.g. a USDC SAC on mainnet), price, total shares, and a `timelock_delay` between 86400 and 2592000 seconds (172800 preserves the legacy 48-hour default).
 - [ ] Configure the allowlist (enabled by default) and, if used, the NFT certificate contract (`set_nft_contract`; see [NFT_CERTIFICATES.md](NFT_CERTIFICATES.md)).
 - [ ] Record every deployed contract ID per environment; the frontend and backend both need it.
 

@@ -22,6 +22,8 @@ spec:
         app: rwa-frontend
         component: frontend
     spec:
+      serviceAccountName: rwa-frontend
+      automountServiceAccountToken: false
       securityContext:
         runAsNonRoot: true
         runAsUser: 1001

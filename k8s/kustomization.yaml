@@ -26,7 +26,18 @@ resources:
   - backend-configmap.yaml
   - backend-deployment.yaml
   - backend-service.yaml
+  - backend-serviceaccount.yaml
+  - backend-hpa.yaml
+  - backend-pdb.yaml
   - frontend-configmap.yaml
   - frontend-deployment.yaml
   - frontend-service.yaml
+  - frontend-serviceaccount.yaml
+  - frontend-hpa.yaml
+  - frontend-pdb.yaml
   - ingress.yaml
+  - networkpolicy-default-deny.yaml
+  - networkpolicy-allow-dns.yaml
+  - networkpolicy-allow-ingress-backend.yaml
+  - networkpolicy-allow-ingress-frontend.yaml
+  - networkpolicy-allow-backend-datastores.yaml

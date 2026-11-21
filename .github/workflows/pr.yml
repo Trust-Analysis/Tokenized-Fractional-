@@ -7,6 +7,14 @@ on:
     branches: [ main, dev ]
 
 jobs:
+  node-eol-check:
+    name: Node.js EOL Check
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - name: Verify configured Node.js release line is supported
+        run: node scripts/check-node-eol.mjs
+
   secret-scan:
     name: TruffleHog Secret Scanning
     runs-on: ubuntu-latest
@@ -44,7 +52,7 @@ jobs:
       - name: Setup Node.js
         uses: actions/setup-node@v4
         with:
-          node-version: 20
+          node-version-file: '.nvmrc'
 
       - name: Install commitlint dependencies
         run: npm --no-audit --no-fund install --no-save @commitlint/cli@^19.6.0 @commitlint/config-conventional@^19.6.0
@@ -70,7 +78,7 @@ jobs:
       - name: Setup Node.js
         uses: actions/setup-node@v4
         with:
-          node-version: 20
+          node-version-file: '.nvmrc'
 
       - name: Syntax and lint validation (lint-staged equivalent)
         run: |
