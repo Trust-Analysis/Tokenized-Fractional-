@@ -16,6 +16,7 @@
 import Redis from 'ioredis';
 import { logger } from '../services/logger.js';
 import { REDIS_URL, NODE_ENV } from '../config.js';
+import { getClientIp } from '../utils/clientIp.js';
 
 /**
  * Rate limit tiers with different windows and thresholds
@@ -284,7 +285,7 @@ export function createTieredRateLimiter(type = 'read') {
     try {
       const tier = getUserTier(req);
       const limits = TIERS[tier][type];
-      const identifier = req.ip || req.connection?.remoteAddress || 'unknown';
+      const identifier = getClientIp(req) || 'unknown';
 
       // Create unique key for this user/ip and rate limit window
       const now = Date.now();
@@ -367,8 +368,7 @@ export function createGraphQLRateLimiter(options = {}) {
         req.wallet ||
         req.walletAddress ||
         req.headers?.['x-wallet-address'] ||
-        req.ip ||
-        req.connection?.remoteAddress ||
+        getClientIp(req) ||
         'unknown';
 
       // Create unique key for this user/ip and GraphQL rate limit window

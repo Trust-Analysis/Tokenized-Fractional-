@@ -13,7 +13,7 @@
  *   CONSISTENCY_LOG_DIR          — directory for check logs (optional)
  */
 
-import { logger } from './index.js';
+import { logger } from './logger.js';
 import { readFileSync } from 'fs';
 import { mkdir, writeFile } from 'fs/promises';
 import { join } from 'path';

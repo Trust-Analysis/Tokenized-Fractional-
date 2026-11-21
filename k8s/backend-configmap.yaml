@@ -11,3 +11,7 @@ data:
   CORS_ORIGINS: "http://rwa-frontend-svc:5173"
   DATA_FILE: "data.json"
   NODE_ENV: "production"
+  # Trusted proxy chain: number of hops (Ingress, optional Nginx/Kong) or a
+  # comma-separated list of proxy IPs/CIDRs. Override per environment overlay.
+  # Never set to "true" in production.
+  TRUST_PROXY: "1"

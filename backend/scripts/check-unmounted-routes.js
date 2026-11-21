@@ -91,7 +91,7 @@ console.log('=================================================================\n
 auditRouteDirectory(
   'backend',
   path.join(backendDir, 'src', 'routes'),
-  [path.join(backendDir, 'src', 'app.js'), path.join(backendDir, 'index.js')]
+  [path.join(backendDir, 'src', 'app.js')]
 );
 
 // 2. Audit standalone search directory
@@ -106,7 +106,7 @@ if (fs.existsSync(path.join(repoRootDir, 'search', 'backend'))) {
   auditRouteDirectory(
     'search/backend',
     path.join(repoRootDir, 'search', 'backend'),
-    [path.join(repoRootDir, 'search', 'backend', 'searchAPI.js'), path.join(backendDir, 'index.js')]
+    [path.join(repoRootDir, 'search', 'backend', 'searchAPI.js'), path.join(backendDir, 'src', 'app.js')]
   );
 }
 
@@ -121,13 +121,13 @@ auditRouteDirectory(
 auditRouteDirectory(
   'graphql',
   path.join(repoRootDir, 'graphql', 'routes'),
-  [path.join(repoRootDir, 'graphql', 'api', 'adminRoutes.js'), path.join(backendDir, 'index.js'), path.join(backendDir, 'src', 'app.js')]
+  [path.join(repoRootDir, 'graphql', 'api', 'adminRoutes.js'), path.join(backendDir, 'src', 'app.js')]
 );
 
 auditRouteDirectory(
   'graphql/api',
   path.join(repoRootDir, 'graphql', 'api'),
-  [path.join(backendDir, 'index.js'), path.join(backendDir, 'src', 'app.js'), path.join(repoRootDir, 'graphql', 'api', 'adminRoutes.js')]
+  [path.join(backendDir, 'src', 'app.js'), path.join(repoRootDir, 'graphql', 'api', 'adminRoutes.js')]
 );
 
 // Display summary

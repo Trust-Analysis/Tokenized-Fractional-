@@ -13,6 +13,7 @@
 import { parse } from 'graphql';
 import { buildSubgraphSchema } from '@apollo/subgraph';
 import { entityCache } from '../../entityCache.js';
+import { isValidContractId, INVALID_CONTRACT_ID_MESSAGE } from '../../../validators/rwaValidator.js';
 
 export const typeDefs = parse(`#graphql
   extend schema
@@ -53,6 +54,7 @@ export const typeDefs = parse(`#graphql
   }
 
   input RWAInput {
+    contractId: String!
     title: String!
     location: String!
     description: String!
@@ -229,12 +231,15 @@ export function createAssetsSubgraph(dataLayer) {
           throw new Error('Unauthorized: Only admins can create assets');
         }
         const { input } = args;
+        const { contractId } = input;
+        if (!isValidContractId(contractId)) {
+          throw new Error(INVALID_CONTRACT_ID_MESSAGE);
+        }
         if (dataLayer?.validateRwaBody) {
           const error = dataLayer.validateRwaBody(input);
           if (error) throw new Error(error);
         }
 
-        const contractId = `C${Math.random().toString(36).substring(2, 56)}`;
         const now = new Date().toISOString();
         const newAsset = {
           ...input,
@@ -242,10 +247,14 @@ export function createAssetsSubgraph(dataLayer) {
           createdAt: now,
           updatedAt: now,
           pending: true,
+          contractVerified: false,
         };
 
         if (dataLayer) {
           const data = dataLayer.loadData();
+          if (data[contractId]) {
+            throw new Error(`Asset with contract ID ${contractId} already exists`);
+          }
           data[contractId] = newAsset;
           dataLayer.saveData(data);
           if (dataLayer.syncSearchIndex) dataLayer.syncSearchIndex();

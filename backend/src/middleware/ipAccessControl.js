@@ -1,6 +1,7 @@
 import Redis from 'ioredis';
 import { logger } from '../services/logger.js';
 import { REDIS_URL } from '../config.js';
+import { getClientIp } from '../utils/clientIp.js';
 
 let redisClient = null;
 let redisConnected = false;
@@ -62,7 +63,7 @@ async function syncFromRedis() {
 export function createIPAccessControl() {
   return async (req, res, next) => {
     try {
-      const ip = req.ip || req.connection?.remoteAddress || 'unknown';
+      const ip = getClientIp(req) || 'unknown';
 
       if (memoryBlacklist.has(ip)) {
         logger.warn({ ip, path: req.path }, 'Blocked request from blacklisted IP');

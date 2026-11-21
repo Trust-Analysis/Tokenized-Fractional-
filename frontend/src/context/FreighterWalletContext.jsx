@@ -39,7 +39,7 @@ export function FreighterWalletProvider({ children, expectedNetwork = 'TESTNET' 
     }, WALLET_TIMEOUT_MS);
 
     try {
-      if (import.meta.env.VITE_MOCK_WALLET === 'true') {
+      if (import.meta.env.DEV && import.meta.env.VITE_MOCK_WALLET === 'true') {
         await new Promise((resolve) => setTimeout(resolve, 300));
         clearWalletTimeout();
 

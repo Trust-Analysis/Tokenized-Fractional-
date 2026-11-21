@@ -17,7 +17,8 @@
 import { WebSocketServer } from 'ws';
 import { makeServer } from 'graphql-ws';
 import { useServer } from 'graphql-ws/lib/use/ws';
-import { logger } from './index.js';
+import { logger } from './logger.js';
+import { getClientIp } from './src/utils/clientIp.js';
 import {
   optimizationManager,
   OPTIMIZATION_CONFIG,
@@ -130,7 +131,7 @@ export function initializeGraphQLSubscriptions(httpServer, apolloServer) {
     const clientId = req.headers['x-client-id'] || 
                       `ws-${Date.now()}-${Math.random().toString(36).substr(2, 9)}`;
     
-    logger.info({ clientId, ip: req.socket.remoteAddress }, 'WebSocket connection established');
+    logger.info({ clientId, ip: getClientIp(req) }, 'WebSocket connection established');
     
     // Handle heartbeat responses
     ws.on('message', (data) => {

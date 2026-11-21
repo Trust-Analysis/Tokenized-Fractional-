@@ -1,12 +1,13 @@
 // backend/scripts/verify-openapi.js
-const listEndpoints = require('express-list-endpoints');
-const request = require('supertest');
+import listEndpoints from 'express-list-endpoints';
+import request from 'supertest';
+
 let app;
 
 try {
-  app = require('../index.js');
+  ({ app } = await import('../src/app.js'));
   if (!app || typeof app.use !== 'function') {
-    console.error("❌ Express app is not properly exported from backend/index.js.");
+    console.error("❌ Express app is not properly exported from backend/src/app.js.");
     process.exit(1);
   }
 } catch (err) {

@@ -9,6 +9,7 @@
  */
 
 import logger from './logger.js';
+import { getClientIp } from '../utils/clientIp.js';
 
 // In-memory metrics store (production would use Redis/database)
 const metrics = {
@@ -35,7 +36,7 @@ export function logApiRequest(req, res, duration) {
     statusCode: res.statusCode,
     duration,
     timestamp: Date.now(),
-    ip: req.ip || req.connection?.remoteAddress,
+    ip: getClientIp(req),
     userAgent: req.headers?.['user-agent'],
     requestId: req.requestId,
     contentLength: res.getHeader('content-length'),
@@ -70,7 +71,7 @@ export function logApiError(error, req = null, context = {}) {
     timestamp: Date.now(),
     path: req?.path,
     method: req?.method,
-    ip: req?.ip,
+    ip: getClientIp(req),
     requestId: req?.requestId,
     ...context,
   };
@@ -96,7 +97,7 @@ export function logRateLimit(req, tier, limitInfo) {
   const entry = {
     id: `rl_${Date.now()}_${Math.random().toString(36).slice(2, 8)}`,
     tier,
-    ip: req.ip || req.connection?.remoteAddress,
+    ip: getClientIp(req),
     path: req.path,
     method: req.method,
     limit: limitInfo.limit,

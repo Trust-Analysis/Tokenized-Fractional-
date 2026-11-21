@@ -8,6 +8,8 @@
 
 import { gql } from 'graphql-tag';
 import { pubsub, SUBSCRIPTION_EVENTS } from './pubsub.js';
+import { getClientIp } from './src/utils/clientIp.js';
+import { isValidContractId, INVALID_CONTRACT_ID_MESSAGE } from './src/validators/rwaValidator.js';
 
 /**
  * GraphQL Type Definitions
@@ -79,6 +81,7 @@ export const typeDefs = gql`
 
   # Asset creation/update input
   input RWAInput {
+    contractId: String!
     title: String!
     location: String!
     description: String!
@@ -435,10 +438,13 @@ export function createResolvers(dataLayer) {
         }
 
         const { input } = args;
+        const { contractId } = input;
+        if (!isValidContractId(contractId)) {
+          throw new Error(INVALID_CONTRACT_ID_MESSAGE);
+        }
         const error = dataLayer.validateRwaBody(input);
         if (error) throw new Error(error);
 
-        const contractId = `C${Math.random().toString(36).substring(2, 56)}`;
         const now = new Date().toISOString();
 
         const newAsset = {
@@ -447,6 +453,7 @@ export function createResolvers(dataLayer) {
           createdAt: now,
           updatedAt: now,
           pending: true, // New assets require approval
+          contractVerified: false,
         };
 
         const data = dataLayer.loadData();
@@ -782,13 +789,13 @@ export function createGraphQLPlaygroundSecurityMiddleware(options = {}) {
     const isProd = process.env.NODE_ENV === 'production';
     const isPlaygroundEnabled = process.env.ENABLE_GRAPHQL_PLAYGROUND === 'true';
     if (isProd && !isPlaygroundEnabled) {
-      logger.warn({ ip: req.ip }, 'Blocked GraphQL Playground access in production');
+      logger.warn({ ip: getClientIp(req) }, 'Blocked GraphQL Playground access in production');
       return res.status(403).json({ error: 'GraphQL Playground is disabled in production' });
     }
 
     // 2. IP Whitelisting (if configured)
     if (allowedIps.length > 0) {
-      const clientIp = req.ip || req.headers['x-forwarded-for'] || req.socket.remoteAddress;
+      const clientIp = getClientIp(req);
       if (!allowedIps.includes(clientIp)) {
         logger.warn({ clientIp }, 'Blocked unauthorized IP access to GraphQL Playground');
         return res.status(403).json({ error: 'IP address not authorized for GraphQL Playground' });

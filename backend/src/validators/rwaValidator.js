@@ -5,7 +5,27 @@
  * src/validators/rwaValidator.js — validation helpers for RWA asset and webhook requests.
  */
 
+import { StrKey } from '@stellar/stellar-sdk';
 import { WEBHOOK_VALID_EVENTS } from '../config.js';
+
+export const INVALID_CONTRACT_ID_MESSAGE =
+  'Invalid contract ID: expected a 56-character Stellar contract strkey starting with C (with a valid checksum).';
+
+/**
+ * Validate a deployed Soroban contract address: 56 chars, C prefix and a valid
+ * strkey checksum. Shared by every REST and GraphQL asset-creation path.
+ *
+ * @param {unknown} id
+ * @returns {boolean}
+ */
+export function isValidContractId(id) {
+  return (
+    typeof id === 'string' &&
+    id.length === 56 &&
+    /^C[A-Z2-7]{55}$/.test(id) &&
+    StrKey.isValidContract(id)
+  );
+}
 
 /**
  * Validate a Soroban contract ID.

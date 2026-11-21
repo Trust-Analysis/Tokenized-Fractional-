@@ -51,7 +51,7 @@ export default defineConfig({
   ],
 
   webServer: {
-    command: 'npm run build && npm run preview -- --port 4173',
+    command: 'npm run build -- --mode development && npm run preview -- --port 4173',
     port: 4173,
     reuseExistingServer: true,
     timeout: 120_000,

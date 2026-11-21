@@ -24,6 +24,7 @@ import {
   SERVICE_NAME,
   BUILD_ID,
   NODE_ENV,
+  TRUST_PROXY,
 } from './config.js';
 import { logger, runWithRequestContext } from '../logger.js';
 import {
@@ -91,6 +92,7 @@ import { RateLimiterService } from './services/rateLimiterService.js';
 import { createTimeWindowRoutes } from './routes/timeWindows.js';
 import { TimeWindowService } from './services/timeWindowService.js';
 import { requestLogger } from './middleware/requestLogger.js';
+import { createClientIpMiddleware } from './utils/clientIp.js';
 import {
   createProblemDetailsInterceptor,
   problemDetailsNotFoundHandler,
@@ -115,6 +117,10 @@ initErrorTracking();
 // ── App factory ───────────────────────────────────────────────────────────────
 export const app = express();
 
+// Proxy trust must be configured before any middleware reads req.ip. The value
+// is an exact hop count or an explicit proxy IP/CIDR list — never blanket trust.
+app.set('trust proxy', TRUST_PROXY);
+
 // Store for initialized services
 let apiKeyService = null;
 let adminAuth = legacyAdminAuth;
@@ -133,6 +139,8 @@ let backupsRoutes = null;
 let oauthRoutes = null;
 let rateLimitAdminRoutes = null;
 let timeWindowRoutes = null;
+let sqlGuardMiddleware = null;
+let federatedGraphQL = null;
 
 /**
  * Initialize the app with database services.
@@ -167,9 +175,10 @@ export async function initializeApp() {
     const db = await initDatabase(NODE_ENV);
     logger.info('Database initialized');
 
-    // Initialize SQL injection guard (Issue #356)
+    // Initialize SQL injection guard (Issue #356). The middleware itself is
+    // mounted at module load time so it runs before the routes and the 404.
     const sqlGuard = getSqlInjectionGuard();
-    app.use(sqlInjectionGuardMiddleware(db, sqlGuard));
+    sqlGuardMiddleware = sqlInjectionGuardMiddleware(db, sqlGuard);
 
     // Mount SQL Injection Guard admin routes (uses initialized adminAuth)
     const sqlInjectionGuardRoutes = createSqlInjectionGuardRoutes(sqlGuard, adminAuth);
@@ -217,15 +226,13 @@ export async function initializeApp() {
     const timeWindowService = new TimeWindowService(db, logger);
     timeWindowRoutes = createTimeWindowRoutes(timeWindowService, logger, adminAuth);
 
-    // Initialize GraphQL Federation Gateway
-    const federatedGraphQL = await createFederatedGraphQLServer({
+    // Initialize GraphQL Federation Gateway. The mount lives at module load
+    // time (below) so it is registered before the 404 handler.
+    federatedGraphQL = await createFederatedGraphQLServer({
       dataLayer: dataService,
       transactionService,
       logger,
     });
-    // Tiered rate limiting for GraphQL (Issue #464: anonymous 100 req/min, auth 1000 req/min)
-    app.use('/graphql', createGraphQLRateLimiter());
-    app.use('/graphql', federatedGraphQL.middleware);
     logger.info('GraphQL Federation gateway initialized at /graphql');
 
     return { db, apiKeyService, transactionService, federatedGraphQL };
@@ -234,6 +241,9 @@ export async function initializeApp() {
     throw error;
   }
 }
+
+// Resolve the client IP once, before anything that keys on it.
+app.use(createClientIpMiddleware());
 
 // Error tracking must see every request before anything else can fail.
 installErrorTrackingRequestScope(app);
@@ -256,6 +266,13 @@ app.use(express.json({ limit: '1mb' }));
 // incoming request body, query, and params BEFORE it reaches a handler and
 // can be persisted to the database.
 app.use(requireSanitization);
+
+// Deferred SQL injection guard — installed by initializeApp() but registered
+// here so it actually sees requests before the route handlers do.
+app.use((req, res, next) => {
+  if (!sqlGuardMiddleware) return next();
+  return sqlGuardMiddleware(req, res, next);
+});
 
 app.use(partialResponseMiddleware());
 
@@ -624,8 +641,19 @@ app.use('/api/time-windows', (req, res, next) => {
 });
 
 
+// Tiered GraphQL rate limiting (anonymous / authenticated / admin)
+app.use('/graphql', createGraphQLRateLimiter());
+
 // Mount GraphQL Security Middleware
 app.use('/graphql', createGraphQLPlaygroundSecurityMiddleware());
+
+// Deferred federated GraphQL mount (registered before the 404 handler).
+app.use('/graphql', (req, res, next) => {
+  if (!federatedGraphQL) {
+    return res.status(503).json({ error: 'GraphQL service not initialized', code: 'SERVICE_UNAVAILABLE' });
+  }
+  return federatedGraphQL.middleware(req, res, next);
+});
 
 // ── GraphQL Schema Stitching endpoints (Issue #294) ──────────────────────────
 // Expose stitching metrics, health, and schema info
