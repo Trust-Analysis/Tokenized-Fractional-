@@ -625,28 +625,28 @@ translation.
 
 ## Reporting Bugs
 
-Found a bug? Please open an issue with the following information:
+Found a bug? Open an issue using the **Bug report** form (not a blank issue —
+blank issues are disabled). It asks for description, repro steps, environment,
+evidence and severity, and applies the `bug` label automatically.
 
-1. **Description** — What happened? What did you expect to happen?
-2. **Steps to Reproduce** — Step-by-step instructions to trigger the bug.
-3. **Environment** — OS, browser (if frontend), Node.js version, Rust version, Soroban CLI version.
-4. **Screenshots / Logs** — Any relevant error messages, console output, or screenshots.
-5. **Severity** — How critical is this? (cosmetic, functional, crash, security)
-
-Use the "bug" label when creating the issue.
+If the bug is an exploitable security vulnerability, use the **Report a
+security vulnerability** link on the issue picker instead — see
+[SECURITY.md](SECURITY.md). Do not open a public issue for it.
 
 ---
 
 ## Requesting Features
 
-Have an idea for a new feature? Open an issue with:
+Have an idea for a new feature? Open an issue using the **Feature request**
+form (problem statement, proposed solution, alternatives, scope). It applies
+the `enhancement` label automatically. Feature requests will be discussed and
+prioritized by maintainers.
 
-1. **Problem Statement** — What problem does this feature solve?
-2. **Proposed Solution** — How should it work? Be as specific as possible.
-3. **Alternatives Considered** — What other approaches did you think about?
-4. **Scope** — Is this a small enhancement or a major feature?
+## Documentation and security hardening
 
-Use the "enhancement" label when creating the issue. Feature requests will be discussed and prioritized by maintainers.
+- Missing or unclear docs? Use the **Documentation request** form.
+- A security improvement that is not an exploitable vulnerability (hardening,
+  CI/CD, dependency policy)? Use the **Security hardening** form.
 
 ---
 

@@ -4,14 +4,7 @@ WORKDIR /app
 COPY package*.json ./
 RUN npm ci --omit=dev
 
-# ── Stage 2: Build stage (dev dependencies for build steps) ────────────────────
-FROM node:20-alpine AS build
-WORKDIR /app
-COPY package*.json ./
-RUN npm ci
-COPY . .
-
-# ── Stage 3: Production runtime ────────────────────────────────────────────────
+# ── Stage 2: Production runtime ────────────────────────────────────────────────
 FROM node:20-alpine AS runtime
 WORKDIR /app
 
