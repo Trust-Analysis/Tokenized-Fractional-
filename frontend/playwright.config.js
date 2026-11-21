@@ -18,7 +18,7 @@ export default defineConfig({
   webServer: {
     // Build first, then serve the static output — starts in <1s and
     // exits cleanly, avoiding the Vite dev-server hang in CI environments.
-    command: 'npm run build && npm run preview -- --port 4173',
+    command: 'npm run build -- --mode development && npm run preview -- --port 4173',
     port: 4173,
     reuseExistingServer: true,
     timeout: 120_000,

@@ -15,6 +15,7 @@ services:
   # ── Express.js backend API ─────────────────────────────────────────────────
   backend:
     build: ./backend
+    command: ["node", "${BACKEND_ENTRYPOINT:-src/server.js}"]
     restart: unless-stopped
     env_file:
       - path: ./backend/.env

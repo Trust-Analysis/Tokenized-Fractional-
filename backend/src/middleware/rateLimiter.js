@@ -1,3 +1,5 @@
+import { getClientIp } from '../utils/clientIp.js';
+
 export function createRateLimiter(rateLimiterService, options = {}) {
   const {
     extractApiKey = defaultExtractApiKey,
@@ -7,7 +9,7 @@ export function createRateLimiter(rateLimiterService, options = {}) {
 
   async function rateLimiterMiddleware(req, res, next) {
     const apiKey = extractApiKey(req);
-    const ip = req.ip || req.connection?.remoteAddress || 'unknown';
+    const ip = getClientIp(req) || 'unknown';
     const geo = extractGeo(req);
 
     const effectiveKey = apiKey || `anon:${ip}`;
@@ -84,7 +86,7 @@ function defaultOnBlocked(req, res, result) {
 export function createRateLimitMiddleware(options = {}) {
   return async function rateLimitedRoute(req, res, next) {
     const maxConcurrent = options.maxConcurrent || 5;
-    const activeKey = `__active_${req.ip}`;
+    const activeKey = `__active_${getClientIp(req) || 'unknown'}`;
 
     if (!req.app.locals[activeKey]) {
       req.app.locals[activeKey] = 0;

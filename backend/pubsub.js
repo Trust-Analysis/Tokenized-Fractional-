@@ -10,7 +10,7 @@
  */
 
 import { EventEmitter } from 'events';
-import { logger } from './index.js';
+import { logger } from './logger.js';
 import { optimizationManager } from './subscription-optimization.js';
 
 /**

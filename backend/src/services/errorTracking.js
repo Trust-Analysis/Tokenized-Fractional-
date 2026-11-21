@@ -26,6 +26,7 @@
 
 import * as Sentry from '@sentry/node';
 import { logger, getRequestContext, getRequestId, scrubSecrets, REDACTED } from '../../logger.js';
+import { getClientIp } from '../utils/clientIp.js';
 
 const NODE_ENV = process.env.NODE_ENV || 'development';
 const IS_TEST = NODE_ENV === 'test';
@@ -195,7 +196,7 @@ export function installErrorTrackingRequestScope(app) {
         path: req.path,
         url: req.originalUrl,
         userAgent: req.get?.('user-agent') || null,
-        ip: req.ip || null,
+        ip: getClientIp(req),
       });
       next();
     });

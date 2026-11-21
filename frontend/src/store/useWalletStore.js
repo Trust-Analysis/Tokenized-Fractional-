@@ -113,7 +113,7 @@ export const useWalletStore = create(
       },
 
       checkConnection: async () => {
-        if (import.meta.env.VITE_MOCK_WALLET === 'true') {
+        if (import.meta.env.DEV && import.meta.env.VITE_MOCK_WALLET === 'true') {
           const stored = localStorage.getItem('mock_wallet_pubkey');
           if (stored) {
             set({ publicKey: stored, walletError: null });
@@ -141,7 +141,7 @@ export const useWalletStore = create(
        */
       connect: async () => {
         set({ isConnecting: true, walletError: null });
-        if (import.meta.env.VITE_MOCK_WALLET === 'true') {
+        if (import.meta.env.DEV && import.meta.env.VITE_MOCK_WALLET === 'true') {
           await new Promise((resolve) => setTimeout(resolve, 500));
           const mockPubKey = 'GBAZE64FKVPG4JUUP2BH63746JJ22G3A2S4QPF4UWKVA2RELLFLQZQVR';
           localStorage.setItem('mock_wallet_pubkey', mockPubKey);
@@ -166,7 +166,7 @@ export const useWalletStore = create(
       },
 
       disconnect: () => {
-        if (import.meta.env.VITE_MOCK_WALLET === 'true') {
+        if (import.meta.env.DEV && import.meta.env.VITE_MOCK_WALLET === 'true') {
           localStorage.removeItem('mock_wallet_pubkey');
           localStorage.removeItem('mock_shares_balance');
         }

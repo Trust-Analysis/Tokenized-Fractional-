@@ -246,8 +246,8 @@ export function reservePort() {
  * Mirrors `backend/scripts/verify-readme-examples.js:170-210`, which is the
  * existing precedent for driving the real entrypoint.
  *
- * `NODE_ENV` must NOT be 'test': `backend/index.js:1797` gates the entire
- * startup block (including `app.listen`) on `NODE_ENV !== 'test'`. But it also
+ * `NODE_ENV` must NOT be 'test': `backend/env.js` validation is skipped in
+ * 'test' while the deployed server is still started. But it also
  * cannot be omitted, because `backend/env.js:64-66` only skips validation in
  * 'test' and `process.exit(1)`s on a missing `ADMIN_API_KEY` otherwise. So the
  * harness runs a real 'development' env and supplies the required vars.
@@ -270,7 +270,7 @@ export function startBackend({ port, env = {}, dataFile }) {
   delete childEnv.SOROBAN_ADMIN_SECRET;
   Object.assign(childEnv, env);
 
-  const child = spawn(process.execPath, ['index.js'], {
+  const child = spawn(process.execPath, ['src/server.js'], {
     cwd: BACKEND_DIR,
     env: childEnv,
     stdio: ['ignore', 'pipe', 'pipe'],

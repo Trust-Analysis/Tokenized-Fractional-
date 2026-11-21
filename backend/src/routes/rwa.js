@@ -25,7 +25,13 @@ import {
   pinAssetMetadataToIPFS,
 } from '../../ipfs.js';
 import { storeMetadataCidOnContract } from '../services/sorobanMetadataService.js';
-import { validateContractId, validateRwaBody, validateWebhookBody } from '../validators/rwaValidator.js';
+import {
+  validateContractId,
+  validateRwaBody,
+  validateWebhookBody,
+  isValidContractId,
+  INVALID_CONTRACT_ID_MESSAGE,
+} from '../validators/rwaValidator.js';
 import { ASSET_STATUS, WEBHOOK_EVENTS } from '../config.js';
 
 // ── multer setup ──────────────────────────────────────────────────────────────
@@ -402,8 +408,8 @@ v1.get('/rwa/:contractId', async (req, res) => {
 v1.post('/rwa', adminAuth, writeLimiter, async (req, res) => {
   const { contractId, ...metadata } = req.body;
 
-  if (!contractId || !validateContractId(contractId)) {
-    return res.status(400).json({ error: 'Invalid contract ID. Must start with C and be at least 50 characters.' });
+  if (!isValidContractId(contractId)) {
+    return res.status(400).json({ error: INVALID_CONTRACT_ID_MESSAGE });
   }
 
   const validationError = validateRwaBody(metadata);
@@ -431,6 +437,7 @@ v1.post('/rwa', adminAuth, writeLimiter, async (req, res) => {
     totalValuation: metadata.totalValuation || '',
     documents:      Array.isArray(metadata.documents) ? metadata.documents : [],
     status:         ASSET_STATUS.PENDING,
+    contractVerified: false,
     submittedAt:    now,
     createdAt:      metadata.createdAt || now,
     updatedAt:      now,
@@ -484,8 +491,8 @@ v1.post('/rwa/tokenize', adminAuth, writeLimiter, upload.fields([
 ]), async (req, res) => {
   const { contractId, ...metadata } = req.body;
 
-  if (!contractId || !validateContractId(contractId)) {
-    return res.status(400).json({ error: 'Invalid contract ID. Must start with C and be at least 50 characters.' });
+  if (!isValidContractId(contractId)) {
+    return res.status(400).json({ error: INVALID_CONTRACT_ID_MESSAGE });
   }
 
   const validationError = validateRwaBody(metadata);
@@ -533,6 +540,7 @@ v1.post('/rwa/tokenize', adminAuth, writeLimiter, upload.fields([
       totalValuation: metadata.totalValuation || '',
       documents: ipfsResult.documents,
       status: ASSET_STATUS.PENDING,
+      contractVerified: onChainResult.onChain === true,
       onChainSynced: onChainResult.onChain === true,
       submittedAt: now,
       createdAt: metadata.createdAt || now,

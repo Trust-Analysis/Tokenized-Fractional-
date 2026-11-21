@@ -48,6 +48,7 @@ input AssetFilter {
 }
 
 input AssetInput {
+  contractId: String!
   title: String!
   location: String!
   description: String!

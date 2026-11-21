@@ -34,6 +34,9 @@ spec:
           # through its `images:` stanza. See k8s/README.md.
           image: rwa-backend:unset
           imagePullPolicy: IfNotPresent
+          # Single deployed entry point — must match backend/package.json and the Dockerfile CMD
+          command: ["node"]
+          args: ["src/server.js"]
           ports:
             - containerPort: 3001
               name: http

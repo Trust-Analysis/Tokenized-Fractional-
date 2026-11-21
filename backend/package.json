@@ -8,9 +8,9 @@
     "node": ">=20.18.0 <21.0.0"
   },
   "scripts": {
-    "start": "node index.js",
+    "start": "node src/server.js",
     "worker": "node jobs/worker.js",
-    "dev": "node --watch index.js",
+    "dev": "node --watch src/server.js",
     "test": "node --experimental-vm-modules node_modules/.bin/jest --forceExit",
     "test:coverage": "node --experimental-vm-modules node_modules/.bin/jest --coverage --forceExit",
     "deploy": "echo 'Push to main — Render auto-deploys via render.yaml'",

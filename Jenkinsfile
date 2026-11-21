@@ -18,6 +18,7 @@ pipeline {
 
     environment {
         COMPOSE_PROJECT_NAME = "rwa-jenkins-${env.BUILD_NUMBER}"
+        BACKEND_ENTRYPOINT = 'src/server.js'
         CI = 'true'
         NODE_ENV = 'test'
     }

@@ -85,7 +85,7 @@ export function useSorobanRead(fnName, args = [], options = {}) {
     setLoading(true);
     setError(null);
     try {
-      if (import.meta.env.VITE_MOCK_WALLET === "true") {
+      if (import.meta.env.DEV && import.meta.env.VITE_MOCK_WALLET === "true") {
         await new Promise(resolve => setTimeout(resolve, 300));
         let mockVal = 10;
         let mockU64 = null;
@@ -155,7 +155,7 @@ export function useSorobanWrite(fnName) {
     setResult(null);
 
     try {
-      if (import.meta.env.VITE_MOCK_WALLET === "true") {
+      if (import.meta.env.DEV && import.meta.env.VITE_MOCK_WALLET === "true") {
         await new Promise(resolve => setTimeout(resolve, 800));
         // Issue #794: deterministic failure path so the visual-regression suite
         // can screenshot the error state. Read at call time (not baked in at

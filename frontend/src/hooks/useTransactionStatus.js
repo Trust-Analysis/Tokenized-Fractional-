@@ -39,7 +39,7 @@ export default function useTransactionStatus(txHash) {
       return;
     }
 
-    if (import.meta.env.VITE_MOCK_WALLET === 'true') {
+    if (import.meta.env.DEV && import.meta.env.VITE_MOCK_WALLET === 'true') {
       setStatus('pending');
       const timer = setTimeout(() => {
         setStatus('confirmed');

@@ -12,7 +12,7 @@
  * any side effects.
  */
 
-import { logger } from './index.js';
+import { logger } from './logger.js';
 import { cacheDel } from './cache.js';
 
 /**
