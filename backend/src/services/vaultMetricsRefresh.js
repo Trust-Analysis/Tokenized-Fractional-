@@ -69,7 +69,11 @@ export async function refreshVaultMetrics(db, logger = console) {
  * @param {Object} [logger]
  * @param {number} [intervalMs] - Defaults to getVaultMetricsRefreshIntervalMs()
  */
-export function startVaultMetricsRefreshCron(getDb, logger = console, intervalMs = getVaultMetricsRefreshIntervalMs()) {
+export function startVaultMetricsRefreshCron(
+  getDb,
+  logger = console,
+  intervalMs = getVaultMetricsRefreshIntervalMs(),
+) {
   const interval = intervalMs ?? getVaultMetricsRefreshIntervalMs();
 
   return setInterval(async () => {

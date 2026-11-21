@@ -43,6 +43,10 @@ This disclaimer is removed only when an audit report is published **and** its
 findings have been remediated (see below).
 
 ### Audit plan
+### Threat model
+
+See [docs/security-model.md](docs/security-model.md) for the STRIDE threat model, privileged-role matrix, invariants, and remediation tracker.
+
 
 - [ ] Freeze the contract's public interface for the audit window.
 - [ ] Engage an independent auditor with Soroban/Rust experience.
