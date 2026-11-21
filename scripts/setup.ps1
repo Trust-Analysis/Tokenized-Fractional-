@@ -125,3 +125,15 @@ Write-Host "4. Run the frontend:" -ForegroundColor Yellow
 Write-Host "   cd frontend; npm run dev`n"
 Write-Host "Open http://localhost:5173 and connect your Freighter wallet."
 Write-Host "================================================================" -ForegroundColor Cyan
+
+# Issue #1106: support -EnvOnly parity mode using scripts/toolchain.json
+if ($args -contains "-EnvOnly") {
+    $manifest = Get-Content -Raw -Path "scripts\toolchain.json" | ConvertFrom-Json
+    foreach ($entry in $manifest.envFiles) {
+        if ((Test-Path $entry.source) -and !(Test-Path $entry.target)) {
+            Copy-Item $entry.source $entry.target
+            Write-Host "Created $($entry.target) from $($entry.source)"
+        }
+    }
+    exit 0
+}
