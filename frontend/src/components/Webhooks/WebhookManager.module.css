@@ -1,0 +1,149 @@
+/* Copyright (c) 2026 Tokenized Fractional RWA Marketplace Contributors */
+/* SPDX-License-Identifier: MIT */
+
+.container {
+  max-width: 1100px;
+  margin: 0 auto;
+  padding: 1.5rem;
+  background: var(--bg-card, #111827);
+  color: var(--text-color, #f9fafb);
+  border-radius: 12px;
+  box-shadow: 0 10px 25px rgba(0, 0, 0, 0.3);
+  font-family: system-ui, -apple-system, sans-serif;
+}
+
+.header {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  border-bottom: 1px solid #1f2937;
+  padding-bottom: 1rem;
+  margin-bottom: 1.5rem;
+}
+
+.title {
+  font-size: 1.5rem;
+  font-weight: 700;
+  color: #38bdf8;
+  margin: 0;
+}
+
+.btnPrimary {
+  background: linear-gradient(135deg, #0284c7, #2563eb);
+  color: #fff;
+  border: none;
+  padding: 0.6rem 1.2rem;
+  border-radius: 6px;
+  font-weight: 600;
+  cursor: pointer;
+  transition: all 0.2s ease;
+}
+
+.btnPrimary:hover {
+  filter: brightness(1.15);
+}
+
+.btnSecondary {
+  background: #374151;
+  color: #f3f4f6;
+  border: none;
+  padding: 0.5rem 1rem;
+  border-radius: 6px;
+  cursor: pointer;
+  font-size: 0.875rem;
+}
+
+.btnSecondary:hover {
+  background: #4b5563;
+}
+
+.grid {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 1.5rem;
+}
+
+@media (max-width: 768px) {
+  .grid {
+    grid-template-columns: 1fr;
+  }
+}
+
+.card {
+  background: #1f2937;
+  border-radius: 8px;
+  padding: 1.25rem;
+  border: 1px solid #374151;
+}
+
+.formGroup {
+  margin-bottom: 1rem;
+}
+
+.formGroup label {
+  display: block;
+  font-size: 0.875rem;
+  font-weight: 600;
+  margin-bottom: 0.4rem;
+  color: #9ca3af;
+}
+
+.formGroup input, .formGroup select, .formGroup textarea {
+  width: 100%;
+  padding: 0.6rem;
+  background: #111827;
+  border: 1px solid #374151;
+  border-radius: 6px;
+  color: #fff;
+  box-sizing: border-box;
+}
+
+.webhookItem {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  padding: 1rem;
+  background: #111827;
+  border-radius: 6px;
+  margin-bottom: 0.75rem;
+  border-left: 4px solid #38bdf8;
+}
+
+.badge {
+  display: inline-block;
+  padding: 0.2rem 0.5rem;
+  font-size: 0.75rem;
+  font-weight: 700;
+  border-radius: 4px;
+  background: #0284c7;
+  color: #fff;
+  margin-right: 0.5rem;
+}
+
+.actions {
+  display: flex;
+  gap: 0.5rem;
+}
+
+.deliveriesTable {
+  width: 100%;
+  border-collapse: collapse;
+  margin-top: 1rem;
+  font-size: 0.85rem;
+}
+
+.deliveriesTable th, .deliveriesTable td {
+  padding: 0.6rem;
+  text-align: left;
+  border-bottom: 1px solid #374151;
+}
+
+.statusSuccess {
+  color: #4ade80;
+  font-weight: 600;
+}
+
+.statusFailed {
+  color: #f87171;
+  font-weight: 600;
+}

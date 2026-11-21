@@ -1,0 +1,75 @@
+{
+  "$schema": "https://docs.renovatebot.com/renovate-schema.json",
+  "extends": [
+    "config:recommended",
+    ":dependencyDashboard",
+    ":semanticCommits",
+    ":timezone(Etc/UTC)"
+  ],
+  "schedule": ["before 6am on monday"],
+  "enabledManagers": ["npm", "cargo"],
+  "automerge": false,
+  "platformAutomerge": false,
+  "prConcurrentLimit": 5,
+  "prHourlyLimit": 2,
+  "rebaseWhen": "conflicted",
+  "rangeStrategy": "bump",
+  "lockFileMaintenance": {
+    "enabled": true,
+    "schedule": ["before 6am on monday"]
+  },
+  "vulnerabilityAlerts": {
+    "enabled": true,
+    "schedule": ["at any time"],
+    "automerge": false
+  },
+  "packageRules": [
+    {
+      "description": "npm minor + patch bumps travel together per workspace.",
+      "matchManagers": ["npm"],
+      "matchUpdateTypes": ["minor", "patch"],
+      "groupName": "npm minor and patch",
+      "addLabels": ["dependencies", "deps:npm"]
+    },
+    {
+      "description": "npm majors get their own PR — they need a changelog read.",
+      "matchManagers": ["npm"],
+      "matchUpdateTypes": ["major"],
+      "groupName": "npm major",
+      "addLabels": ["dependencies", "deps:npm", "deps:major"]
+    },
+    {
+      "description": "The contracts are audited and deployed as immutable wasm, so Rust majors are especially risky and stay separate.",
+      "matchManagers": ["cargo"],
+      "matchUpdateTypes": ["minor", "patch"],
+      "groupName": "cargo minor and patch",
+      "addLabels": ["dependencies", "deps:contracts"]
+    },
+    {
+      "description": "Rust majors in the contract workspace.",
+      "matchManagers": ["cargo"],
+      "matchUpdateTypes": ["major"],
+      "groupName": "cargo major",
+      "addLabels": ["dependencies", "deps:contracts", "deps:major"]
+    },
+    {
+      "description": "soroban-sdk pins the contract against a specific ledger protocol version, so a bump must be validated against the deployed contract before merge and never travels with routine updates.",
+      "matchManagers": ["cargo"],
+      "matchPackageNames": ["soroban-sdk", "soroban-env-host", "soroban-env-common"],
+      "groupName": "soroban sdk",
+      "addLabels": ["dependencies", "deps:contracts", "deps:major"]
+    },
+    {
+      "description": "Development-only tooling is cheap to update and safe to batch across the repository.",
+      "matchManagers": ["npm"],
+      "matchDepTypes": ["devDependencies"],
+      "groupName": "npm devDependencies",
+      "addLabels": ["dependencies", "deps:npm", "deps:dev"]
+    },
+    {
+      "description": "Nothing is merged by a bot. Every dependency PR waits for a green required check and a human merge — see docs/dependency-updates.md.",
+      "matchPackageNames": ["*"],
+      "automerge": false
+    }
+  ]
+}

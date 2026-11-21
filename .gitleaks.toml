@@ -1,0 +1,88 @@
+# Gitleaks configuration — issue #722
+#
+# Extends the upstream default rule set so provider-specific detectors
+# (AWS, GitHub, Stripe, private keys, generic high-entropy assignments...)
+# stay enabled, and adds narrowly-scoped allowlists for the values that this
+# repository intentionally commits.
+#
+# The two global [[allowlists]] blocks below are keyed to exact placeholder
+# strings, so a real credential is never suppressed by them. The one
+# path-scoped exemption is attached to a single rule and a single test file,
+# and its reasoning — including the trade-off it accepts — is documented in
+# full above that entry. Do not widen any of them.
+
+title = "Tokenized Fractional RWA Marketplace — gitleaks config"
+
+[extend]
+useDefault = true
+
+# ---------------------------------------------------------------------------
+# Documentation placeholders
+#
+# The API docs tell contributors to paste their own key into a curl example.
+# The literal strings below are the placeholders used in those instructions;
+# they are not credentials, but they do match the `curl-auth-header` and
+# `generic-api-key` detectors.
+# ---------------------------------------------------------------------------
+[[allowlists]]
+description = "Placeholder API keys used in curl examples and docs"
+regexes = [
+  '''YOUR_API_KEY''',
+  '''YOUR_ADMIN_API_KEY''',
+  '''your-api-key''',
+  '''key_abc123def456''',
+  '''rwa_a1b2c3d4e5f6a7b8c9d0e1f2a3b4c5d6''',
+  '''rwa_xyz789abc123def456xyz789abc12''',
+  '''eyJhbGc\.\.\.''',
+]
+
+# ---------------------------------------------------------------------------
+# Stellar contract IDs
+#
+# A Stellar contract ID is an on-chain *address*, not a secret — it is printed
+# in the UI, embedded in the frontend build, and safe to publish. The detectors
+# misread the high-entropy base32 string as an API key when it sits next to a
+# field named `paymentToken`. Only this one documented mainnet contract ID is
+# excluded; a newly introduced contract ID is still reported.
+# ---------------------------------------------------------------------------
+[[allowlists]]
+description = "Public Stellar contract ID documented as the payment token"
+regexes = [
+  '''CDLZFC3SYJYDZT7K67VZ75HPJVIEUVNIXF47ZG2FB2RMQQVU2HHGCYSC''',
+]
+
+# ---------------------------------------------------------------------------
+# Synthetic key material in tests
+#
+# backend/__tests__/cache-tls.test.js writes a throwaway PEM whose body is the
+# literal string "FAKE" to exercise the mTLS code path without shipping key
+# material. It matches the `private-key` detector on the PEM armor alone.
+#
+# The two fixture lines also carry an inline `// gitleaks:allow` comment, but
+# that alone is NOT sufficient here: the CI job scans full history, and the
+# older commits contain the same PEM without the comment, so they would still
+# be reported. This rule-scoped path allowlist is what covers those commits.
+#
+# The exemption is deliberately narrow:
+#
+#   * Attaching it to the `private-key` rule (rather than a global
+#     [[allowlists]] entry) means the file is not exempted from the other
+#     detectors, and a real key elsewhere in the tree is still reported.
+#   * It is scoped to a single path rather than to a "FAKE" regex, because a
+#     `condition = "AND"` allowlist evaluates its regex against the whole
+#     file — one "FAKE" anywhere would then silence a real key in the same
+#     file. Both behaviours were verified against gitleaks 8.30.1.
+#
+# Residual, accepted trade-off: real key material committed specifically inside
+# this one test file would not be reported.
+# ---------------------------------------------------------------------------
+[[rules]]
+id = "private-key"
+description = "Private key material, excluding the synthetic mTLS test fixture"
+
+[rules.allowlist]
+description = "mTLS unit-test key fixtures"
+paths = [
+  '''backend[/\\]__tests__[/\\]cache-tls\.test\.js''',
+]
+

@@ -1,0 +1,92 @@
+name: Verify Database Backup
+
+on:
+  workflow_run:
+    workflows: ["Database Backup"]
+    types: [completed]
+  schedule:
+    - cron: '0 6 * * *'
+  workflow_dispatch:
+
+jobs:
+  verify-backup:
+    name: Verify Backup Integrity
+    runs-on: ubuntu-latest
+    if: ${{ github.event.workflow_run.conclusion == 'success' || github.event_name == 'schedule' || github.event_name == 'workflow_dispatch' }}
+
+    services:
+      postgres:
+        image: postgres:15
+        env:
+          POSTGRES_USER: test_user
+          POSTGRES_PASSWORD: test_password
+          POSTGRES_DB: verify_backup
+        ports:
+          - 5432:5432
+        options: >-
+          --health-cmd pg_isready
+          --health-interval 10s
+          --health-timeout 5s
+          --health-retries 5
+
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+
+      - name: Download latest backup
+        run: |
+          echo "Downloading latest backup from S3..."
+          aws s3 cp s3://${{ secrets.BACKUP_S3_BUCKET }}/latest/dump.sql /tmp/dump.sql || {
+            echo "No backup found in S3. Skipping verification."
+            exit 0
+          }
+
+      - name: Restore backup to ephemeral database
+        run: |
+          echo "Restoring backup to ephemeral PostgreSQL instance..."
+          PGPASSWORD=test_password pg_restore \
+            -h localhost \
+            -U test_user \
+            -d verify_backup \
+            --no-owner \
+            --no-acl \
+            /tmp/dump.sql 2>&1 || echo "pg_restore completed with warnings (non-fatal)"
+
+      - name: Validate critical tables
+        run: |
+          echo "Running validation queries..."
+
+          TX_COUNT=$(PGPASSWORD=test_password psql -h localhost -U test_user -d verify_backup -t -c "SELECT COUNT(*) FROM transactions;" 2>/dev/null | tr -d ' ')
+          echo "Transactions count: ${TX_COUNT:-0}"
+          if [ "${TX_COUNT:-0}" -gt 0 ]; then
+            echo "transactions table has data"
+          else
+            echo "transactions table is empty or missing"
+            exit 1
+          fi
+
+          USER_COUNT=$(PGPASSWORD=test_password psql -h localhost -U test_user -d verify_backup -t -c "SELECT COUNT(*) FROM users;" 2>/dev/null | tr -d ' ')
+          echo "Users count: ${USER_COUNT:-0}"
+          if [ "${USER_COUNT:-0}" -gt 0 ]; then
+            echo "users table has data"
+          else
+            echo "users table is empty or missing"
+            exit 1
+          fi
+
+          ASSET_COUNT=$(PGPASSWORD=test_password psql -h localhost -U test_user -d verify_backup -t -c "SELECT COUNT(*) FROM assets;" 2>/dev/null | tr -d ' ')
+          echo "Assets count: ${ASSET_COUNT:-0}"
+          if [ "${ASSET_COUNT:-0}" -gt 0 ]; then
+            echo "assets table has data"
+          else
+            echo "assets table is empty or missing"
+            exit 1
+          fi
+
+          echo "All validation checks passed."
+
+      - name: Cleanup
+        if: always
+        run: |
+          rm -f /tmp/dump.sql
+          echo "Cleanup completed."

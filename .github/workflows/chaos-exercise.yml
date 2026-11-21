@@ -1,0 +1,115 @@
+name: Chaos Exercise
+
+# Issue #802: periodic failure-injection exercise validating that the platform
+# degrades gracefully. See docs/chaos-engineering.md for the recorded results and
+# the baseline/drift model this job enforces.
+#
+# The job is a characterization harness, not an assertion suite: it fails on
+# *drift* from scripts/chaos/baseline.json, so degradation getting worse fails the
+# build, while already-tracked defects (each with a follow-up issue) stay visible
+# without going permanently red. Switch to --strict once those follow-ups land.
+
+on:
+  pull_request:
+    paths:
+      - 'scripts/chaos/**'
+      - 'backend/index.js'
+      - 'backend/src/services/sorobanMetadataService.js'
+      - 'backend/env.js'
+      - 'backend/cache.js'
+      - 'backend/websocket.js'
+      - 'backend/Dockerfile'
+      - 'nginx/nginx.conf'
+      - 'docker-compose.yml'
+      - '.github/workflows/chaos-exercise.yml'
+  push:
+    branches: [main, dev]
+    paths:
+      - 'scripts/chaos/**'
+      - 'backend/index.js'
+      - 'backend/src/services/sorobanMetadataService.js'
+      - 'backend/env.js'
+      - 'backend/cache.js'
+      - 'backend/websocket.js'
+      - 'backend/Dockerfile'
+      - 'nginx/nginx.conf'
+      - 'docker-compose.yml'
+      - '.github/workflows/chaos-exercise.yml'
+  # Quarterly repeat exercise, per the acceptance criteria on issue #802. The
+  # system is expected to change between runs, so this re-establishes what the
+  # current degradation behaviour actually is rather than trusting a stale
+  # baseline. A human should read the run report afterwards and decide whether
+  # any newly-UNGRACEFUL finding needs a follow-up issue.
+  schedule:
+    - cron: '41 6 1 1,4,7,10 *'
+  workflow_dispatch:
+    inputs:
+      strict:
+        description: 'Also fail on recorded UNGRACEFUL verdicts'
+        type: boolean
+        default: false
+
+concurrency:
+  group: chaos-exercise-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  chaos-exercise:
+    name: Failure-injection exercise
+    runs-on: ubuntu-latest
+    timeout-minutes: 25
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 20
+
+      # `npm install` rather than `npm ci`: backend/package-lock.json is currently
+      # out of sync with backend/package.json, which makes `npm ci` exit before any
+      # experiment runs. Matches backend-docs-and-data-integrity.yml.
+      - name: Install backend dependencies
+        run: npm install --no-audit --no-fund
+        working-directory: backend
+
+      # Experiments that need Docker (nginx-down) self-skip when it is unavailable
+      # rather than failing the job, so the suite is still useful on runners
+      # without it.
+      #
+      # CHAOS_RPC_URL is only populated for the quarterly/scheduled runs, where the
+      # rpc-live experiment exercises the real provider. On pull requests it is
+      # empty, so that experiment skips and the suite stays hermetic.
+      - name: Run the failure-injection exercise
+        env:
+          CHAOS_RPC_URL: ${{ secrets.CHAOS_RPC_URL }}
+        run: |
+          set -euo pipefail
+          args=()
+          if [ "${{ inputs.strict }}" = "true" ]; then
+            args+=(--strict)
+          fi
+          node scripts/chaos/run-chaos-exercise.mjs "${args[@]}"
+
+      # The report is the artifact the acceptance criteria ask for: it is the
+      # recorded observed behaviour for this run, not just a pass/fail.
+      - name: Archive the run report
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: chaos-exercise-report
+          path: docs/chaos-engineering/latest-run.json
+          if-no-files-found: warn
+
+      - name: Summarise the exercise in the job summary
+        if: always()
+        run: |
+          set -euo pipefail
+          if [ -f docs/chaos-engineering/latest-run.json ]; then
+            {
+              echo "## Failure-injection exercise"
+              echo ""
+              echo '```json'
+              cat docs/chaos-engineering/latest-run.json
+              echo '```'
+            } >> "$GITHUB_STEP_SUMMARY"
+          fi

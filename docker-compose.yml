@@ -1,0 +1,287 @@
+# RWA Marketplace — full stack
+#
+# Dev mode  (hot-reload):  docker compose up
+# Prod mode (built nginx): docker compose --profile prod up --build
+# With Redis cache:        docker compose --profile redis up
+# With Redis + TLS:        docker compose --profile redis-tls up
+#
+# Setup steps:
+#   1. Copy backend/.env.example → backend/.env and fill in values.
+#   2. Generate TLS certificates:  bash scripts/generate-certs.sh
+#      (creates ./certs/  with CA, nginx, and Redis client certs)
+
+services:
+
+  # ── Express.js backend API ─────────────────────────────────────────────────
+  backend:
+    build: ./backend
+    restart: unless-stopped
+    env_file:
+      - path: ./backend/.env
+        required: false
+    environment:
+      PORT: "3001"
+      NODE_ENV: production
+      DATABASE_URL: postgresql://${POSTGRES_USER:-rwa_user}:${POSTGRES_PASSWORD:-rwa_password}@postgres:5432/${POSTGRES_DB:-rwa_marketplace}
+      REDIS_URL: redis://redis:6379
+    ports:
+      - "3001:3001"
+    volumes:
+      # Persist data.json across restarts
+      - backend-data:/app/data
+      # Mount TLS certificates (read-only) — used for Redis mTLS and reference
+      - ./certs:/etc/ssl/rwa:ro
+    healthcheck:
+      test: ["CMD", "wget", "-qO-", "http://localhost:3001/health"]
+      interval: 30s
+      timeout: 5s
+      retries: 3
+    depends_on:
+      postgres:
+        condition: service_healthy
+      redis:
+        condition: service_healthy
+    profiles: ["dev", "prod"]
+
+  # ── Dev frontend (Vite HMR) — default ──────────────────────────────────────
+  frontend-dev:
+    build:
+      context: ./frontend
+      target: dev
+    restart: unless-stopped
+    environment:
+      VITE_CONTRACT_ID: ${VITE_CONTRACT_ID:-C...}
+      VITE_RPC_URL: ${VITE_RPC_URL:-https://soroban-testnet.stellar.org:443}
+      VITE_NETWORK_PASSPHRASE: ${VITE_NETWORK_PASSPHRASE:-Test SDF Network ; September 2015}
+      VITE_API_URL: ${VITE_API_URL:-http://localhost:3001}
+      VITE_CDN_URL: ${VITE_CDN_URL:-}
+    ports:
+      - "5173:5173"
+    volumes:
+      # Mount source for live reloading; skip node_modules
+      - ./frontend:/app
+      - /app/node_modules
+    depends_on:
+      backend:
+        condition: service_healthy
+    profiles: ["dev"]
+
+  # ── Prod frontend (built → nginx) ──────────────────────────────────────────
+  frontend-prod:
+    build:
+      context: ./frontend
+      target: prod
+      args:
+        VITE_CONTRACT_ID: ${VITE_CONTRACT_ID:-C...}
+        VITE_RPC_URL: ${VITE_RPC_URL:-https://soroban-testnet.stellar.org:443}
+        VITE_NETWORK_PASSPHRASE: ${VITE_NETWORK_PASSPHRASE:-Test SDF Network ; September 2015}
+        VITE_API_URL: ${VITE_API_URL:-http://backend:3001}
+        VITE_CDN_URL: ${VITE_CDN_URL:-}
+    restart: unless-stopped
+    ports:
+      - "80:80"
+      - "443:443"
+    volumes:
+      # Mount TLS certificates for Nginx TLS termination (read-only)
+      - ./certs:/etc/ssl/rwa:ro
+      # Nginx config with TLS directives
+      - ./nginx/nginx.conf:/etc/nginx/nginx.conf:ro
+      # ACME challenge directory for Let's Encrypt / certbot renewals
+      - certbot-webroot:/var/www/certbot:ro
+    depends_on:
+      backend:
+        condition: service_healthy
+    profiles: ["prod"]
+
+  # ── Redis — plain TCP (optional cache, no TLS) ─────────────────────────────
+  redis:
+    image: redis:7-alpine
+    restart: unless-stopped
+    # Disable persistence to minimise disk I/O for a pure cache
+    command: redis-server --save "" --appendonly no
+    ports:
+      - "6379:6379"
+    healthcheck:
+      test: ["CMD", "redis-cli", "ping"]
+      interval: 10s
+      timeout: 3s
+      retries: 3
+    profiles: ["redis", "prod", "dev", "ws-scale"]
+
+  # ── Multi-node WebSocket delivery test (Issue #593) ────────────────────────
+  # Simulates two horizontally-scaled backend nodes sharing one Redis
+  # Pub/Sub channel and verifies that a broadcast on node A reaches a
+  # client subscribed on node B.
+  # Run with: docker compose --profile ws-scale up --build ws-multinode-test
+  ws-multinode-test:
+    build: ./backend
+    restart: "no"
+    environment:
+      NODE_ENV: production
+      REDIS_URL: redis://redis:6379
+    command: ["node", "scripts/websocket-multinode-test.js"]
+    depends_on:
+      redis:
+        condition: service_healthy
+    profiles: ["ws-scale"]
+
+  # ── PostgreSQL — persistent data store ──────────────────────────────────────
+  postgres:
+    image: postgres:16-alpine
+    restart: unless-stopped
+    environment:
+      POSTGRES_USER: ${POSTGRES_USER:-rwa_user}
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:-rwa_password}
+      POSTGRES_DB: ${POSTGRES_DB:-rwa_marketplace}
+    ports:
+      - "5432:5432"
+    volumes:
+      - postgres-data:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U ${POSTGRES_USER:-rwa_user} -d ${POSTGRES_DB:-rwa_marketplace}"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+    profiles: ["dev", "prod"]
+
+  # ═══════════════════════════════════════════════════════════════════════════
+  # ELK Stack — Centralized Log Aggregation & Analysis
+  # Activate with: docker compose --profile monitoring up --build
+  # Access Kibana at http://localhost:5601
+  # ═══════════════════════════════════════════════════════════════════════════
+
+  # ── Elasticsearch ─────────────────────────────────────────────────────────
+  elasticsearch:
+    image: docker.elastic.co/elasticsearch/elasticsearch:8.17.3
+    restart: unless-stopped
+    environment:
+      - node.name=elasticsearch
+      - cluster.name=rwa-elk
+      - cluster.initial_master_nodes=elasticsearch
+      - discovery.type=single-node
+      - bootstrap.memory_lock=true
+      - "ES_JAVA_OPTS=-Xms512m -Xmx512m"
+      - xpack.security.enabled=false
+      - xpack.security.enrollment.enabled=false
+      - xpack.security.http.ssl.enabled=false
+      - xpack.security.transport.ssl.enabled=false
+    ulimits:
+      memlock:
+        soft: -1
+        hard: -1
+    volumes:
+      - elk-elasticsearch:/usr/share/elasticsearch/data
+      - ./elk/elasticsearch/init.sh:/usr/share/elasticsearch/init.sh:ro
+    ports:
+      - "9200:9200"
+    healthcheck:
+      test: ["CMD", "curl", "-f", "http://localhost:9200"]
+      interval: 30s
+      timeout: 10s
+      retries: 5
+    profiles: ["monitoring", "elk"]
+
+  # ── Logstash ─────────────────────────────────────────────────────────────
+  logstash:
+    build: ./elk/logstash
+    restart: unless-stopped
+    environment:
+      - LS_JAVA_OPTS=-Xms256m -Xmx256m
+      - xpack.monitoring.enabled=true
+      - xpack.monitoring.elasticsearch.hosts=http://elasticsearch:9200
+    volumes:
+      - ./elk/logstash/pipeline/logstash.conf:/usr/share/logstash/pipeline/logstash.conf:ro
+    ports:
+      - "5044:5044"
+    depends_on:
+      elasticsearch:
+        condition: service_healthy
+    profiles: ["monitoring", "elk"]
+
+  # ── Kibana ───────────────────────────────────────────────────────────────
+  kibana:
+    image: docker.elastic.co/kibana/kibana:8.17.3
+    restart: unless-stopped
+    environment:
+      - SERVER_NAME=kibana
+      - ELASTICSEARCH_HOSTS=http://elasticsearch:9200
+    volumes:
+      - ./elk/kibana/kibana.yml:/usr/share/kibana/config/kibana.yml:ro
+    ports:
+      - "5601:5601"
+    depends_on:
+      elasticsearch:
+        condition: service_healthy
+    healthcheck:
+      test: ["CMD", "curl", "-f", "http://localhost:5601/api/status"]
+      interval: 30s
+      timeout: 10s
+      retries: 5
+    profiles: ["monitoring", "elk"]
+
+  # ── Filebeat ─────────────────────────────────────────────────────────────
+  filebeat:
+    image: docker.elastic.co/beats/filebeat:8.17.3
+    restart: unless-stopped
+    user: root
+    volumes:
+      - ./elk/filebeat/filebeat.yml:/usr/share/filebeat/filebeat.yml:ro
+      - /var/lib/docker/containers:/var/lib/docker/containers:ro
+      - /var/run/docker.sock:/var/run/docker.sock:ro
+    depends_on:
+      logstash:
+        condition: service_started
+    profiles: ["monitoring", "elk"]
+
+  # ═══════════════════════════════════════════════════════════════════════════
+  # Prometheus & Grafana — Metrics Collection & Visualization
+  # Activate with: docker compose --profile monitoring up --build
+  # Access Grafana at http://localhost:3000
+  # ═══════════════════════════════════════════════════════════════════════════
+
+  # ── Prometheus ───────────────────────────────────────────────────────────
+  prometheus:
+    image: prom/prometheus:v2.53.0
+    restart: unless-stopped
+    command:
+      - '--config.file=/etc/prometheus/prometheus.yml'
+      - '--storage.tsdb.path=/prometheus'
+      - '--web.console.libraries=/usr/share/prometheus/console_libraries'
+      - '--web.console.templates=/usr/share/prometheus/consoles'
+      - '--web.enable-lifecycle'
+    volumes:
+      - ./prometheus/prometheus.yml:/etc/prometheus/prometheus.yml:ro
+      - ./prometheus/alerts.yml:/etc/prometheus/alerts.yml:ro
+      - prometheus-data:/prometheus
+    ports:
+      - "9090:9090"
+    depends_on:
+      backend:
+        condition: service_healthy
+    profiles: ["monitoring"]
+
+  # ── Grafana ──────────────────────────────────────────────────────────────
+  grafana:
+    image: grafana/grafana:11.1.0
+    restart: unless-stopped
+    environment:
+      - GF_SECURITY_ADMIN_USER=admin
+      - GF_SECURITY_ADMIN_PASSWORD=admin
+      - GF_INSTALL_PLUGINS=
+    volumes:
+      - ./grafana/datasources:/etc/grafana/provisioning/datasources:ro
+      - ./grafana/dashboards:/etc/grafana/provisioning/dashboards:ro
+      - grafana-data:/var/lib/grafana
+    ports:
+      - "3000:3000"
+    depends_on:
+      prometheus:
+        condition: service_started
+    profiles: ["monitoring"]
+
+volumes:
+  backend-data:
+  postgres-data:
+  elk-elasticsearch:
+  prometheus-data:
+  grafana-data:

@@ -1,0 +1,107 @@
+.banner {
+  background: linear-gradient(135deg, var(--success-bg), var(--primary-glow));
+  border: 1px solid var(--success-border);
+  border-radius: var(--radius-md);
+  padding: var(--spacing-md) var(--spacing-lg);
+}
+
+.upcoming {
+  background: linear-gradient(135deg, var(--primary-bg), var(--bg-surface));
+  border-color: var(--primary-border, var(--border-color));
+}
+
+.content {
+  display: flex;
+  align-items: center;
+  gap: var(--spacing-md);
+}
+
+.indicator {
+  width: 10px;
+  height: 10px;
+  border-radius: 50%;
+  background-color: var(--success);
+  animation: pulse 2s infinite;
+  flex-shrink: 0;
+}
+
+.upcomingIndicator {
+  background-color: var(--primary);
+  animation: pulse 3s infinite;
+}
+
+@keyframes pulse {
+  0%, 100% { opacity: 1; }
+  50% { opacity: 0.4; }
+}
+
+.info {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+  flex: 1;
+}
+
+.title {
+  font-size: var(--font-size-sm);
+  font-weight: var(--font-weight-semibold);
+  color: var(--success-text);
+}
+
+.upcoming .title {
+  color: var(--text-primary);
+}
+
+.subtitle {
+  font-size: var(--font-size-xs);
+  color: var(--text-secondary);
+}
+
+.countdown {
+  display: flex;
+  flex-direction: column;
+  align-items: flex-end;
+  flex-shrink: 0;
+}
+
+.countdownLabel {
+  font-size: var(--font-size-xs);
+  color: var(--text-muted);
+  text-transform: uppercase;
+  letter-spacing: 0.05em;
+}
+
+.countdownValue {
+  font-size: var(--font-size-lg);
+  font-weight: var(--font-weight-bold);
+  color: var(--success-text);
+  font-variant-numeric: tabular-nums;
+}
+
+.dismissBtn {
+  background: none;
+  border: none;
+  color: var(--text-muted);
+  font-size: var(--font-size-lg);
+  cursor: pointer;
+  padding: 0 var(--spacing-xs);
+  line-height: 1;
+  opacity: 0.6;
+  transition: opacity 0.2s;
+}
+
+.dismissBtn:hover {
+  opacity: 1;
+}
+
+@media (max-width: 768px) {
+  .content {
+    flex-direction: column;
+    align-items: flex-start;
+    gap: var(--spacing-sm);
+  }
+
+  .countdown {
+    align-items: flex-start;
+  }
+}

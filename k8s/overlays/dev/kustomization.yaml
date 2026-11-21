@@ -1,0 +1,19 @@
+# Development overlay (Issue #890)
+#   kubectl apply -k k8s/overlays/dev
+# Values: single replica per service, dev hostname, `dev` image tag.
+apiVersion: kustomize.config.k8s.io/v1beta1
+kind: Kustomization
+
+resources:
+  - ../..
+
+images:
+  - name: rwa-backend
+    newTag: dev
+  - name: rwa-frontend
+    newTag: dev
+
+patches:
+  - path: ingress-patch.yaml
+  - path: backend-replicas-patch.yaml
+  - path: frontend-replicas-patch.yaml

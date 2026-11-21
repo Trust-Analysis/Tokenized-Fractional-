@@ -1,0 +1,55 @@
+module.exports = {
+  env: {
+    browser: true,
+    es2021: true,
+  },
+  extends: [
+    'airbnb',
+    'airbnb/hooks',
+    'prettier',
+  ],
+  parserOptions: {
+    ecmaVersion: 2021,
+    sourceType: 'module',
+  },
+  plugins: ['react', 'prettier'],
+  rules: {
+    'prettier/prettier': 'error',
+    'react/react-in-jsx-scope': 'off',
+    'import/extensions': ['error', 'ignorePackages', { js: 'never', jsx: 'never' }],
+    'react/prop-types': 'off',
+    'react/jsx-props-no-spreading': 'off',
+    'jsx-a11y/label-has-associated-control': 'warn',
+    'no-console': 'warn',
+    'no-unused-vars': 'warn',
+    'no-restricted-globals': 'warn',
+    'react-hooks/exhaustive-deps': 'warn',
+    'no-use-before-define': 'warn',
+    'consistent-return': 'warn',
+    'no-plusplus': 'warn',
+    'no-nested-ternary': 'warn',
+    'no-underscore-dangle': 'warn',
+    'import/prefer-default-export': 'off',
+    'react/button-has-type': 'warn',
+    'jsx-a11y/click-events-have-key-events': 'warn',
+    'jsx-a11y/no-noninteractive-element-interactions': 'warn',
+    'import/no-extraneous-dependencies': ['error', { devDependencies: true }],
+    // Additional practical rules for existing code
+    'react/destructuring-assignment': 'off',
+    'react/jsx-no-undef': 'error',
+    'no-undef': 'error',
+    'react/no-array-index-key': 'warn',
+    'react/jsx-no-constructed-context-values': 'warn',
+    'no-promise-executor-return': 'warn',
+    'new-cap': 'warn',
+    'jsx-a11y/no-redundant-roles': 'warn',
+    'react/no-unescaped-entities': 'warn',
+  },
+  settings: {
+    'import/resolver': {
+      node: {
+        extensions: ['.js', '.jsx'],
+      },
+    },
+  },
+};

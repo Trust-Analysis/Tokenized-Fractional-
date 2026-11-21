@@ -1,0 +1,603 @@
+// swagger-rest-fallback.ts
+
+import {
+  Controller,
+  Get,
+  Post,
+  Put,
+  Delete,
+  Param,
+  Body,
+  Query,
+  HttpException,
+  HttpStatus,
+} from '@nestjs/common';
+
+import {
+  ApiTags,
+  ApiOperation,
+  ApiResponse,
+  ApiParam,
+  ApiQuery,
+  ApiBody,
+  ApiProperty,
+} from '@nestjs/swagger';
+
+// ============================================================
+// DTOs
+// ============================================================
+
+export class CreateResourceDto {
+  @ApiProperty({
+    description: 'Name of the resource',
+    example: 'Example Resource',
+  })
+  name: string;
+
+  @ApiProperty({
+    description: 'Description of the resource',
+    example: 'A resource created through the REST fallback API',
+  })
+  description: string;
+
+  @ApiProperty({
+    description: 'Owner identifier',
+    example: 'GABC123456789',
+  })
+  owner: string;
+}
+
+export class UpdateResourceDto {
+  @ApiProperty({
+    description: 'Updated resource name',
+    example: 'Updated Resource',
+    required: false,
+  })
+  name?: string;
+
+  @ApiProperty({
+    description: 'Updated resource description',
+    example: 'Updated description',
+    required: false,
+  })
+  description?: string;
+}
+
+export class ResourceResponseDto {
+  @ApiProperty({
+    description: 'Unique resource identifier',
+    example: 'resource_12345',
+  })
+  id: string;
+
+  @ApiProperty({
+    description: 'Resource name',
+    example: 'Example Resource',
+  })
+  name: string;
+
+  @ApiProperty({
+    description: 'Resource description',
+    example: 'A REST fallback resource',
+  })
+  description: string;
+
+  @ApiProperty({
+    description: 'Resource owner',
+    example: 'GABC123456789',
+  })
+  owner: string;
+
+  @ApiProperty({
+    description: 'Creation timestamp',
+    example: '2026-08-31T10:30:00.000Z',
+  })
+  createdAt: string;
+
+  @ApiProperty({
+    description: 'Last update timestamp',
+    example: '2026-08-31T10:45:00.000Z',
+  })
+  updatedAt: string;
+}
+
+export class ErrorResponseDto {
+  @ApiProperty({
+    example: 404,
+  })
+  statusCode: number;
+
+  @ApiProperty({
+    example: 'Resource not found',
+  })
+  message: string;
+
+  @ApiProperty({
+    example: 'NotFoundException',
+  })
+  error: string;
+
+  @ApiProperty({
+    example: '2026-08-31T10:30:00.000Z',
+  })
+  timestamp: string;
+}
+
+export class HealthResponseDto {
+  @ApiProperty({
+    example: 'ok',
+  })
+  status: string;
+
+  @ApiProperty({
+    example: 'REST fallback is available',
+  })
+  message: string;
+
+  @ApiProperty({
+    example: '2026-08-31T10:30:00.000Z',
+  })
+  timestamp: string;
+}
+
+// ============================================================
+// REST FALLBACK CONTROLLER
+// ============================================================
+
+@ApiTags('REST Fallback')
+@Controller('api/v1/fallback')
+export class RestFallbackController {
+
+  // ----------------------------------------------------------
+  // HEALTH CHECK
+  // ----------------------------------------------------------
+
+  @Get('health')
+  @ApiOperation({
+    summary: 'Check REST fallback availability',
+    description:
+      'Returns the current status of the REST fallback interface.',
+  })
+  @ApiResponse({
+    status: 200,
+    description: 'REST fallback is available.',
+    type: HealthResponseDto,
+  })
+  @ApiResponse({
+    status: 503,
+    description: 'REST fallback is temporarily unavailable.',
+  })
+  getHealth(): HealthResponseDto {
+    return {
+      status: 'ok',
+      message: 'REST fallback is available',
+      timestamp: new Date().toISOString(),
+    };
+  }
+
+  // ----------------------------------------------------------
+  // GET RESOURCE
+  // ----------------------------------------------------------
+
+  @Get('resources/:id')
+  @ApiOperation({
+    summary: 'Get a resource',
+    description:
+      'Retrieves a resource through the REST fallback when the primary API is unavailable.',
+  })
+  @ApiParam({
+    name: 'id',
+    description: 'Unique resource identifier',
+    example: 'resource_12345',
+  })
+  @ApiResponse({
+    status: 200,
+    description: 'Resource successfully retrieved.',
+    type: ResourceResponseDto,
+  })
+  @ApiResponse({
+    status: 400,
+    description: 'Invalid resource identifier.',
+    type: ErrorResponseDto,
+  })
+  @ApiResponse({
+    status: 404,
+    description: 'Resource was not found.',
+    type: ErrorResponseDto,
+  })
+  @ApiResponse({
+    status: 500,
+    description: 'Internal server error.',
+    type: ErrorResponseDto,
+  })
+  getResource(
+    @Param('id') id: string,
+  ): ResourceResponseDto {
+
+    if (!id) {
+      throw new HttpException(
+        'Resource ID is required',
+        HttpStatus.BAD_REQUEST,
+      );
+    }
+
+    return {
+      id,
+      name: 'Example Resource',
+      description: 'Resource returned by REST fallback',
+      owner: 'GABC123456789',
+      createdAt: new Date().toISOString(),
+      updatedAt: new Date().toISOString(),
+    };
+  }
+
+  // ----------------------------------------------------------
+  // LIST RESOURCES
+  // ----------------------------------------------------------
+
+  @Get('resources')
+  @ApiOperation({
+    summary: 'List resources',
+    description:
+      'Returns a paginated list of resources from the REST fallback.',
+  })
+  @ApiQuery({
+    name: 'page',
+    required: false,
+    description: 'Page number',
+    example: 1,
+  })
+  @ApiQuery({
+    name: 'limit',
+    required: false,
+    description: 'Number of resources per page',
+    example: 20,
+  })
+  @ApiQuery({
+    name: 'owner',
+    required: false,
+    description: 'Filter resources by owner',
+    example: 'GABC123456789',
+  })
+  @ApiResponse({
+    status: 200,
+    description: 'Resources successfully retrieved.',
+    schema: {
+      example: {
+        data: [],
+        page: 1,
+        limit: 20,
+        total: 0,
+      },
+    },
+  })
+  @ApiResponse({
+    status: 400,
+    description: 'Invalid query parameters.',
+    type: ErrorResponseDto,
+  })
+  listResources(
+    @Query('page') page = 1,
+    @Query('limit') limit = 20,
+    @Query('owner') owner?: string,
+  ) {
+    return {
+      data: [],
+      page: Number(page),
+      limit: Number(limit),
+      owner: owner ?? null,
+      total: 0,
+    };
+  }
+
+  // ----------------------------------------------------------
+  // CREATE RESOURCE
+  // ----------------------------------------------------------
+
+  @Post('resources')
+  @ApiOperation({
+    summary: 'Create a resource',
+    description:
+      'Creates a new resource through the REST fallback interface.',
+  })
+  @ApiBody({
+    type: CreateResourceDto,
+    description: 'Resource creation payload',
+  })
+  @ApiResponse({
+    status: 201,
+    description: 'Resource successfully created.',
+    type: ResourceResponseDto,
+  })
+  @ApiResponse({
+    status: 400,
+    description: 'Invalid request body.',
+    type: ErrorResponseDto,
+  })
+  @ApiResponse({
+    status: 409,
+    description: 'Resource already exists.',
+    type: ErrorResponseDto,
+  })
+  @ApiResponse({
+    status: 500,
+    description: 'Internal server error.',
+    type: ErrorResponseDto,
+  })
+  createResource(
+    @Body() body: CreateResourceDto,
+  ): ResourceResponseDto {
+
+    if (!body.name) {
+      throw new HttpException(
+        'Name is required',
+        HttpStatus.BAD_REQUEST,
+      );
+    }
+
+    const now = new Date().toISOString();
+
+    return {
+      id: `resource_${Date.now()}`,
+      name: body.name,
+      description: body.description,
+      owner: body.owner,
+      createdAt: now,
+      updatedAt: now,
+    };
+  }
+
+  // ----------------------------------------------------------
+  // UPDATE RESOURCE
+  // ----------------------------------------------------------
+
+  @Put('resources/:id')
+  @ApiOperation({
+    summary: 'Update a resource',
+    description:
+      'Updates an existing resource through the REST fallback interface.',
+  })
+  @ApiParam({
+    name: 'id',
+    description: 'Unique resource identifier',
+    example: 'resource_12345',
+  })
+  @ApiBody({
+    type: UpdateResourceDto,
+    description: 'Resource update payload',
+  })
+  @ApiResponse({
+    status: 200,
+    description: 'Resource successfully updated.',
+    type: ResourceResponseDto,
+  })
+  @ApiResponse({
+    status: 400,
+    description: 'Invalid request.',
+    type: ErrorResponseDto,
+  })
+  @ApiResponse({
+    status: 404,
+    description: 'Resource was not found.',
+    type: ErrorResponseDto,
+  })
+  updateResource(
+    @Param('id') id: string,
+    @Body() body: UpdateResourceDto,
+  ): ResourceResponseDto {
+
+    if (!id) {
+      throw new HttpException(
+        'Resource ID is required',
+        HttpStatus.BAD_REQUEST,
+      );
+    }
+
+    return {
+      id,
+      name: body.name ?? 'Existing Resource',
+      description:
+        body.description ??
+        'Updated through REST fallback',
+      owner: 'GABC123456789',
+      createdAt: new Date().toISOString(),
+      updatedAt: new Date().toISOString(),
+    };
+  }
+
+  // ----------------------------------------------------------
+  // DELETE RESOURCE
+  // ----------------------------------------------------------
+
+  @Delete('resources/:id')
+  @ApiOperation({
+    summary: 'Delete a resource',
+    description:
+      'Deletes a resource through the REST fallback interface.',
+  })
+  @ApiParam({
+    name: 'id',
+    description: 'Unique resource identifier',
+    example: 'resource_12345',
+  })
+  @ApiResponse({
+    status: 204,
+    description: 'Resource successfully deleted.',
+  })
+  @ApiResponse({
+    status: 400,
+    description: 'Invalid resource identifier.',
+    type: ErrorResponseDto,
+  })
+  @ApiResponse({
+    status: 404,
+    description: 'Resource was not found.',
+    type: ErrorResponseDto,
+  })
+  deleteResource(
+    @Param('id') id: string,
+  ): void {
+
+    if (!id) {
+      throw new HttpException(
+        'Resource ID is required',
+        HttpStatus.BAD_REQUEST,
+      );
+    }
+
+    // Delete resource here.
+  }
+}
+
+// ============================================================
+// SWAGGER SETUP
+// ============================================================
+
+/*
+ * Add this configuration to your application's bootstrap
+ * file, normally main.ts.
+ *
+ * Example:
+ *
+ * import { NestFactory } from '@nestjs/core';
+ * import {
+ *   DocumentBuilder,
+ *   SwaggerModule,
+ * } from '@nestjs/swagger';
+ *
+ * import { AppModule } from './app.module';
+ *
+ * async function bootstrap() {
+ *
+ *   const app = await NestFactory.create(AppModule);
+ *
+ *   const config = new DocumentBuilder()
+ *     .setTitle('REST Fallback API')
+ *     .setDescription(
+ *       'REST fallback API documentation'
+ *     )
+ *     .setVersion('1.0.0')
+ *     .addTag(
+ *       'REST Fallback',
+ *       'Fallback REST endpoints',
+ *     )
+ *     .build();
+ *
+ *   const document = SwaggerModule.createDocument(
+ *     app,
+ *     config,
+ *   );
+ *
+ *   SwaggerModule.setup(
+ *     'docs',
+ *     app,
+ *     document,
+ *   );
+ *
+ *   await app.listen(3000);
+ * }
+ *
+ * bootstrap();
+ */
+
+// ============================================================
+// OPENAPI INFORMATION
+// ============================================================
+
+export const OPENAPI_INFO = {
+  title: 'REST Fallback API',
+  description:
+    'OpenAPI documentation for REST fallback endpoints.',
+  version: '1.0.0',
+  servers: [
+    {
+      url: 'http://localhost:3000',
+      description: 'Local development server',
+    },
+  ],
+};
+
+// ============================================================
+// FALLBACK ERROR DOCUMENTATION
+// ============================================================
+
+export const FALLBACK_ERRORS = {
+  BAD_REQUEST: {
+    statusCode: 400,
+    description:
+      'The request contains invalid parameters or payload.',
+  },
+
+  UNAUTHORIZED: {
+    statusCode: 401,
+    description:
+      'Authentication is required to perform this operation.',
+  },
+
+  FORBIDDEN: {
+    statusCode: 403,
+    description:
+      'The authenticated client does not have permission.',
+  },
+
+  NOT_FOUND: {
+    statusCode: 404,
+    description:
+      'The requested resource could not be found.',
+  },
+
+  CONFLICT: {
+    statusCode: 409,
+    description:
+      'The request conflicts with the current resource state.',
+  },
+
+  INTERNAL_SERVER_ERROR: {
+    statusCode: 500,
+    description:
+      'The server encountered an unexpected error.',
+  },
+
+  SERVICE_UNAVAILABLE: {
+    statusCode: 503,
+    description:
+      'The primary service and/or REST fallback is unavailable.',
+  },
+};
+
+// ============================================================
+// ENDPOINT SUMMARY
+// ============================================================
+
+export const ENDPOINT_SUMMARY = [
+  {
+    method: 'GET',
+    path: '/api/v1/fallback/health',
+    description: 'Check fallback availability',
+  },
+  {
+    method: 'GET',
+    path: '/api/v1/fallback/resources',
+    description: 'List resources',
+  },
+  {
+    method: 'GET',
+    path: '/api/v1/fallback/resources/:id',
+    description: 'Retrieve a resource',
+  },
+  {
+    method: 'POST',
+    path: '/api/v1/fallback/resources',
+    description: 'Create a resource',
+  },
+  {
+    method: 'PUT',
+    path: '/api/v1/fallback/resources/:id',
+    description: 'Update a resource',
+  },
+  {
+    method: 'DELETE',
+    path: '/api/v1/fallback/resources/:id',
+    description: 'Delete a resource',
+  },
+];

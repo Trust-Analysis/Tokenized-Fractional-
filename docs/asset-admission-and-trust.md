@@ -1,0 +1,25 @@
+# Asset Admission and Trust Review
+
+This policy describes the minimum business review an asset must pass before the marketplace presents it as approved for purchase. Deploying a contract, pinning metadata, or creating an API record is a technical operation; none of those actions verifies the issuer, proves title, or makes an asset eligible for sale.
+
+The marketplace operator must apply this review before changing an asset from pending to approved. Until then, the asset must remain unavailable for purchase. This document defines the required review; it does not claim that any particular deployment has completed the reviews or has legal authority to offer investments. Operators must adapt it to their jurisdictions and obtain qualified legal and compliance advice.
+
+## Review Stages
+
+1. **Submission and identity.** Record the issuer's legal name, registration details, operating jurisdiction, beneficial owners, authorized representatives, and contact information. Independently verify the issuer and confirm that the submitter can act for it.
+2. **Asset and ownership evidence.** Identify the underlying asset precisely. Obtain primary evidence of ownership or enforceable control, such as official registry records, executed purchase or custody documents, and evidence of the issuer's authority to tokenize or offer interests. Check for liens, competing claims, transfer restrictions, and material gaps in title. Verify records with their issuing source where possible; an uploaded file alone is not verification.
+3. **Valuation and condition.** Obtain a current valuation from a qualified, independent professional appropriate to the asset class. Record the valuation date, methodology, assumptions, conflicts, and any inspection or condition report. Explain material uncertainty and how often the valuation must be refreshed.
+4. **Legal and compliance review.** Qualified reviewers assess the ownership structure and investor rights, offering and marketing rules, jurisdictional availability, required disclosures, KYC/AML and sanctions controls, tax considerations, and any licensing or investor-eligibility requirements. The review must identify which legal entity holds the asset and what rights, if any, a token holder receives. Do not imply that a token is direct title unless counsel has confirmed that result for the relevant jurisdiction.
+5. **Marketplace curation.** Apply consistent admission criteria: verifiable identity and asset, a credible ownership/control path, sufficiently current independent valuation, understandable investor rights and costs, a credible servicing/custody plan, and disclosures that make material risks and conflicts clear. Reject or defer cases with unresolved title, unverifiable evidence, misleading valuation claims, undisclosed related-party interests, or inadequate ongoing reporting.
+6. **Recorded decision.** Require documented approval by designated reviewers, including a legal/compliance sign-off where applicable. Keep the evidence references, verification performed, reviewer identities, decision date, conditions, conflicts, and rationale in an access-controlled review record. A submitter must not approve their own submission.
+7. **Publication and monitoring.** Publish only the non-confidential review summary and material risks. Show the review date, asset and issuer identity, evidence categories checked, valuation basis/date, holder rights, fees, conflicts, and any important limitations. Re-review on a defined schedule and after material events, such as a change in ownership, valuation, servicing, legal status, or disclosed risk. Suspend or remove approval when required evidence expires, becomes unreliable, or a material issue is unresolved.
+
+## Approval and User Disclosures
+
+Approval means only that the operator completed its stated admission review as of the displayed date. It is not a government endorsement, independent audit of every claim, guarantee of title or valuation, guarantee of liquidity or returns, or assurance that an investment is suitable. The marketplace must state who performed the review and which checks were not performed. Users should be able to inspect the relevant disclosures and supporting public records before deciding whether to buy.
+
+Keep personal information, identity documents, and confidential legal records out of public metadata and on-chain storage. Publish only a reviewed summary and references that can lawfully be shared. Smart contracts and public ledgers cannot verify the truth or current legal effect of off-chain documents.
+
+## Operational Boundary
+
+The marketplace API and contract status must not be treated as evidence that this process occurred. Operators need an actual review workflow, controlled approval permissions, a durable decision record, and a user-visible disclosure surface. Until those controls are in place for a deployment, describe the review status as unverified and do not represent a listing as vetted.

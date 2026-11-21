@@ -1,0 +1,130 @@
+.table {
+  width: 100%;
+  border-collapse: collapse;
+  margin: var(--spacing-sm, 12px) 0;
+  font-size: var(--font-size-sm, 0.875rem);
+}
+
+.table th {
+  text-align: left;
+  padding: 6px 0;
+  color: var(--text-secondary, #64748b);
+  font-weight: 500;
+}
+
+.table td {
+  text-align: right;
+  padding: 6px 0;
+  color: var(--text-primary, #0f172a);
+  font-weight: 600;
+}
+
+.totalRow th {
+  padding-top: 10px;
+  border-top: 1px solid var(--border-color, #cbd5e1);
+  color: var(--text-primary, #0f172a);
+  font-weight: 700;
+  font-size: 1rem;
+}
+
+.totalAmount {
+  padding-top: 10px;
+  border-top: 1px solid var(--border-color, #cbd5e1);
+  color: var(--color-primary, #2563eb);
+  font-weight: 700;
+  font-size: 1.1rem;
+}
+
+.assetHeader {
+  display: flex;
+  flex-direction: column;
+  background: var(--bg-surface-alt, #f8fafc);
+  padding: 8px 12px;
+  border-radius: 6px;
+  margin-bottom: 12px;
+}
+
+.assetContractId {
+  font-size: 0.75rem;
+  color: var(--text-muted, #94a3b8);
+  font-family: monospace;
+}
+
+.disclaimerBox {
+  background: #eff6ff;
+  border: 1px solid #bfdbfe;
+  color: #1e40af;
+  padding: 8px 12px;
+  border-radius: 6px;
+  font-size: 0.75rem;
+  margin-top: 12px;
+  line-height: 1.4;
+}
+
+.statusBox {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 12px;
+  padding: 24px 0;
+  text-align: center;
+}
+
+.statusText {
+  font-size: 0.9rem;
+  color: var(--text-secondary, #475569);
+}
+
+.timelineProgress {
+  font-size: 0.75rem;
+  color: var(--text-muted, #94a3b8);
+}
+
+.activeStep {
+  color: var(--color-primary, #2563eb);
+}
+
+.successBox {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 10px;
+  text-align: center;
+  padding: 16px 0;
+}
+
+.successIcon {
+  width: 48px;
+  height: 48px;
+  border-radius: 50%;
+  background: #22c55e;
+  color: #fff;
+  font-size: 24px;
+  font-weight: bold;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+}
+
+.txHashRow {
+  font-size: 0.8rem;
+  display: flex;
+  gap: 6px;
+  margin-top: 8px;
+}
+
+.txHashLink {
+  color: var(--color-primary, #2563eb);
+  font-family: monospace;
+  text-decoration: underline;
+}
+
+.errorBox {
+  background: #fef2f2;
+  border: 1px solid #fecaca;
+  color: #991b1b;
+  padding: 16px;
+  border-radius: 8px;
+  text-align: center;
+  margin: 12px 0;
+}

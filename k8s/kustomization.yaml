@@ -1,0 +1,28 @@
+# Kustomize base for the RWA Marketplace (Issue #890)
+#
+# This is the single source of truth for the Kubernetes manifests — the
+# canonical manifests live right next to this file (namespace.yaml,
+# backend-*.yaml, frontend-*.yaml, ingress.yaml, secrets.yaml) so the
+# existing `kubectl apply -f k8s/<file>.yaml` instructions keep working.
+#
+# Never apply this base directly in an environment: apply an overlay instead,
+# which parameterizes the environment-specific values (ingress hostname,
+# replica counts, image tags):
+#   kubectl apply -k k8s/overlays/dev
+#   kubectl apply -k k8s/overlays/staging
+#   kubectl apply -k k8s/overlays/prod
+apiVersion: kustomize.config.k8s.io/v1beta1
+kind: Kustomization
+
+namespace: rwa-marketplace
+
+resources:
+  - namespace.yaml
+  - secrets.yaml
+  - backend-configmap.yaml
+  - backend-deployment.yaml
+  - backend-service.yaml
+  - frontend-configmap.yaml
+  - frontend-deployment.yaml
+  - frontend-service.yaml
+  - ingress.yaml

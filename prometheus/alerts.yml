@@ -1,0 +1,72 @@
+# Alerting Rules for RWA Marketplace (SLO-based alerting)
+groups:
+  - name: rwa_slo_alerts
+    rules:
+      # Availability SLO: High HTTP Error Rate
+      - alert: HighHttpErrorRate
+        expr: (sum(rate(http_request_errors_total[5m])) / sum(rate(http_requests_total[5m]))) * 100 > 1
+        for: 5m
+        labels:
+          severity: warning
+        annotations:
+          summary: "High HTTP error rate (> 1%) on {{ $labels.route }}"
+          description: "HTTP error rate is {{ $value | printf \"%.2f\" }}% over the last 5 minutes."
+
+      - alert: CriticalHttpErrorRate
+        expr: (sum(rate(http_request_errors_total[5m])) / sum(rate(http_requests_total[5m]))) * 100 > 5
+        for: 2m
+        labels:
+          severity: critical
+        annotations:
+          summary: "Critical HTTP error rate (> 5%) on {{ $labels.route }}"
+          description: "HTTP error rate is {{ $value | printf \"%.2f\" }}% over the last 2 minutes."
+
+      # Latency SLO: P99 Latency > 1s
+      - alert: HighHttpLatencyP99
+        expr: histogram_quantile(0.99, sum(rate(http_request_duration_seconds_bucket[5m])) by (le, route)) > 1.0
+        for: 5m
+        labels:
+          severity: warning
+        annotations:
+          summary: "P99 latency exceeding 1 second on route {{ $labels.route }}"
+          description: "P99 latency is {{ $value | printf \"%.3f\" }}s over the last 5 minutes."
+
+      # Infrastructure: Database Connection Pool Exhaustion
+      - alert: DatabasePoolExhaustion
+        expr: db_pool_utilization_ratio > 0.85
+        for: 5m
+        labels:
+          severity: warning
+        annotations:
+          summary: "Database connection pool utilization is critically high (> 85%)"
+          description: "Current connection pool utilization ratio is {{ $value | printf \"%.2f\" }}."
+
+      # Infrastructure: Disk Usage
+      - alert: DiskSpaceCritical
+        expr: disk_usage_ratio > 0.85
+        for: 5m
+        labels:
+          severity: critical
+        annotations:
+          summary: "Volume holding DATA_FILE has exceeded 85% disk usage"
+          description: "Current disk usage ratio is {{ $value | printf \"%.2f\" }}."
+
+      # Messaging: WebSocket DLQ Alert
+      - alert: WebSocketDLQThresholdExceeded
+        expr: websocket_dlq_over_threshold == 1
+        for: 3m
+        labels:
+          severity: warning
+        annotations:
+          summary: "WebSocket Dead Letter Queue buffer has exceeded alert threshold"
+          description: "Buffered DLQ messages exceed WS_DLQ_ALERT_THRESHOLD, clients may be disconnected."
+
+      # Availability: Service Down
+      - alert: BackendInstanceDown
+        expr: up{job="rwa-backend"} == 0
+        for: 1m
+        labels:
+          severity: critical
+        annotations:
+          summary: "RWA Backend instance is down"
+          description: "The backend instance at {{ $labels.instance }} has been unreachable for > 1 minute."
