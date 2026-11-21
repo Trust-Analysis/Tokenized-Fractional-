@@ -388,3 +388,9 @@ Two rules keep the suite honest:
    for a different reason, that is a drift worth failing on even when the verdict
    is unchanged. Put a discriminating value in `observations` — the harness
    already compares `observations.mechanism` within a matching verdict.
+
+## Blast-Radius Limits & Abort Policy (#1104)
+
+- **Target Environment**: Restricted to `staging` via `environment: staging` in `.github/workflows/chaos-exercise.yml` and GitHub Environment protection rules. Production/mainnet endpoints and real user traffic are strictly out of scope; any `CHAOS_RPC_URL` matching `mainnet`, `prod`, or `production` aborts pre-flight.
+- **Hard Timeouts**: Job-level `timeout-minutes: 15` and step-level `timeout --kill-after=30s 600s` with `CHAOS_MAX_DURATION_MS` (default `600000` ms / 10 minutes), plus single-active-run concurrency (`cancel-in-progress: true`).
+- **Abort Conditions & Automatic Rollback**: Immediately abort and cancel/rollback if real user traffic is impacted, pre-flight target validation fails, or execution hits timeout/cancellation. An `if: always()` step runs `CHAOS_ROLLBACK_CMD` (when set), cleans up Docker Compose resources if Docker is available, records abort/rollback status in `docs/chaos-engineering/latest-run.json`, and uploads `chaos-exercise-report`.
