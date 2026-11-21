@@ -22,7 +22,7 @@ services:
     environment:
       PORT: "3001"
       NODE_ENV: production
-      DATABASE_URL: postgresql://${POSTGRES_USER:-rwa_user}:${POSTGRES_PASSWORD:-rwa_password}@postgres:5432/${POSTGRES_DB:-rwa_marketplace}
+      DATABASE_URL: postgresql://${POSTGRES_USER:?POSTGRES_USER must be set}:${POSTGRES_PASSWORD:?POSTGRES_PASSWORD must be set}@postgres:5432/${POSTGRES_DB:-rwa_marketplace}
       REDIS_URL: redis://redis:6379
     ports:
       - "3001:3001"
@@ -32,7 +32,7 @@ services:
       # Mount TLS certificates (read-only) — used for Redis mTLS and reference
       - ./certs:/etc/ssl/rwa:ro
     healthcheck:
-      test: ["CMD", "wget", "-qO-", "http://localhost:3001/health"]
+      test: [\"CMD\", \"wget\", \"-qO-\", \"http://localhost:3001/health\"]
       interval: 30s
       timeout: 5s
       retries: 3
@@ -41,7 +41,7 @@ services:
         condition: service_healthy
       redis:
         condition: service_healthy
-    profiles: ["dev", "prod"]
+    profiles: [\"dev\", \"prod\"]
 
   # ── Dev frontend (Vite HMR) — default ──────────────────────────────────────
   frontend-dev:
@@ -64,7 +64,7 @@ services:
     depends_on:
       backend:
         condition: service_healthy
-    profiles: ["dev"]
+    profiles: [\"dev\"]
 
   # ── Prod frontend (built → nginx) ──────────────────────────────────────────
   frontend-prod:
@@ -91,22 +91,44 @@ services:
     depends_on:
       backend:
         condition: service_healthy
-    profiles: ["prod"]
+    profiles: [\"prod\"]
 
   # ── Redis — plain TCP (optional cache, no TLS) ─────────────────────────────
   redis:
     image: redis:7-alpine
     restart: unless-stopped
     # Disable persistence to minimise disk I/O for a pure cache
-    command: redis-server --save "" --appendonly no
+    command: redis-server --save \"\" --appendonly no
     ports:
-      - "6379:6379"
+      - \"6379:6379\"
     healthcheck:
-      test: ["CMD", "redis-cli", "ping"]
+      test: [\"CMD\", \"redis-cli\", \"ping\"]
       interval: 10s
       timeout: 3s
       retries: 3
-    profiles: ["redis", "prod", "dev", "ws-scale"]
+    profiles: [\"redis\", \"prod\", \"dev\", \"ws-scale\"]
+
+  # ── PostgreSQL — no default credentials; override via env ──────────────────
+  # POSTGRES_USER and POSTGRES_PASSWORD must be provided; the compose file
+  # ships no defaults so a database never boots with a published account
+  # named `rwa_user`/`rwa_password`.
+  postgres:
+    image: postgres:16-alpine
+    restart: unless-stopped
+    environment:
+      POSTGRES_USER: ${POSTGRES_USER}
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD}
+      POSTGRES_DB: ${POSTGRES_DB:-rwa_marketplace}
+    ports:
+      - "5432:5432"
+    volumes:
+      - postgres-data:/var/lib/postgresql/data
+    healthcheck:
+      test: [\"CMD-SHELL\", \"pg_isready -U $${POSTGRES_USER} -d $${POSTGRES_DB}\"]
+      interval: 30s
+      timeout: 5s
+      retries: 3
+    profiles: [\"prod\", \"dev\"]
 
   # ── Multi-node WebSocket delivery test (Issue #593) ────────────────────────
   # Simulates two horizontally-scaled backend nodes sharing one Redis
@@ -115,173 +137,6 @@ services:
   # Run with: docker compose --profile ws-scale up --build ws-multinode-test
   ws-multinode-test:
     build: ./backend
-    restart: "no"
+    restart: \"no\"
     environment:
       NODE_ENV: production
-      REDIS_URL: redis://redis:6379
-    command: ["node", "scripts/websocket-multinode-test.js"]
-    depends_on:
-      redis:
-        condition: service_healthy
-    profiles: ["ws-scale"]
-
-  # ── PostgreSQL — persistent data store ──────────────────────────────────────
-  postgres:
-    image: postgres:16-alpine
-    restart: unless-stopped
-    environment:
-      POSTGRES_USER: ${POSTGRES_USER:-rwa_user}
-      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:-rwa_password}
-      POSTGRES_DB: ${POSTGRES_DB:-rwa_marketplace}
-    ports:
-      - "5432:5432"
-    volumes:
-      - postgres-data:/var/lib/postgresql/data
-    healthcheck:
-      test: ["CMD-SHELL", "pg_isready -U ${POSTGRES_USER:-rwa_user} -d ${POSTGRES_DB:-rwa_marketplace}"]
-      interval: 10s
-      timeout: 5s
-      retries: 5
-    profiles: ["dev", "prod"]
-
-  # ═══════════════════════════════════════════════════════════════════════════
-  # ELK Stack — Centralized Log Aggregation & Analysis
-  # Activate with: docker compose --profile monitoring up --build
-  # Access Kibana at http://localhost:5601
-  # ═══════════════════════════════════════════════════════════════════════════
-
-  # ── Elasticsearch ─────────────────────────────────────────────────────────
-  elasticsearch:
-    image: docker.elastic.co/elasticsearch/elasticsearch:8.17.3
-    restart: unless-stopped
-    environment:
-      - node.name=elasticsearch
-      - cluster.name=rwa-elk
-      - cluster.initial_master_nodes=elasticsearch
-      - discovery.type=single-node
-      - bootstrap.memory_lock=true
-      - "ES_JAVA_OPTS=-Xms512m -Xmx512m"
-      - xpack.security.enabled=false
-      - xpack.security.enrollment.enabled=false
-      - xpack.security.http.ssl.enabled=false
-      - xpack.security.transport.ssl.enabled=false
-    ulimits:
-      memlock:
-        soft: -1
-        hard: -1
-    volumes:
-      - elk-elasticsearch:/usr/share/elasticsearch/data
-      - ./elk/elasticsearch/init.sh:/usr/share/elasticsearch/init.sh:ro
-    ports:
-      - "9200:9200"
-    healthcheck:
-      test: ["CMD", "curl", "-f", "http://localhost:9200"]
-      interval: 30s
-      timeout: 10s
-      retries: 5
-    profiles: ["monitoring", "elk"]
-
-  # ── Logstash ─────────────────────────────────────────────────────────────
-  logstash:
-    build: ./elk/logstash
-    restart: unless-stopped
-    environment:
-      - LS_JAVA_OPTS=-Xms256m -Xmx256m
-      - xpack.monitoring.enabled=true
-      - xpack.monitoring.elasticsearch.hosts=http://elasticsearch:9200
-    volumes:
-      - ./elk/logstash/pipeline/logstash.conf:/usr/share/logstash/pipeline/logstash.conf:ro
-    ports:
-      - "5044:5044"
-    depends_on:
-      elasticsearch:
-        condition: service_healthy
-    profiles: ["monitoring", "elk"]
-
-  # ── Kibana ───────────────────────────────────────────────────────────────
-  kibana:
-    image: docker.elastic.co/kibana/kibana:8.17.3
-    restart: unless-stopped
-    environment:
-      - SERVER_NAME=kibana
-      - ELASTICSEARCH_HOSTS=http://elasticsearch:9200
-    volumes:
-      - ./elk/kibana/kibana.yml:/usr/share/kibana/config/kibana.yml:ro
-    ports:
-      - "5601:5601"
-    depends_on:
-      elasticsearch:
-        condition: service_healthy
-    healthcheck:
-      test: ["CMD", "curl", "-f", "http://localhost:5601/api/status"]
-      interval: 30s
-      timeout: 10s
-      retries: 5
-    profiles: ["monitoring", "elk"]
-
-  # ── Filebeat ─────────────────────────────────────────────────────────────
-  filebeat:
-    image: docker.elastic.co/beats/filebeat:8.17.3
-    restart: unless-stopped
-    user: root
-    volumes:
-      - ./elk/filebeat/filebeat.yml:/usr/share/filebeat/filebeat.yml:ro
-      - /var/lib/docker/containers:/var/lib/docker/containers:ro
-      - /var/run/docker.sock:/var/run/docker.sock:ro
-    depends_on:
-      logstash:
-        condition: service_started
-    profiles: ["monitoring", "elk"]
-
-  # ═══════════════════════════════════════════════════════════════════════════
-  # Prometheus & Grafana — Metrics Collection & Visualization
-  # Activate with: docker compose --profile monitoring up --build
-  # Access Grafana at http://localhost:3000
-  # ═══════════════════════════════════════════════════════════════════════════
-
-  # ── Prometheus ───────────────────────────────────────────────────────────
-  prometheus:
-    image: prom/prometheus:v2.53.0
-    restart: unless-stopped
-    command:
-      - '--config.file=/etc/prometheus/prometheus.yml'
-      - '--storage.tsdb.path=/prometheus'
-      - '--web.console.libraries=/usr/share/prometheus/console_libraries'
-      - '--web.console.templates=/usr/share/prometheus/consoles'
-      - '--web.enable-lifecycle'
-    volumes:
-      - ./prometheus/prometheus.yml:/etc/prometheus/prometheus.yml:ro
-      - ./prometheus/alerts.yml:/etc/prometheus/alerts.yml:ro
-      - prometheus-data:/prometheus
-    ports:
-      - "9090:9090"
-    depends_on:
-      backend:
-        condition: service_healthy
-    profiles: ["monitoring"]
-
-  # ── Grafana ──────────────────────────────────────────────────────────────
-  grafana:
-    image: grafana/grafana:11.1.0
-    restart: unless-stopped
-    environment:
-      - GF_SECURITY_ADMIN_USER=admin
-      - GF_SECURITY_ADMIN_PASSWORD=admin
-      - GF_INSTALL_PLUGINS=
-    volumes:
-      - ./grafana/datasources:/etc/grafana/provisioning/datasources:ro
-      - ./grafana/dashboards:/etc/grafana/provisioning/dashboards:ro
-      - grafana-data:/var/lib/grafana
-    ports:
-      - "3000:3000"
-    depends_on:
-      prometheus:
-        condition: service_started
-    profiles: ["monitoring"]
-
-volumes:
-  backend-data:
-  postgres-data:
-  elk-elasticsearch:
-  prometheus-data:
-  grafana-data:
