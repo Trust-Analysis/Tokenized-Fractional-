@@ -31,6 +31,32 @@ export interface AssetQuery {
   limit?: number;
 }
 
+export interface PriceHistoryQuery {
+  from?: string;
+  to?: string;
+  resolution?: 'raw' | 'hour' | 'day';
+  limit?: number;
+  offset?: number;
+}
+
+export interface PriceHistoryPoint {
+  timestamp: string;
+  price: number;
+  volume: number;
+  transactions: number;
+}
+
+export interface PriceHistory {
+  contractId: string;
+  data: PriceHistoryPoint[];
+  pagination: {
+    total: number;
+    limit: number;
+    offset: number;
+    hasNext: boolean;
+  };
+}
+
 export interface RwaApiClientOptions {
   baseUrl: string;
   apiKey?: string;
@@ -73,6 +99,10 @@ export class RwaApiClient {
 
   async searchAssets(query: AssetQuery & { search: string }): Promise<AssetList> {
     return this.get<AssetList>('/rwa/search', query);
+  }
+
+  async getPriceHistory(contractId: string, query: PriceHistoryQuery = {}): Promise<PriceHistory> {
+    return this.get<PriceHistory>(`/rwa/${encodeURIComponent(contractId)}/price-history`, query);
   }
 
   async getHealth(): Promise<Record<string, unknown>> {

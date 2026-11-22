@@ -96,3 +96,17 @@ export async function cacheDel(...keys) {
     // silent fallback
   }
 }
+
+export async function cacheDelPrefix(prefix) {
+  if (!client) return;
+  try {
+    let cursor = '0';
+    do {
+      const [nextCursor, keys] = await client.scan(cursor, 'MATCH', `${prefix}*`, 'COUNT', 100);
+      cursor = nextCursor;
+      if (keys.length > 0) await client.del(...keys);
+    } while (cursor !== '0');
+  } catch {
+    // Cache invalidation must not prevent the underlying database write.
+  }
+}

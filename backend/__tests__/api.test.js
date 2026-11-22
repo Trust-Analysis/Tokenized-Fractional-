@@ -56,6 +56,12 @@ describe('X-Request-ID', () => {
     expect(res.headers['x-request-id']).toBe(id);
   });
 
+  test('does not echo an invalid X-Request-ID', async () => {
+    const res = await request(app).get('/health').set('X-Request-ID', 'contains spaces');
+    expect(res.headers['x-request-id']).not.toBe('contains spaces');
+    expect(res.headers['x-request-id']).toMatch(/^req_[0-9a-f-]{36}$/);
+  });
+
   test('404 response body includes requestId', async () => {
     const res = await request(app).get('/does-not-exist');
     expect(res.status).toBe(404);

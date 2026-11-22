@@ -1,5 +1,7 @@
 import { useState, useCallback, useEffect } from 'react';
 
+const API_URL = import.meta.env.VITE_API_URL || 'http://localhost:3001';
+
 /**
  * usePriceHistory Hook
  * 
@@ -69,8 +71,7 @@ export function usePriceHistory(contractId, assetName = '') {
   }, []);
 
   /**
-   * Fetch price history data
-   * Currently uses mock data; can be replaced with real API call
+   * Fetch price history data from the backend
    */
   const fetchPriceHistory = useCallback(async (force = false) => {
     // Return cached data if available and not forced
@@ -82,14 +83,42 @@ export function usePriceHistory(contractId, assetName = '') {
     setError(null);
 
     try {
-      // TODO: Replace with real API call to backend
-      // const response = await fetch(`/api/rwa/${contractId}/price-history`);
-      // const data = await response.json();
+      const now = new Date();
+      const from = new Date(now.getTime() - 365 * 24 * 60 * 60 * 1000);
+      const query = new URLSearchParams({
+        from: from.toISOString(),
+        to: now.toISOString(),
+        resolution: 'day',
+        limit: '500',
+      });
+      const response = await fetch(
+        `${API_URL}/api/v1/rwa/${encodeURIComponent(contractId)}/price-history?${query}`,
+      );
+      if (!response.ok) {
+        throw new Error(`Failed to fetch price history (${response.status})`);
+      }
 
-      // For now, use mock data
-      await new Promise(resolve => setTimeout(resolve, 500)); // Simulate network delay
+      const result = await response.json();
+      if (!Array.isArray(result.data)) {
+        throw new Error('Invalid price history response');
+      }
 
-      const data = generateMockData(365); // Generate 1 year of data
+      let previousPrice = null;
+      const data = result.data.map(point => {
+        const price = Number(point.price);
+        const timestamp = new Date(point.timestamp).getTime();
+        const change = previousPrice === null ? 0 : price - previousPrice;
+        const changePercent = previousPrice ? (change / previousPrice) * 100 : 0;
+        previousPrice = price;
+        return {
+          date: new Date(timestamp).toISOString().split('T')[0],
+          timestamp,
+          price,
+          volume: Number(point.volume),
+          change: Math.round(change * 100) / 100,
+          changePercent: Math.round(changePercent * 100) / 100,
+        };
+      });
       setPriceData(data);
       setCached(true);
     } catch (err) {
@@ -98,7 +127,7 @@ export function usePriceHistory(contractId, assetName = '') {
     } finally {
       setLoading(false);
     }
-  }, [contractId, cached, generateMockData]);
+  }, [contractId, cached]);
 
   /**
    * Calculate statistics for the price data

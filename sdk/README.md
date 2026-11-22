@@ -21,6 +21,11 @@ const api = new RwaApiClient({
 
 const assets = await api.listAssets({ assetType: 'real_estate', page: 1, limit: 20 });
 const matches = await api.searchAssets({ search: 'apartment', limit: 10 });
+const history = await api.getPriceHistory(contractId, {
+  from: '2026-01-01T00:00:00.000Z',
+  resolution: 'day',
+  limit: 100,
+});
 ```
 
 `baseUrl` may be the service root or an existing `/api/v1` URL. API errors are thrown as `ApiError` with `status` and parsed `body` fields.

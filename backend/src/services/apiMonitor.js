@@ -10,6 +10,7 @@
 
 import logger from './logger.js';
 import { getClientIp } from '../utils/clientIp.js';
+import { newId } from '../utils/id.js';
 
 // In-memory metrics store (production would use Redis/database)
 const metrics = {
@@ -30,7 +31,7 @@ const METRICS_WINDOW_MS = 3600000; // 1 hour
  */
 export function logApiRequest(req, res, duration) {
   const entry = {
-    id: `req_${Date.now()}_${Math.random().toString(36).slice(2, 8)}`,
+    id: newId('req'),
     method: req.method,
     path: req.path,
     statusCode: res.statusCode,
@@ -63,7 +64,7 @@ export function logApiRequest(req, res, duration) {
  */
 export function logApiError(error, req = null, context = {}) {
   const entry = {
-    id: `err_${Date.now()}_${Math.random().toString(36).slice(2, 8)}`,
+    id: newId('err'),
     message: error.message,
     stack: error.stack,
     code: error.code,
@@ -95,7 +96,7 @@ export function logApiError(error, req = null, context = {}) {
  */
 export function logRateLimit(req, tier, limitInfo) {
   const entry = {
-    id: `rl_${Date.now()}_${Math.random().toString(36).slice(2, 8)}`,
+    id: newId('rl'),
     tier,
     ip: getClientIp(req),
     path: req.path,
@@ -126,7 +127,7 @@ export function logRateLimit(req, tier, limitInfo) {
  */
 export function logPerformance(operation, duration, metadata = {}) {
   const entry = {
-    id: `perf_${Date.now()}_${Math.random().toString(36).slice(2, 8)}`,
+    id: newId('perf'),
     operation,
     duration,
     timestamp: Date.now(),

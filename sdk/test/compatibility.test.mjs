@@ -143,3 +143,28 @@ test('RwaApiClient reads the deployed API version and warns on mismatch', async 
   assert.equal(report.compatible, false);
   assert.ok(seen.length > 0);
 });
+
+test('RwaApiClient fetches paginated price history with query options', async () => {
+  let requestedUrl;
+  const api = new RwaApiClient({
+    baseUrl: 'http://localhost:3001',
+    fetch: async (url) => {
+      requestedUrl = new URL(String(url));
+      return {
+        ok: true,
+        json: async () => ({
+          contractId: 'C123',
+          data: [{ timestamp: '2026-01-01T00:00:00.000Z', price: 12, volume: 24, transactions: 2 }],
+          pagination: { total: 1, limit: 10, offset: 0, hasNext: false },
+        }),
+      };
+    },
+  });
+
+  const result = await api.getPriceHistory('C123', { resolution: 'day', limit: 10 });
+
+  assert.equal(requestedUrl.pathname, '/api/v1/rwa/C123/price-history');
+  assert.equal(requestedUrl.searchParams.get('resolution'), 'day');
+  assert.equal(requestedUrl.searchParams.get('limit'), '10');
+  assert.equal(result.data[0].price, 12);
+});
