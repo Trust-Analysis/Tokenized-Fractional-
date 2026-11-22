@@ -9,7 +9,6 @@
 
 import 'dotenv/config';
 
-import { randomUUID } from 'crypto';
 import express from 'express';
 import cors from 'cors';
 import pinoHttp from 'pino-http';
@@ -71,6 +70,7 @@ import { createApiKeysRouter } from './routes/apiKeys.js';
 import { createTransactionService } from './services/transactionService.js';
 import { createAnalyticsRoutes } from './routes/analytics.js';
 import { createPurchaseRoutes } from './routes/purchases.js';
+import { createPriceHistoryHandler } from './routes/priceHistory.js';
 import { createRateLimitingRoutes } from './routes/rateLimiting.js';
 import { createFederatedGraphQLServer } from './federation/gateway.js';
 import * as dataService from './services/dataService.js';
@@ -93,6 +93,7 @@ import { createTimeWindowRoutes } from './routes/timeWindows.js';
 import { TimeWindowService } from './services/timeWindowService.js';
 import { requestLogger } from './middleware/requestLogger.js';
 import { createClientIpMiddleware } from './utils/clientIp.js';
+import { isValidRequestId, newId } from './utils/id.js';
 import {
   createProblemDetailsInterceptor,
   problemDetailsNotFoundHandler,
@@ -128,6 +129,7 @@ let apiKeysRouter = null;
 let transactionService = null;
 let analyticsRoutes = null;
 let purchasesRoutes = null;
+let priceHistoryHandler = null;
 let rateLimitingRoutes = null;
 const webhookService = null;
 const webhookRoutes = null;
@@ -205,6 +207,7 @@ export async function initializeApp() {
     // Setup analytics and purchases routes
     analyticsRoutes = createAnalyticsRoutes(transactionService, logger, adminAuth);
     purchasesRoutes = createPurchaseRoutes(transactionService, logger, adminAuth);
+    priceHistoryHandler = createPriceHistoryHandler(transactionService, logger);
 
     // Setup rate limiting routes
     rateLimitingRoutes = createRateLimitingRoutes(logger, adminAuth);
@@ -280,7 +283,8 @@ app.use(partialResponseMiddleware());
 // The ID is echoed in X-Request-ID and opened as an async context so every log
 // line emitted while handling the request carries it (see logger.js).
 app.use((req, res, next) => {
-  const id = req.headers['x-request-id'] || randomUUID();
+  const inboundRequestId = req.headers['x-request-id'];
+  const id = isValidRequestId(inboundRequestId) ? inboundRequestId : newId('req');
   req.requestId = id;
   res.setHeader('X-Request-ID', id);
   runWithRequestContext({ requestId: id }, next);
@@ -334,6 +338,7 @@ const fullSwaggerSpec = swaggerJSDoc({
   definition: swaggerSpec,
   apis: [
     './src/routes/rwa.js',
+    './src/routes/priceHistory.js',
     './src/routes/analytics.js',
     './src/routes/purchases.js',
     './src/routes/apiKeys.js',
@@ -413,6 +418,18 @@ app.get('/health', async (_req, res) => {
 // Mount versioned router and backward-compatible alias
 app.use('/api/v1', v1);
 app.use('/api', v1);
+
+const dispatchPriceHistoryRoute = (req, res, next) => {
+  if (!priceHistoryHandler) {
+    return res.status(503).json({
+      error: 'Price history service not initialized',
+      code: 'SERVICE_UNAVAILABLE',
+    });
+  }
+  return priceHistoryHandler(req, res, next);
+};
+app.get('/api/v1/rwa/:contractId/price-history', dispatchPriceHistoryRoute);
+app.get('/api/rwa/:contractId/price-history', dispatchPriceHistoryRoute);
 
 // Mount API key management routes (admin only, after initialization)
 app.use('/api/v1/api-keys', (req, res, next) => {

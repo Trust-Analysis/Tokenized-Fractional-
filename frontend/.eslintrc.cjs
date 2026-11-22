@@ -23,6 +23,13 @@ module.exports = {
     'no-console': 'warn',
     'no-unused-vars': 'warn',
     'no-restricted-globals': 'warn',
+    'no-restricted-syntax': [
+      'error',
+      {
+        selector: 'JSXAttribute[name.name="dangerouslySetInnerHTML"]',
+        message: 'Avoid dangerouslySetInnerHTML; render text normally or sanitize and serialize it safely.',
+      },
+    ],
     'react-hooks/exhaustive-deps': 'warn',
     'no-use-before-define': 'warn',
     'consistent-return': 'warn',

@@ -9,6 +9,7 @@
  */
 
 import { logApiRequest, logApiError, logRateLimit } from '../services/apiMonitor.js';
+import { newId } from '../utils/id.js';
 
 /**
  * Express middleware to log API requests
@@ -19,7 +20,7 @@ export function requestLogger(req, res, next) {
 
   // Generate unique request ID if not present
   if (!req.requestId) {
-    req.requestId = `req_${Date.now()}_${Math.random().toString(36).slice(2, 8)}`;
+    req.requestId = newId('req');
   }
 
   // Log on response finish

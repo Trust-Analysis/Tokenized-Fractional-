@@ -228,6 +228,72 @@ export class TransactionService {
   }
 
   /**
+   * Get paginated price points from completed purchases for a contract.
+   */
+  async getPriceHistory(contractId, { from, to, resolution, limit, offset }) {
+    const createBaseQuery = () => {
+      let query = this.db('transactions')
+        .where('contract_id', contractId)
+        .where('status', 'completed');
+      if (from) query = query.where('created_at', '>=', from);
+      if (to) query = query.where('created_at', '<=', to);
+      return query;
+    };
+
+    if (resolution === 'raw') {
+      const count = await createBaseQuery().count({ total: 'id' }).first();
+      const rows = await createBaseQuery()
+        .select('created_at as timestamp', 'price_per_share as price', 'total_amount as volume')
+        .orderBy('created_at', 'asc')
+        .orderBy('id', 'asc')
+        .limit(limit)
+        .offset(offset);
+
+      return {
+        total: Number(count?.total || 0),
+        data: rows.map(row => ({
+          timestamp: new Date(row.timestamp).toISOString(),
+          price: Number(row.price),
+          volume: Number(row.volume),
+          transactions: 1,
+        })),
+      };
+    }
+
+    const bucket = resolution === 'hour' ? 'hour' : 'day';
+    const isPostgres = ['pg', 'postgres', 'postgresql'].includes(this.db.client.config.client);
+    const bucketExpression = isPostgres
+      ? `date_trunc('${bucket}', created_at)`
+      : bucket === 'hour'
+        ? "strftime('%Y-%m-%dT%H:00:00Z', created_at)"
+        : "strftime('%Y-%m-%dT00:00:00Z', created_at)";
+    const bucketQuery = () => createBaseQuery()
+      .select(this.db.raw(`${bucketExpression} as timestamp`))
+      .avg({ price: 'price_per_share' })
+      .sum({ volume: 'total_amount' })
+      .count({ transactions: 'id' })
+      .groupByRaw(bucketExpression);
+    const total = await this.db
+      .from(createBaseQuery().select(this.db.raw(`${bucketExpression} as timestamp`)).groupByRaw(bucketExpression).as('price_buckets'))
+      .count({ total: '*' })
+      .first();
+    const rows = await bucketQuery()
+      .orderBy('timestamp', 'asc')
+      .limit(limit)
+      .offset(offset);
+
+    return {
+      total: Number(total?.total || 0),
+      data: rows.map(row => ({
+        timestamp: new Date(row.timestamp).toISOString(),
+        price: Number(row.price),
+        volume: Number(row.volume),
+        transactions: Number(row.transactions),
+      })),
+    };
+  }
+
+  /**
    * Get transactions for a buyer
    */
   async getBuyerTransactions(buyerAddress, limit = 100, offset = 0) {

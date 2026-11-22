@@ -1,6 +1,8 @@
 // Copyright (c) 2026 Tokenized Fractional RWA Marketplace Contributors
 // SPDX-License-Identifier: MIT
 
+import { newId } from '../utils/id.js';
+
 export class FlashLoanProtectionService {
   constructor(logger = console) {
     this.logger = logger;
@@ -33,7 +35,7 @@ export class FlashLoanProtectionService {
    */
   logProtectionEvent(type, details) {
     const entry = {
-      id: `flp-${Date.now()}-${Math.random().toString(36).substr(2, 5)}`,
+      id: newId('flp'),
       type,
       details,
       timestamp: new Date().toISOString(),
