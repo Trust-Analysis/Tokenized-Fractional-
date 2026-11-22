@@ -69,7 +69,7 @@ resource "aws_route_table" "public" {
   vpc_id = aws_vpc.main.id
 
   route {
-    cidr_block = "0.0.0.0/0"
+    cidr_block = var.cidr_block
     gateway_id = aws_internet_gateway.main.id
   }
 
@@ -86,7 +86,7 @@ resource "aws_route_table" "private" {
   vpc_id = aws_vpc.main.id
 
   route {
-    cidr_block     = "0.0.0.0/0"
+    cidr_block     = var.cidr_block
     nat_gateway_id = aws_nat_gateway.main.id
   }
 
@@ -110,14 +110,14 @@ resource "aws_security_group" "backend" {
     from_port   = 3001
     to_port     = 3001
     protocol    = "tcp"
-    cidr_blocks = ["0.0.0.0/0"]
+    cidr_blocks = [var.cidr_block]
   }
 
   egress {
     from_port   = 0
     to_port     = 0
     protocol    = "-1"
-    cidr_blocks = ["0.0.0.0/0"]
+    cidr_blocks = [var.cidr_block]
   }
 
   tags = merge(local.common_tags, { Name = "${local.name_prefix}-backend-sg" })
@@ -159,24 +159,24 @@ resource "aws_db_parameter_group" "main" {
 }
 
 resource "aws_db_instance" "main" {
-  identifier             = "${local.name_prefix}-db"
-  engine                 = "postgres"
-  engine_version         = "16.3"
-  instance_class         = var.rds_instance_class
-  allocated_storage      = var.rds_allocated_storage
-  storage_type           = "gp3"
-  db_name                = var.rds_database_name
-  username               = var.rds_username
-  password               = var.rds_password
-  parameter_group_name   = aws_db_parameter_group.main.name
-  db_subnet_group_name   = aws_db_subnet_group.main.name
-  vpc_security_group_ids = [aws_security_group.rds.id]
+  identifier              = "${local.name_prefix}-db"
+  engine                  = "postgres"
+  engine_version          = "16.3"
+  instance_class          = var.rds_instance_class
+  allocated_storage       = var.rds_allocated_storage
+  storage_type            = "gp3"
+  db_name                 = var.rds_database_name
+  username                = var.rds_username
+  password                = var.rds_password
+  parameter_group_name    = aws_db_parameter_group.main.name
+  db_subnet_group_name    = aws_db_subnet_group.main.name
+  vpc_security_group_ids  = [aws_security_group.rds.id]
   backup_retention_period = var.rds_backup_retention
-  backup_window          = "03:00-04:00"
-  maintenance_window     = "sun:04:00-sun:05:00"
-  skip_final_snapshot    = var.environment != "production"
-  storage_encrypted      = true
-  deletion_protection    = var.environment == "production"
+  backup_window           = "03:00-04:00"
+  maintenance_window      = "sun:04:00-sun:05:00"
+  skip_final_snapshot     = var.environment != "production"
+  storage_encrypted       = true
+  deletion_protection     = var.environment == "production"
 
   tags = merge(local.common_tags, { Name = "${local.name_prefix}-db" })
 }

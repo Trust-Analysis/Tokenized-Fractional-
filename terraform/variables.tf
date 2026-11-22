@@ -87,3 +87,10 @@ variable "frontend_origin" {
   type        = string
   default     = "*"
 }
+
+
+variable "cidr_block" {
+  description = "CIDR Block for resources"
+  type        = string
+  default     = "0.0.0.0/0"
+}
