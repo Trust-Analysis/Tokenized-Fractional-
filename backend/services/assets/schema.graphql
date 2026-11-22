@@ -47,6 +47,19 @@ input AssetFilter {
   isPaused: Boolean
 }
 
+# BEGIN GENERATED ASSET INPUT
+input AssetInput {
+  contractId: String!
+  title: String!
+  location: String!
+  description: String!
+  assetType: AssetType!
+  totalShares: Int!
+  pricePerShare: Int!
+  availableShares: Int!
+}
+# END GENERATED ASSET INPUT
+
 type Query {
   assets(filter: AssetFilter, limit: Int, offset: Int): [Asset!]!
   asset(contractId: ID!): Asset

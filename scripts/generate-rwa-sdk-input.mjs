@@ -1,5 +1,5 @@
 import { readFileSync, writeFileSync } from 'node:fs';
-import { rwaFields } from '../backend/src/validators/rwaFields.js';
+import { rwaFields, rwaGraphQLInput } from '../backend/src/validators/rwaFields.js';
 
 const target = new URL('../sdk/src/asset-input.ts', import.meta.url);
 const properties = Object.entries(rwaFields).map(([name, rule]) => {
@@ -15,8 +15,19 @@ const generated = [
   '',
 ].join('\n');
 
+const serviceSchemaPath = new URL('../backend/services/assets/schema.graphql', import.meta.url);
+const serviceSchema = readFileSync(serviceSchemaPath, 'utf8');
+const block = /(# BEGIN GENERATED ASSET INPUT\n)[\s\S]*?(# END GENERATED ASSET INPUT)/;
+if (!block.test(serviceSchema)) throw new Error('Missing generated input markers in assets schema');
+const generatedSchema = serviceSchema.replace(block, (_match, before, after) =>
+  before + rwaGraphQLInput('AssetInput', { assetType: 'AssetType', requireAll: true }) + '\n' + after,
+);
+
 if (process.argv.includes('--check')) {
-  if (readFileSync(target, 'utf8') !== generated) throw new Error('Regenerate the SDK asset input');
+  if (readFileSync(target, 'utf8') !== generated || serviceSchema !== generatedSchema) {
+    throw new Error('Regenerate the SDK and GraphQL asset inputs');
+  }
 } else {
   writeFileSync(target, generated);
+  writeFileSync(serviceSchemaPath, generatedSchema);
 }

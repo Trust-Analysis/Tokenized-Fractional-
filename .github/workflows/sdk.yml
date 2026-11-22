@@ -16,6 +16,7 @@ on:
     paths:
       - 'sdk/**'
       - 'backend/src/validators/rwaFields.js'
+      - 'backend/services/assets/schema.graphql'
       - 'scripts/generate-rwa-sdk-input.mjs'
       - '.github/workflows/sdk.yml'
   push:
@@ -26,6 +27,7 @@ on:
     paths:
       - 'sdk/**'
       - 'backend/src/validators/rwaFields.js'
+      - 'backend/services/assets/schema.graphql'
       - 'scripts/generate-rwa-sdk-input.mjs'
       - '.github/workflows/sdk.yml'
   workflow_dispatch:
@@ -49,7 +51,7 @@ jobs:
         working-directory: sdk
         run: npm ci
 
-      - name: Verify generated asset input
+      - name: Verify generated asset inputs
         run: node scripts/generate-rwa-sdk-input.mjs --check
 
       - name: Typecheck

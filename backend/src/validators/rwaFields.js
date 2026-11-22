@@ -9,10 +9,11 @@ export const rwaFields = {
   availableShares: { type: 'Int', min: 0 },
 };
 
-export function rwaGraphQLInput(name, assetType = 'String') {
+export function rwaGraphQLInput(name, { assetType = 'String', requireAll = false } = {}) {
+  const suffix = requireAll ? '!' : '';
   const fields = Object.entries(rwaFields).map(([field, rule]) =>
-    `  ${field}: ${field === 'assetType' ? assetType : rule.type}`,
+    `  ${field}: ${field === 'assetType' ? assetType : rule.type}${suffix}`,
   );
   // The shared validator returns equivalent errors for absent and empty fields.
-  return [`input ${name} {`, '  contractId: String', ...fields, '}'].join('\n');
+  return [`input ${name} {`, `  contractId: String${suffix}`, ...fields, '}'].join('\n');
 }

@@ -5,7 +5,6 @@ import { readFileSync } from 'fs';
 import { fileURLToPath } from 'url';
 import { dirname, join } from 'path';
 import { gql } from 'graphql-tag';
-import { rwaGraphQLInput } from '../../src/validators/rwaFields.js';
 import { validateRwaBody, isValidContractId, INVALID_CONTRACT_ID_MESSAGE } from '../../src/validators/rwaValidator.js';
 
 const __filename = fileURLToPath(import.meta.url);
@@ -13,7 +12,7 @@ const __dirname = dirname(__filename);
 
 // Load the schema
 const schemaPath = join(__dirname, 'schema.graphql');
-const typeDefs = gql(readFileSync(schemaPath, 'utf-8') + '\n' + rwaGraphQLInput('AssetInput', 'AssetType'));
+const typeDefs = gql(readFileSync(schemaPath, 'utf-8'));
 
 // Mock data layer - in production, this would connect to a database
 const dataLayer = {
