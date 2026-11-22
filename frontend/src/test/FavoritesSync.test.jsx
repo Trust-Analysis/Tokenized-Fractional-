@@ -3,11 +3,15 @@ import React from 'react';
 import { render, screen } from '@testing-library/react';
 import FavoritesPage from '../components/FavoritesPage/FavoritesPage';
 import { getStorageKey, useFavoritesStore, DEFAULT_CATEGORIES } from '../store/useFavoritesStore';
+import { STORAGE_ENVELOPE_VERSION } from '../lib/storage';
 
 const WALLET = 'GABCDEFWALLETONE';
 const OTHER_WALLET = 'GZYXWVWALLETTWO';
 const asset = (id, extra = {}) => ({ contractId: id, title: `Asset ${id}`, ...extra });
-const stored = (wallet) => JSON.parse(window.localStorage.getItem(getStorageKey(wallet)) || 'null');
+const stored = (wallet) => {
+  const parsed = JSON.parse(window.localStorage.getItem(getStorageKey(wallet)) || 'null');
+  return parsed && parsed[STORAGE_ENVELOPE_VERSION] ? parsed.data : parsed;
+};
 const titles = () => useFavoritesStore.getState().favorites.map((f) => f.title);
 
 describe('Anonymous vs. wallet favorites (#905)', () => {

@@ -3,20 +3,17 @@ import Button from '../Button/Button';
 import Input from '../Input/Input';
 import Card from '../Card/Card';
 import { useToastStore } from '../../store/useToastStore';
+import { readJson, writeJson, STORAGE_KEYS } from '../../lib/storage';
 import styles from './PriceAlert.module.css';
 
-const STORAGE_KEY = 'rwa_price_alerts';
+const isAlertList = (value) => Array.isArray(value);
 
 function loadAlerts() {
-  try {
-    return JSON.parse(localStorage.getItem(STORAGE_KEY) || '[]');
-  } catch {
-    return [];
-  }
+  return readJson(STORAGE_KEYS.PRICE_ALERTS, { fallback: [], validate: isAlertList });
 }
 
 function saveAlerts(alerts) {
-  localStorage.setItem(STORAGE_KEY, JSON.stringify(alerts));
+  writeJson(STORAGE_KEYS.PRICE_ALERTS, alerts);
 }
 
 const STROOP = 10_000_000;

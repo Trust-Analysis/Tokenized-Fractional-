@@ -3,6 +3,7 @@ import { signTransaction } from "@stellar/freighter-api";
 import { rpc, TransactionBuilder, Networks, Contract } from "@stellar/stellar-sdk";
 import { useWalletStore } from "../store/useWalletStore";
 import { mapError } from "../lib/errorMapper";
+import { readString, writeString, STORAGE_KEYS } from '../lib/storage';
 
 const CONTRACT_ID = import.meta.env.VITE_CONTRACT_ID || "C...";
 const RPC_URL = import.meta.env.VITE_RPC_URL || "https://soroban-testnet.stellar.org:443";
@@ -90,7 +91,7 @@ export function useSorobanRead(fnName, args = [], options = {}) {
         let mockVal = 10;
         let mockU64 = null;
         if (fnName === "get_shares") {
-          const stored = localStorage.getItem("mock_shares_balance");
+          const stored = readString(STORAGE_KEYS.MOCK_SHARES_BALANCE);
           mockVal = stored ? parseInt(stored, 10) : 10;
         } else if (fnName === "get_available_shares") {
           mockVal = 900;
@@ -160,7 +161,7 @@ export function useSorobanWrite(fnName) {
         // Issue #794: deterministic failure path so the visual-regression suite
         // can screenshot the error state. Read at call time (not baked in at
         // build time) so a single build can exercise both branches.
-        if (localStorage.getItem("mock_tx_failure") === "true") {
+        if (readString(STORAGE_KEYS.MOCK_TX_FAILURE) === 'true') {
           throw new Error("mock transaction rejected (mock_tx_failure)");
         }
         if (fnName === "buy_shares") {
@@ -168,10 +169,10 @@ export function useSorobanWrite(fnName) {
           if (args[1] && typeof args[1].u32 === "function") {
             buyAmount = args[1].u32();
           }
-          const stored = localStorage.getItem("mock_shares_balance");
+          const stored = readString(STORAGE_KEYS.MOCK_SHARES_BALANCE);
           const currentShares = stored ? parseInt(stored, 10) : 10;
           const newShares = currentShares + buyAmount;
-          localStorage.setItem("mock_shares_balance", newShares.toString());
+          writeString(STORAGE_KEYS.MOCK_SHARES_BALANCE, newShares.toString());
           useWalletStore.getState().setShares(newShares);
         }
         const submitRes = { hash: "mock_tx_hash_" + Math.random().toString(36).substring(2, 15) };

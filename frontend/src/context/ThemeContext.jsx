@@ -1,15 +1,12 @@
 import { createContext, useContext, useState, useEffect } from 'react';
+import { readString, writeString, STORAGE_KEYS } from '../lib/storage';
 
 const ThemeContext = createContext(null);
 
 export function ThemeProvider({ children }) {
   const [theme, setTheme] = useState(() => {
-    try {
-      const stored = localStorage.getItem('theme');
-      if (stored === 'light' || stored === 'dark') return stored;
-    } catch {
-      // localStorage may be unavailable in some environments
-    }
+    const stored = readString(STORAGE_KEYS.THEME);
+    if (stored === 'light' || stored === 'dark') return stored;
     if (typeof window !== 'undefined' && window.matchMedia) {
       return window.matchMedia('(prefers-color-scheme: light)').matches ? 'light' : 'dark';
     }
@@ -18,20 +15,12 @@ export function ThemeProvider({ children }) {
 
   useEffect(() => {
     document.documentElement.setAttribute('data-theme', theme);
-    try {
-      localStorage.setItem('theme', theme);
-    } catch {
-      // ignore storage errors
-    }
+    writeString(STORAGE_KEYS.THEME, theme);
   }, [theme]);
 
   useEffect(() => {
     if (typeof window === 'undefined' || !window.matchMedia) return;
-    try {
-      if (localStorage.getItem('theme')) return;
-    } catch {
-      // ignore storage errors
-    }
+    if (readString(STORAGE_KEYS.THEME)) return;
     const mq = window.matchMedia('(prefers-color-scheme: light)');
     const handler = (e) => {
       setTheme(e.matches ? 'light' : 'dark');
