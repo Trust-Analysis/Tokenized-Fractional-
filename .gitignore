@@ -10,6 +10,7 @@ data.json
 webhooks.json
 test-data.json
 .blue-green-state.json
+.terraform
 
 # Database files and backups
 *.db
