@@ -14,6 +14,9 @@ function formatPrice(stroops) {
 
 /**
  * Enhanced Multi-Step ConfirmPurchase Modal (#278)
+ * 
+ * This modal provides a clear confirmation step before wallet signing,
+ * showing asset name, share amount, price per share, and total cost.
  */
 export default function ConfirmPurchase({
   asset = {},
@@ -153,6 +156,10 @@ export default function ConfirmPurchase({
           <table className={styles.table}>
             <tbody>
               <tr>
+                <th>Asset Name</th>
+                <td>{asset.title || 'Tokenized Asset'}</td>
+              </tr>
+              <tr>
                 <th>Shares Being Purchased</th>
                 <td>{shares}</td>
               </tr>
@@ -180,7 +187,7 @@ export default function ConfirmPurchase({
           </table>
 
           <div className={styles.disclaimerBox}>
-            ℹ️ <strong>Blockchain Notice:</strong> Once confirmed, this transaction will be submitted to the Stellar ledger and cannot be reversed.
+            ⚠️ <strong>Wallet Signing Required:</strong> After clicking "Confirm", your wallet (Freighter) will prompt you to sign this transaction. Please review the details above carefully before proceeding.
           </div>
         </div>
       )}

@@ -1,9 +1,11 @@
-import React, { useState, memo } from 'react';
+import React, { useState, memo, useMemo } from 'react';
 import OptimizedImage from '../OptimizedImage/OptimizedImage';
 import Card from '../Card/Card';
 import PriceHistoryModal from '../PriceHistoryChart/PriceHistoryModal';
 import { useComparisonStore } from '../../store/useComparisonStore';
 import { useFavoritesStore } from '../../store/useFavoritesStore';
+import { useToastStore } from '../../store/useToastStore';
+import { formatLocalCurrency } from '../../utils/i18nFormatters';
 import PulsingDot from '../PulsingDot/PulsingDot';
 import LiveBadge from '../LiveBadge/LiveBadge';
 import styles from './AssetCard.module.css';
@@ -27,7 +29,6 @@ import styles from './AssetCard.module.css';
 function AssetCard({ asset, isLive = false }) {
   const [showPriceHistory, setShowPriceHistory] = useState(false);
   const [showQuickView, setShowQuickView] = useState(false);
-  const [imageLoaded, setImageLoaded] = useState(false);
 
   if (!asset) return null;
 
@@ -48,7 +49,13 @@ function AssetCard({ asset, isLive = false }) {
 
   const handleCompareChange = (e) => {
     e.stopPropagation();
-    toggleComparison(asset);
+    const { status } = toggleComparison(asset);
+    if (status === 'limit_reached') {
+      useToastStore.getState().addToast({
+        type: 'warning',
+        message: `You can compare up to ${MAX_COMPARISON} assets at once. Remove one to add another.`,
+      });
+    }
   };
 
   // ── Favorites/Bookmarks (issue #187) ────────────────────────────────────
@@ -59,6 +66,19 @@ function AssetCard({ asset, isLive = false }) {
     e.stopPropagation();
     toggleFavorite(asset);
   };
+
+  const displayValuation = useMemo(() => {
+    if (!totalValuation) return '';
+    if (typeof totalValuation === 'string' && totalValuation.trim().startsWith('$')) {
+      const numeric = parseFloat(totalValuation.replace(/[^0-9.-]+/g, ''));
+      if (!isNaN(numeric)) {
+        return formatLocalCurrency(numeric, 'USD');
+      }
+    } else if (typeof totalValuation === 'number') {
+      return formatLocalCurrency(totalValuation, 'USD');
+    }
+    return totalValuation;
+  }, [totalValuation]);
 
   // ── Price History ───────────────────────────────────────────────────────
   const handleOpenPriceHistory = (e) => {
@@ -85,13 +105,6 @@ function AssetCard({ asset, isLive = false }) {
       <Card hoverable className={styles.assetCard}>
         {imageUrl ? (
           <div className={styles.imageWrapper}>
-            {!imageLoaded && <div className={styles.imageSkeleton} />}
-            <img
-              src={imageUrl}
-              alt={title || 'Asset'}
-              className={`${styles.image} ${imageLoaded ? styles.imageLoaded : ''}`}
-              loading="lazy"
-              onLoad={() => setImageLoaded(true)}
             <OptimizedImage
               src={imageUrl}
               alt={title || 'Asset'}
@@ -228,13 +241,13 @@ function AssetCard({ asset, isLive = false }) {
             </p>
           )}
 
-          {totalValuation && (
+          {displayValuation && (
             <div className={styles.valuationBadge}>
               <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round" className={styles.icon} aria-hidden="true">
                 <line x1="12" y1="1" x2="12" y2="23"></line>
                 <path d="M17 5H9.5a3.5 3.5 0 0 0 0 7h5a3.5 3.5 0 0 1 0 7H6"></path>
               </svg>
-              <span className={styles.valuationAmount}>{totalValuation}</span>
+              <span className={styles.valuationAmount}>{displayValuation}</span>
             </div>
           )}
 
@@ -281,8 +294,12 @@ function AssetCard({ asset, isLive = false }) {
                 className={styles.compareCheckbox}
                 checked={compared}
                 onChange={handleCompareChange}
-                disabled={atMax}
-                aria-label={`Compare ${title || 'this asset'}`}
+                aria-disabled={atMax}
+                aria-label={
+                  atMax
+                    ? `Compare ${title || 'this asset'} (limit of ${MAX_COMPARISON} reached)`
+                    : `Compare ${title || 'this asset'}`
+                }
               />
               <span className={styles.compareText}>Compare</span>
             </label>
@@ -319,9 +336,9 @@ function AssetCard({ asset, isLive = false }) {
               <div className={styles.modalDetails}>
                 {assetType && <p><strong>Type:</strong> {assetType}</p>}
                 {location && <p><strong>Location:</strong> {location}</p>}
-                {totalValuation && (
+                {displayValuation && (
                   <p className={styles.modalValuation}>
-                    <strong>Valuation:</strong> {totalValuation}
+                    <strong>Valuation:</strong> {displayValuation}
                   </p>
                 )}
                 {contractId && (

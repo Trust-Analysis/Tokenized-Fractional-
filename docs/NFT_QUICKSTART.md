@@ -1,16 +1,18 @@
 # NFT Certificates — Quick Start
 
-## Feature Summary
+This guide deploys and enables NFT share certificates in a few minutes. It assumes the **RwaMarketplace** contract is already deployed and initialized (see the [development guide](development-setup.md)).
 
-✅ **Already Implemented:**
-- NFT contracts use Soroban's SEP-41 standard (via `stellar-tokens` library)
-- `buy_shares` automatically mints one NFT per share when configured
-- Full wallet compatibility with Freighter and other Stellar wallets
-- Tested and verified in production code
+> For the full reference — how minting works, the SEP-41 contract API, metadata schema, wallet integration, and testing — see [NFT_CERTIFICATES.md](NFT_CERTIFICATES.md).
 
-## 1-Minute Setup
+## Prerequisites
 
-### Deploy NFT Contract
+- The RwaMarketplace contract deployed and initialized with your payment token.
+- Freighter Wallet and the Soroban CLI (`cargo install --locked soroban-cli`).
+- An IPFS base URI for certificate metadata.
+
+## 1. Deploy the ShareCertificate NFT Contract
+
+The contract lives in `contracts/nft`:
 
 ```bash
 cd contracts/nft
@@ -23,36 +25,37 @@ soroban contract deploy \
 # Returns: NFT_CONTRACT_ID
 ```
 
-### Initialize NFT Contract
+## 2. Initialize the NFT Contract
 
 ```bash
 soroban contract invoke \
   --id <NFT_CONTRACT_ID> \
   --source admin \
   --network testnet \
-  -- init \
+  -- \
+  init \
   --minter <RWA_MARKETPLACE_CONTRACT_ID> \
-  --uri "ipfs://QmYourBaseURI/" \
+  --uri "ipfs://QmYourMetadataBaseURI/" \
   --name "RWA Share Certificate" \
   --symbol "RWAC"
 ```
 
-### Link to Marketplace
+`minter` must be the RwaMarketplace contract address — it is the only account allowed to mint certificates.
+
+## 3. Link the NFT Contract to the Marketplace
 
 ```bash
 soroban contract invoke \
   --id <RWA_MARKETPLACE_CONTRACT_ID> \
   --source admin \
   --network testnet \
-  -- set_nft_contract \
+  -- \
+  set_nft_contract \
   --nft_contract <NFT_CONTRACT_ID>
 ```
 
-## Done! 
+## Done
 
-Users now get NFTs when buying shares. Certificates are:
-- Viewable in Freighter Wallet
-- Tradeable peer-to-peer
-- Listed on secondary NFT marketplaces
+From this point, every `buy_shares` call mints one NFT per share to the buyer. Certificates are viewable in Freighter Wallet and follow **SEP-41**, so they are tradable peer-to-peer and on secondary Soroban NFT marketplaces.
 
-See [NFT_CERTIFICATES.md](NFT_CERTIFICATES.md) for full technical details.
+See [NFT_CERTIFICATES.md](NFT_CERTIFICATES.md) for the API reference, metadata best practices, and testing.

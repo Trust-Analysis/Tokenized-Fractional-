@@ -2,6 +2,7 @@ import { useState, useEffect, useCallback, useRef } from "react";
 import { signTransaction } from "@stellar/freighter-api";
 import { rpc, TransactionBuilder, Networks, Contract } from "@stellar/stellar-sdk";
 import { useWalletStore } from "../store/useWalletStore";
+import { mapError } from "../lib/errorMapper";
 
 const CONTRACT_ID = import.meta.env.VITE_CONTRACT_ID || "C...";
 const RPC_URL = import.meta.env.VITE_RPC_URL || "https://soroban-testnet.stellar.org:443";
@@ -84,7 +85,7 @@ export function useSorobanRead(fnName, args = [], options = {}) {
     setLoading(true);
     setError(null);
     try {
-      if (import.meta.env.VITE_MOCK_WALLET === "true") {
+      if (import.meta.env.DEV && import.meta.env.VITE_MOCK_WALLET === "true") {
         await new Promise(resolve => setTimeout(resolve, 300));
         let mockVal = 10;
         let mockU64 = null;
@@ -121,8 +122,9 @@ export function useSorobanRead(fnName, args = [], options = {}) {
       return simulation.result;
     } catch (err) {
       console.error(`[useSorobanRead] Error executing ${fnName}:`, err);
-      setError(err.message || `Failed to execute ${fnName}`);
-      if (onErrorRef.current) onErrorRef.current(err);
+      const mapped = mapError(err, { operation: fnName });
+      setError(mapped);
+      if (onErrorRef.current) onErrorRef.current(err, mapped);
       throw err;
     } finally {
       setLoading(false);
@@ -153,8 +155,14 @@ export function useSorobanWrite(fnName) {
     setResult(null);
 
     try {
-      if (import.meta.env.VITE_MOCK_WALLET === "true") {
+      if (import.meta.env.DEV && import.meta.env.VITE_MOCK_WALLET === "true") {
         await new Promise(resolve => setTimeout(resolve, 800));
+        // Issue #794: deterministic failure path so the visual-regression suite
+        // can screenshot the error state. Read at call time (not baked in at
+        // build time) so a single build can exercise both branches.
+        if (localStorage.getItem("mock_tx_failure") === "true") {
+          throw new Error("mock transaction rejected (mock_tx_failure)");
+        }
         if (fnName === "buy_shares") {
           let buyAmount = 1;
           if (args[1] && typeof args[1].u32 === "function") {
@@ -201,8 +209,9 @@ export function useSorobanWrite(fnName) {
       return submitRes;
     } catch (err) {
       console.error(`[useSorobanWrite] Error executing tx ${fnName}:`, err);
-      setError(err.message || `Transaction ${fnName} failed`);
-      if (options.onError) options.onError(err);
+      const mapped = mapError(err, { operation: fnName });
+      setError(mapped);
+      if (options.onError) options.onError(err, mapped);
       throw err;
     } finally {
       setLoading(false);

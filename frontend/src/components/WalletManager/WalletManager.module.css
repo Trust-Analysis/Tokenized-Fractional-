@@ -836,3 +836,103 @@
     text-align: center;
   }
 }
+
+/* ── WalletConnect modal (Issue #568) ───────────────────────────────────────── */
+
+.wcOverlay {
+  position: fixed;
+  inset: 0;
+  background: rgba(0, 0, 0, 0.55);
+  backdrop-filter: blur(2px);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  z-index: 60;
+}
+
+.wcCard {
+  background: var(--color-bg-card, #1e2230);
+  border: 1px solid var(--color-border, #2a3041);
+  border-radius: 12px;
+  box-shadow: 0 10px 40px rgba(0, 0, 0, 0.4);
+  padding: 1.5rem;
+  width: min(90vw, 340px);
+  outline: none;
+  text-align: center;
+}
+
+.wcCardHeader {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 1rem;
+}
+
+.wcCardTitle {
+  font-size: 1.05rem;
+  font-weight: 600;
+  color: var(--color-text-primary, #f5f7fa);
+  margin: 0;
+}
+
+.wcSubtitle {
+  font-size: 0.85rem;
+  color: var(--color-text-secondary, #9aa3b5);
+  margin: 1rem 0;
+  line-height: 1.5;
+}
+
+.wcCode {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  background: #fff;
+  border-radius: 10px;
+  padding: 0.75rem;
+  margin: 0.5rem 0 1rem;
+}
+
+.wcCode img {
+  border-radius: 6px;
+  display: block;
+}
+
+.wcLoading {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: 0.5rem;
+  color: var(--color-text-secondary, #9aa3b5);
+  font-size: 0.85rem;
+  padding: 2.5rem 0;
+}
+
+.wcError {
+  background: rgba(220, 53, 69, 0.12);
+  border: 1px solid rgba(220, 53, 69, 0.35);
+  color: var(--color-error, #ef4444);
+  border-radius: 8px;
+  padding: 0.75rem;
+  font-size: 0.82rem;
+  margin: 0.5rem 0 1rem;
+}
+
+.wcCopyUriBtn {
+  background: var(--color-bg-secondary, #161a26);
+  color: var(--color-primary, #4a9eff);
+  border: 1px solid var(--color-border, #2a3041);
+  border-radius: 8px;
+  padding: 0.5rem 1rem;
+  font-size: 0.8rem;
+  cursor: pointer;
+}
+
+.wcCopyUriBtn:hover {
+  background: rgba(74, 158, 255, 0.12);
+}
+
+.wcHint {
+  font-size: 0.75rem;
+  color: var(--color-text-tertiary, #6b7280);
+  margin: 1rem 0 0;
+}

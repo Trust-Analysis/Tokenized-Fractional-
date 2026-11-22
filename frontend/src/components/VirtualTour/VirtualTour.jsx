@@ -1,11 +1,53 @@
-import React, { useRef, useState, useCallback } from 'react';
+import React, { useRef, useState, useCallback, useEffect } from 'react';
 import styles from './VirtualTour.module.css';
+
+/**
+ * Returns true when the browser can create a WebGL rendering context.
+ * Mirrors the detection used by WebGLPriceGraph so the whole app degrades
+ * consistently on devices without GPU acceleration.
+ */
+function detectWebGLSupport() {
+  if (typeof window === 'undefined' || typeof document === 'undefined') {
+    return false;
+  }
+  try {
+    const canvas = document.createElement('canvas');
+    const gl =
+      canvas.getContext('webgl') ||
+      canvas.getContext('experimental-webgl');
+    return Boolean(gl);
+  } catch (err) {
+    return false;
+  }
+}
+
+/**
+ * Returns true when the connection is fast enough for a heavy immersive
+ * tour. Uses the Network Information API where available and assumes the
+ * connection is adequate when the API is not exposed.
+ */
+function isConnectionFast() {
+  if (typeof navigator === 'undefined') return true;
+  const connection =
+    navigator.connection ||
+    navigator.mozConnection ||
+    navigator.webkitConnection;
+  if (!connection || !connection.effectiveType) return true;
+  return !['slow-2g', '2g'].includes(connection.effectiveType);
+}
 
 export default function VirtualTour({ imageUrl, title = 'Virtual Tour' }) {
   const containerRef = useRef(null);
   const [rotation, setRotation] = useState(0);
   const [isDragging, setIsDragging] = useState(false);
   const lastXRef = useRef(0);
+  // `null` until detection runs on the client; rendering only the fallback
+  // when the full tour is not viable.
+  const [tourViable, setTourViable] = useState(null);
+
+  useEffect(() => {
+    setTourViable(detectWebGLSupport() && isConnectionFast());
+  }, []);
 
   const handleMouseDown = useCallback((e) => {
     setIsDragging(true);
@@ -40,6 +82,28 @@ export default function VirtualTour({ imageUrl, title = 'Virtual Tour' }) {
   const handleTouchEnd = useCallback(() => {
     setIsDragging(false);
   }, []);
+
+  // Graceful fallback for devices without WebGL support or on low-bandwidth
+  // connections: a static photo view instead of the interactive panorama.
+  if (tourViable === false) {
+    return (
+      <div
+        className={styles.fallback}
+        role="img"
+        aria-label={`${title} — static preview`}
+      >
+        <div
+          className={styles.fallbackImage}
+          style={{ backgroundImage: `url(${imageUrl})` }}
+        />
+        <div className={styles.fallbackNotice}>
+          <span className={styles.controlsHint}>
+            360° tour unavailable on this device — showing a static preview
+          </span>
+        </div>
+      </div>
+    );
+  }
 
   return (
     <div

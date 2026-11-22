@@ -5,6 +5,7 @@ import { readFileSync } from 'fs';
 import { fileURLToPath } from 'url';
 import { dirname, join } from 'path';
 import { gql } from 'graphql-tag';
+import { sanitizationService } from '../../src/services/sanitizationService.js';
 
 const __filename = fileURLToPath(import.meta.url);
 const __dirname = dirname(__filename);
@@ -192,11 +193,28 @@ export const resolvers = {
       const user = dataLayer.users.get(userId);
       if (!user) throw new Error('User not found');
 
+      // Strict XSS prevention: sanitize every user-supplied string before it
+      // is persisted. Rich-text fields (bio) are run through DOMPurify's
+      // HTML allowlist; plain-text fields are HTML-escaped.
+      const sanitizedInput = {};
+      for (const [key, value] of Object.entries(input || {})) {
+        if (typeof value !== 'string') {
+          sanitizedInput[key] = value;
+          continue;
+        }
+
+        if (key === 'bio') {
+          sanitizedInput[key] = sanitizationService.sanitizeHtml(value);
+        } else {
+          sanitizedInput[key] = sanitizationService.sanitizeString(value);
+        }
+      }
+
       const updated = {
         ...user,
         profile: {
           ...user.profile,
-          ...input,
+          ...sanitizedInput,
           userId
         },
         updatedAt: new Date().toISOString()

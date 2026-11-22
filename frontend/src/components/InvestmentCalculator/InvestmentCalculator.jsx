@@ -3,6 +3,7 @@
 
 import React, { useState, useMemo } from 'react';
 import Card from '../Card/Card';
+import { formatLocalCurrency } from '../../utils/i18nFormatters';
 import styles from './InvestmentCalculator.module.css';
 
 /** Stroops per XLM */
@@ -21,11 +22,11 @@ function xlm(stroops) {
 }
 
 /**
- * Format a plain number as a currency string (USD-style).
+ * Format a plain number as a percentage string.
  * @param {number} value
  * @returns {string}
  */
-function usd(value) {
+function formatPercent(value) {
   return value.toLocaleString(undefined, {
     minimumFractionDigits: 2,
     maximumFractionDigits: 2,
@@ -226,14 +227,14 @@ export default function InvestmentCalculator({
             {xlm(calc.initialInvestmentStroops)} XLM
           </span>
           <span className={styles.summarySubValue}>
-            ≈ ${usd(calc.initialInvestmentUsd)}
+            ≈ {formatLocalCurrency(calc.initialInvestmentUsd, 'USD')}
           </span>
         </div>
 
         <div className={`${styles.summaryCard} ${styles.summaryCardAccent}`}>
           <span className={styles.summaryLabel}>Projected value ({years} yr{years !== 1 ? 's' : ''})</span>
           <span className={styles.summaryValue}>
-            ${usd(calc.projectedValueUsd)}
+            {formatLocalCurrency(calc.projectedValueUsd, 'USD')}
           </span>
           <span className={styles.summarySubValue}>
             at {appreciationRate}%/yr
@@ -243,10 +244,10 @@ export default function InvestmentCalculator({
         <div className={styles.summaryCard}>
           <span className={styles.summaryLabel}>Projected gain</span>
           <span className={`${styles.summaryValue} ${calc.gainUsd >= 0 ? styles.gain : styles.loss}`}>
-            {calc.gainUsd >= 0 ? '+' : ''}${usd(calc.gainUsd)}
+            {calc.gainUsd >= 0 ? '+' : '-'}{formatLocalCurrency(Math.abs(calc.gainUsd), 'USD')}
           </span>
           <span className={styles.summarySubValue}>
-            {calc.gainPct >= 0 ? '+' : ''}{usd(calc.gainPct)}% total return
+            {calc.gainPct >= 0 ? '+' : ''}{formatPercent(calc.gainPct)}% total return
           </span>
         </div>
       </div>
@@ -267,9 +268,9 @@ export default function InvestmentCalculator({
               {calc.yearlyData.map(row => (
                 <tr key={row.year} className={styles.tr}>
                   <td className={styles.td}>{row.year}</td>
-                  <td className={styles.td}>${usd(row.value)}</td>
+                  <td className={styles.td}>{formatLocalCurrency(row.value, 'USD')}</td>
                   <td className={`${styles.td} ${styles.gain}`}>
-                    +${usd(row.gain)}
+                    +{formatLocalCurrency(row.gain, 'USD')}
                   </td>
                 </tr>
               ))}

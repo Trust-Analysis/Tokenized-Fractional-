@@ -125,6 +125,10 @@ When an incident is detected:
 - If a frontend XSS is found, take the site down or serve a safe version.
 - Block malicious IPs at the nginx / firewall level.
 
+For the full, coordinated sequence across all three tiers (contract →
+frontend/edge → backend → communication), follow the
+[Incident Response Playbook](./incident-response.md).
+
 ### 4. Eradication
 
 - Deploy a fix: upgrade smart contract, patch backend code, fix frontend.
@@ -156,7 +160,8 @@ When an incident is detected:
 
 ### Log Monitoring
 
-- **ELK Stack** (Elasticsearch, Logstash, Kibana): Centralized log aggregation and analysis.
+- **ELK Stack** (Elasticsearch, Logstash, Kibana): Centralized log aggregation and analysis. Configuration lives in `elk/` — see [elk/README.md](../elk/README.md).
+- **Structured JSON logs**: The backend emits newline-delimited JSON with a consistent level, a `requestId` on every line, and credentials redacted before serialisation. See [OBSERVABILITY.md](OBSERVABILITY.md).
 - **Filebeat**: Ships nginx and application logs to Logstash.
 - Monitor for:
   - Repeated 401/403 responses (brute force attempts)

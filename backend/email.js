@@ -272,11 +272,23 @@ export class EmailService {
   }
 
   /**
-   * Queue email for sending
+   * Queue email for sending.
+   *
+   * Issue #569: dispatches through the BullMQ background queue so template
+   * rendering + SMTP delivery happens in the worker process, off the main
+   * event loop. Falls back to the in-process queue when Redis/BullMQ is not
+   * configured.
    */
   async queue(emailData) {
+    try {
+      const { enqueueEmail } = await import('./jobs/queue.js');
+      await enqueueEmail(emailData);
+      return;
+    } catch (err) {
+      this.logger.warn({ error: err.message }, 'BullMQ email enqueue failed; using in-process queue');
+    }
     this.queue.push(emailData);
-    this.logger.debug({ emailData }, 'Email queued');
+    this.logger.debug({ emailData }, 'Email queued (in-process fallback)');
     await this.processQueue();
   }
 

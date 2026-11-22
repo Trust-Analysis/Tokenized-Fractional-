@@ -8,6 +8,9 @@ services:
     startCommand: npm start
     healthCheckPath: /health
     envVars:
+      # Pinned to match .nvmrc / .node-version and CI (node-version-file: '.nvmrc')
+      - key: NODE_VERSION
+        value: 26.13.1
       - key: NODE_ENV
         value: production
       - key: PORT
@@ -26,6 +29,15 @@ services:
         value: blue
       - key: SERVICE_NAME
         value: backend-blue
+      # Structured JSON logs on stdout (issue #703). See docs/OBSERVABILITY.md
+      # for the elk/ aggregation pipeline and the redaction guarantees.
+      - key: LOG_LEVEL
+        value: info
+      # Error tracking / alerting. Set the DSN in the Render dashboard.
+      - key: SENTRY_DSN
+        sync: false
+      - key: SENTRY_ENVIRONMENT
+        value: production
       # Optional — set in dashboard if using Redis
       # - key: REDIS_URL
       #   fromService:
@@ -42,6 +54,9 @@ services:
     startCommand: npm start
     healthCheckPath: /health
     envVars:
+      # Pinned to match .nvmrc / .node-version and CI (node-version-file: '.nvmrc')
+      - key: NODE_VERSION
+        value: 26.13.1
       - key: NODE_ENV
         value: production
       - key: PORT
@@ -60,6 +75,15 @@ services:
         value: green
       - key: SERVICE_NAME
         value: backend-green
+      # Structured JSON logs on stdout (issue #703). See docs/OBSERVABILITY.md
+      # for the elk/ aggregation pipeline and the redaction guarantees.
+      - key: LOG_LEVEL
+        value: info
+      # Error tracking / alerting. Set the DSN in the Render dashboard.
+      - key: SENTRY_DSN
+        sync: false
+      - key: SENTRY_ENVIRONMENT
+        value: production
 
   # ── Frontend (Static Site, Blue) ───────────────────────────────────────────
   - type: web
@@ -80,6 +104,9 @@ services:
         source: /*
         destination: /index.html
     envVars:
+      # Pinned to match .nvmrc / .node-version and CI (node-version-file: '.nvmrc')
+      - key: NODE_VERSION
+        value: 26.13.1
       - key: VITE_CONTRACT_ID
         sync: false   # set in Render dashboard
       - key: VITE_RPC_URL
@@ -90,6 +117,11 @@ services:
         value: https://rwa-marketplace-backend-blue.onrender.com
       - key: VITE_CDN_URL
         sync: false   # set to the CDN origin for static frontend assets
+      # Issue #797: the independent public status page this build's footer links
+      # to. Set it in the Render dashboard to wherever `status/` is deployed —
+      # deliberately not the same service this page reports on.
+      - key: VITE_STATUS_URL
+        sync: false
 
   # ── Frontend (Static Site, Green) ──────────────────────────────────────────
   - type: web
@@ -110,6 +142,9 @@ services:
         source: /*
         destination: /index.html
     envVars:
+      # Pinned to match .nvmrc / .node-version and CI (node-version-file: '.nvmrc')
+      - key: NODE_VERSION
+        value: 26.13.1
       - key: VITE_CONTRACT_ID
         sync: false   # set in Render dashboard
       - key: VITE_RPC_URL
@@ -120,3 +155,8 @@ services:
         value: https://rwa-marketplace-backend-green.onrender.com
       - key: VITE_CDN_URL
         sync: false   # set to the CDN origin for static frontend assets
+      # Issue #797: the independent public status page this build's footer links
+      # to. Set it in the Render dashboard to wherever `status/` is deployed —
+      # deliberately not the same service this page reports on.
+      - key: VITE_STATUS_URL
+        sync: false

@@ -239,6 +239,7 @@ Response:
 | `cache_db_mismatch` | Low | Cache contains stale data | Auto-clear cache |
 | `orphaned_cache` | Medium | Cache entry with no DB record | Auto-clear cache |
 | `db_blockchain_mismatch` | High | Local data diverges from chain | Manual investigation |
+| `onchain_drift` | High | A data.json field (`availableShares`, `totalShares`, `pricePerShare`) differs from the value read from the contract | Manual re-sync from chain |
 | `blockchain_warning` | High | Inconsistent on-chain state | Developer review |
 | `missing_everywhere` | Critical | Contract missing from all stores | Restore from backup |
 
@@ -384,6 +385,30 @@ async function queryBlockchainState(contractId) {
   return { availableShares, /* ... */ };
 }
 ```
+
+### Comparing data.json against on-chain state
+
+`runConsistencyCheck()` accepts an optional `chainReader`. Build one from any
+function that performs a read-only (simulated) contract call and returns the
+decoded value:
+
+```javascript
+import { createChainReader } from './consistency.js';
+import { runConsistencyCheck } from './consistency-scheduler.js';
+
+// queryFn(contractId, method) → e.g. simulate `get_available_shares` via Soroban RPC
+const chainReader = createChainReader(queryFn);
+const { reports } = await runConsistencyCheck({ loadDataFn, chainReader });
+```
+
+Each mirrored field that differs is reported as an `onchain_drift` issue with the
+data.json value and the on-chain value. Reconciliation flags it for manual review;
+it never rewrites data.json automatically.
+
+CI proves this safeguard fires: `backend/__tests__/onchainDrift.test.js` seeds
+`__tests__/fixtures/drifted-data.json` with a wrong `availableShares`, mocks the RPC
+with the correct on-chain value, and asserts the drift is detected and reported
+(workflow: `.github/workflows/backend-docs-and-data-integrity.yml`).
 
 ### Implementing Live Repair
 

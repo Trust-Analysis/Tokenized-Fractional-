@@ -1,0 +1,56 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <meta name="robots" content="noindex" />
+    <title>Status · Tokenized Fractional RWA Marketplace</title>
+    <meta
+      name="description"
+      content="Independent health status for the Tokenized Fractional RWA Marketplace backend, web application and Stellar RPC dependency."
+    />
+    <link rel="stylesheet" href="./status.css" />
+  </head>
+  <body>
+    <main class="page">
+      <header class="page__header">
+        <h1 class="page__title">Service status</h1>
+        <p class="page__subtitle">
+          Independent check of the services this app depends on. Use it to tell a
+          known problem apart from something specific to your own connection or
+          wallet setup.
+        </p>
+      </header>
+
+      <!-- Rendered by app.js. The placeholder text is what a reader sees if
+           JavaScript is disabled or the module fails to load. -->
+      <div id="overall" class="overall overall--unknown" role="status" aria-live="polite">
+        Checking…
+      </div>
+
+      <ul id="checks" class="tiers">
+        <li class="tier">Waiting for the first check to complete…</li>
+      </ul>
+
+      <footer class="page__footer">
+        <p id="timestamp">Not checked yet</p>
+        <p>
+          This page re-checks every 60 seconds. If everything here is
+          operational but the app still will not work for you, the problem is
+          most likely local — see
+          <a href="https://github.com/Trust-Analysis/Tokenized-Fractional-/blob/main/docs/troubleshooting.md">the troubleshooting guide</a>.
+        </p>
+      </footer>
+    </main>
+
+    <noscript>
+      <p class="page noscript">
+        This status page checks three live endpoints and therefore needs
+        JavaScript. You can check the API directly at
+        <code>/health</code> on the backend host.
+      </p>
+    </noscript>
+
+    <script type="module" src="./app.js"></script>
+  </body>
+</html>

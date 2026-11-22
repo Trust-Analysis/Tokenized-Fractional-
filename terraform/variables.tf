@@ -1,91 +1,62 @@
 variable "aws_region" {
-  description = "AWS region"
   type        = string
+  description = "AWS region for API Gateway and WAF deployment"
   default     = "us-east-1"
 }
 
 variable "environment" {
-  description = "Deployment environment"
   type        = string
-  default     = "staging"
+  description = "Deployment environment (e.g., prod, staging, dev)"
+  default     = "prod"
 }
 
-variable "vpc_cidr" {
-  description = "VPC CIDR block"
+variable "api_gateway_stage_arn" {
   type        = string
-  default     = "10.0.0.0/16"
-}
-
-variable "public_subnet_cidrs" {
-  description = "Public subnet CIDR blocks"
-  type        = list(string)
-  default     = ["10.0.1.0/24", "10.0.2.0/24"]
-}
-
-variable "private_subnet_cidrs" {
-  description = "Private subnet CIDR blocks"
-  type        = list(string)
-  default     = ["10.0.10.0/24", "10.0.11.0/24"]
-}
-
-variable "availability_zones" {
-  description = "Availability zones"
-  type        = list(string)
-  default     = ["us-east-1a", "us-east-1b"]
-}
-
-variable "ssh_key_name" {
-  description = "EC2 SSH key pair name"
-  type        = string
+  description = "ARN of the API Gateway stage to associate with WAF WebACL"
   default     = ""
 }
 
-variable "backend_instance_type" {
-  description = "Backend EC2 instance type"
-  type        = string
-  default     = "t3.small"
-}
-
-variable "rds_instance_class" {
-  description = "RDS instance class"
-  type        = string
-  default     = "db.t3.micro"
-}
-
-variable "rds_allocated_storage" {
-  description = "RDS allocated storage (GB)"
+variable "rate_limit_threshold" {
   type        = number
-  default     = 20
+  description = "Rate limit threshold per 5 minutes per IP"
+  default     = 2000
 }
 
-variable "rds_database_name" {
-  description = "RDS database name"
+# ── Redis (Issue #890) ────────────────────────────────────────────────
+variable "create_redis_cluster" {
+  type        = bool
+  description = "Whether to create the ElastiCache Redis replication group (opt-in so plan stays side-effect-free)"
+  default     = false
+}
+
+variable "redis_node_type" {
   type        = string
-  default     = "rwamarketplace"
+  description = "ElastiCache node type for the Redis replication group"
+  default     = "cache.t4g.small"
 }
 
-variable "rds_username" {
-  description = "RDS master username"
+variable "redis_engine_version" {
   type        = string
-  sensitive   = true
+  description = "Redis engine version"
+  default     = "7.1"
 }
 
-variable "rds_password" {
-  description = "RDS master password"
-  type        = string
-  sensitive   = true
-}
-
-variable "rds_backup_retention" {
-  description = "RDS backup retention period in days"
+variable "redis_num_cache_clusters" {
   type        = number
-  default     = 7
+  description = "Number of Redis cache clusters in the replication group (>= 2 enables automatic failover)"
+  default     = 2
 }
 
-variable "frontend_origin" {
-  description = "Frontend origin for CORS"
-  type        = string
-  default     = "*"
+variable "redis_subnet_ids" {
+  type        = list(string)
+  description = "Subnet IDs for the Redis subnet group (required when create_redis_cluster = true)"
+  default     = []
+}
+
+variable "redis_security_group_ids" {
+  type        = list(string)
+  description = "Security group IDs to attach to the Redis replication group"
+  default     = []
 }
 
 

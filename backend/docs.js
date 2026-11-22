@@ -7,6 +7,8 @@ const options = {
       description:
         'Backend API for managing real-world asset (RWA) metadata in the Tokenized Fractional RWA Marketplace. ' +
         'Supports listing, creating, updating, and deleting asset metadata that is linked to on-chain Soroban smart contracts.\n\n' +
+        '## Caching (conditional GETs)\n\n' +
+        '`GET /api/v1/rwa` and `GET /api/v1/rwa/{contractId}` are read-only and return an `ETag` validator (the detail endpoint also returns `Last-Modified`) together with `Cache-Control: public, max-age=30..60, stale-while-revalidate` headers. Send `If-None-Match` with the returned ETag and the server answers `304 Not Modified` while the asset is unchanged, avoiding a full re-read.\n\n' +
         '## API Versioning\n\n' +
         'All routes are available under two prefixes:\n\n' +
         '- **`/api/v1/rwa`** — versioned path (preferred, use in new integrations)\n' +
@@ -162,8 +164,8 @@ const options = {
         },
         post: {
           tags: ['Assets — v1 (versioned)'],
-          summary: 'Create or update asset metadata',
-          description: 'Requires admin API key via `x-api-key` header.',
+          summary: 'Create asset metadata',
+          description: 'Create-only. A POST for an existing `contractId` returns **409 Conflict**; use `PATCH /api/v1/rwa/{contractId}` to update. Requires admin API key via `x-api-key` header.',
           security: [{ ApiKeyAuth: [] }],
           requestBody: {
             required: true,
@@ -171,11 +173,12 @@ const options = {
           },
           responses: {
             '201': {
-              description: 'Asset created or updated',
+              description: 'Asset created',
               content: { 'application/json': { schema: { $ref: '#/components/schemas/Asset' } } },
             },
             '400': { description: 'Validation error', content: { 'application/json': { schema: { $ref: '#/components/schemas/Error' } } } },
             '401': { description: 'Unauthorized', content: { 'application/json': { schema: { $ref: '#/components/schemas/Error' } } } },
+            '409': { description: 'An asset with this contractId already exists', content: { 'application/json': { schema: { $ref: '#/components/schemas/Error' } } } },
           },
         },
       },
@@ -217,6 +220,7 @@ const options = {
       '/api/rwa': {
         get: {
           tags: ['Assets — legacy (backward-compatible)'],
+          deprecated: true,
           summary: 'List all asset metadata (legacy path)',
           description: '**Deprecated path.** Alias for `GET /api/v1/rwa`. Use `/api/v1/rwa` for new integrations.',
           parameters: [
@@ -234,23 +238,26 @@ const options = {
         },
         post: {
           tags: ['Assets — legacy (backward-compatible)'],
-          summary: 'Create or update asset metadata (legacy path)',
-          description: '**Deprecated path.** Alias for `POST /api/v1/rwa`. Use `/api/v1/rwa` for new integrations.',
+          deprecated: true,
+          summary: 'Create asset metadata (legacy path)',
+          description: '**Deprecated path.** Alias for `POST /api/v1/rwa`. Create-only; returns **409 Conflict** for an existing `contractId`. Use `/api/v1/rwa` for new integrations.',
           security: [{ ApiKeyAuth: [] }],
           requestBody: {
             required: true,
             content: { 'application/json': { schema: { $ref: '#/components/schemas/AssetInput' } } },
           },
           responses: {
-            '201': { description: 'Asset created or updated', content: { 'application/json': { schema: { $ref: '#/components/schemas/Asset' } } } },
+            '201': { description: 'Asset created', content: { 'application/json': { schema: { $ref: '#/components/schemas/Asset' } } } },
             '400': { description: 'Validation error', content: { 'application/json': { schema: { $ref: '#/components/schemas/Error' } } } },
             '401': { description: 'Unauthorized', content: { 'application/json': { schema: { $ref: '#/components/schemas/Error' } } } },
+            '409': { description: 'An asset with this contractId already exists', content: { 'application/json': { schema: { $ref: '#/components/schemas/Error' } } } },
           },
         },
       },
       '/api/rwa/pending': {
         get: {
           tags: ['Assets — legacy (backward-compatible)'],
+          deprecated: true,
           summary: 'List all pending assets (admin only, legacy path)',
           description: '**Deprecated path.** Alias for `GET /api/v1/rwa/pending`.',
           security: [{ ApiKeyAuth: [] }],
@@ -266,6 +273,7 @@ const options = {
       '/api/rwa/{contractId}': {
         get: {
           tags: ['Assets — legacy (backward-compatible)'],
+          deprecated: true,
           summary: 'Get asset metadata by contract ID (legacy path)',
           description: '**Deprecated path.** Alias for `GET /api/v1/rwa/{contractId}`. Use `/api/v1/rwa/{contractId}` for new integrations.',
           parameters: [
@@ -278,6 +286,7 @@ const options = {
         },
         delete: {
           tags: ['Assets — legacy (backward-compatible)'],
+          deprecated: true,
           summary: 'Delete asset metadata (legacy path)',
           description: '**Deprecated path.** Alias for `DELETE /api/v1/rwa/{contractId}`. Use `/api/v1/rwa/{contractId}` for new integrations.',
           security: [{ ApiKeyAuth: [] }],
@@ -416,6 +425,27 @@ const options = {
             '200': { description: 'Webhook deleted', content: { 'application/json': { schema: { type: 'object', properties: { message: { type: 'string' }, id: { type: 'string' } } } } } },
             '401': { description: 'Unauthorized', content: { 'application/json': { schema: { $ref: '#/components/schemas/Error' } } } },
             '404': { description: 'Webhook not found', content: { 'application/json': { schema: { $ref: '#/components/schemas/Error' } } } },
+          },
+        },
+      },
+      '/api/v1/rwa/search': {
+        get: {
+          tags: ['Assets — v1 (versioned)'],
+          summary: 'Full-text search across approved assets',
+          description: 'Ranks approved assets by TF-IDF relevance across title, location and description, with optional faceted filters.',
+          parameters: [
+            { in: 'query', name: 'q', required: true, schema: { type: 'string' }, description: 'Search query' },
+            { in: 'query', name: 'assetType', schema: { type: 'string' }, description: 'Filter by asset type (case-insensitive)' },
+            { in: 'query', name: 'location', schema: { type: 'string' }, description: 'Filter by location substring' },
+            { in: 'query', name: 'page', schema: { type: 'integer', default: 1 }, description: 'Page number' },
+            { in: 'query', name: 'limit', schema: { type: 'integer', default: 20 }, description: 'Items per page (max 100)' },
+          ],
+          responses: {
+            '200': {
+              description: 'Ranked search results',
+              content: { 'application/json': { schema: { $ref: '#/components/schemas/PaginatedAssets' } } },
+            },
+            '400': { description: 'Missing or blank q parameter', content: { 'application/json': { schema: { $ref: '#/components/schemas/Error' } } } },
           },
         },
       },

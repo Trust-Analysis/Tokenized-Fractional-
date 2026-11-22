@@ -1,5 +1,7 @@
 # NFT Share Certificates
 
+> **Quick setup:** follow the [NFT Certificates — Quick Start](NFT_QUICKSTART.md) to deploy, initialize, and link the certificate contract in a few minutes. This file is the detailed reference: architecture, SEP-41 API, metadata, wallet integration, and testing.
+
 ## Overview
 
 When users purchase fractional shares of a real-world asset on the RWA Marketplace, they automatically receive NFT share certificates representing their ownership. These NFTs are compliant with **Soroban's SEP-41 Non-Fungible Token standard** and can be:

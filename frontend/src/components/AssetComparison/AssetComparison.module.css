@@ -248,6 +248,13 @@
   padding: var(--spacing-sm);
 }
 
+.limitNotice {
+  font-size: var(--font-size-sm);
+  color: var(--color-warning, #b45309);
+  text-align: center;
+  padding: var(--spacing-sm);
+}
+
 /* ── Responsive ──────────────────────────────────────────────────────────── */
 @media (max-width: 480px) {
   .metricHeader,

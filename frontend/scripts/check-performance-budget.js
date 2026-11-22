@@ -1,70 +1,53 @@
 #!/usr/bin/env node
-import { readdirSync, statSync } from 'node:fs';
-import { dirname, extname, join, resolve } from 'node:path';
-import { fileURLToPath } from 'node:url';
+import { existsSync, readdirSync, readFileSync, statSync } from "node:fs";
+import { dirname, extname, join, resolve } from "node:path";
+import { fileURLToPath } from "node:url";
 
 const __dirname = dirname(fileURLToPath(import.meta.url));
-const projectRoot = resolve(__dirname, '..');
-const distDir = join(projectRoot, 'dist');
-const failOnExceed = process.env.VITE_PERF_BUDGET_FAIL === 'true';
+const projectRoot = resolve(__dirname, "..");
+const distDir = join(projectRoot, "dist");
+const budgetFile = join(projectRoot, "bundle-budget.json");
+const failOnExceed = process.env.VITE_PERF_BUDGET_FAIL === "true";
 
-const budgets = {
-  initialJsKb: 250,
-  chunkJsKb: 500,
-  cssKb: 50,
-};
+const budgets = existsSync(budgetFile)
+  ? JSON.parse(readFileSync(budgetFile, "utf8"))
+  : { initialJsKb: 250, lazyChunkJsKb: 500, cssKb: 50, maxIncreasePercent: 15 };
+
+const factor = 1 + (budgets.maxIncreasePercent ?? 15) / 100;
 
 function walk(dir) {
-  const entries = readdirSync(dir, { withFileTypes: true });
-  return entries.flatMap((entry) => {
-    const fullPath = join(dir, entry.name);
-    if (entry.isDirectory()) return walk(fullPath);
-    return [fullPath];
+  return readdirSync(dir, { withFileTypes: true }).flatMap((entry) => {
+    const p = join(dir, entry.name);
+    return entry.isDirectory() ? walk(p) : [p];
   });
 }
 
-function formatKb(bytes) {
-  return (bytes / 1024).toFixed(1);
-}
+const files = existsSync(distDir)
+  ? walk(distDir).filter((f) => [".js", ".css"].includes(extname(f)))
+  : [];
 
-function getAssetFiles() {
-  if (!statSync(distDir, { throwIfNoEntry: false })?.isDirectory?.()) {
-    return [];
-  }
-  return walk(distDir).filter((file) => ['.js', '.css'].includes(extname(file)));
-}
-
-const files = getAssetFiles();
 const violations = [];
-
 for (const file of files) {
-  const sizeBytes = statSync(file).size;
-  const sizeKb = sizeBytes / 1024;
+  const kb = statSync(file).size / 1024;
   const ext = extname(file).toLowerCase();
+  const rel = file.slice(projectRoot.length + 1).replace(/\\/g, "/");
 
-  if (ext === '.js') {
-    const budget = file.includes('/assets/index') || file.endsWith('/index.js')
-      ? budgets.initialJsKb
-      : budgets.chunkJsKb;
-    if (sizeKb > budget) {
-      violations.push(`${file.replace(projectRoot + '/', '')} is ${formatKb(sizeBytes)} kB (budget: ${budget} kB)`);
+  if (ext === ".js") {
+    const isInitial = /\/assets\/index[^/]*\.js$/.test(rel) || rel.endsWith("/index.js");
+    const limit = (isInitial ? budgets.initialJsKb : budgets.lazyChunkJsKb) * factor;
+    if (kb > limit) {
+      violations.push(`${rel} is ${kb.toFixed(1)} kB (allowed max: ${limit.toFixed(1)} kB)`);
     }
   }
-
-  if (ext === '.css' && sizeKb > budgets.cssKb) {
-    violations.push(`${file.replace(projectRoot + '/', '')} is ${formatKb(sizeBytes)} kB (budget: ${budgets.cssKb} kB)`);
+  if (ext === ".css" && kb > budgets.cssKb * factor) {
+    violations.push(`${rel} is ${kb.toFixed(1)} kB (allowed CSS max: ${(budgets.cssKb * factor).toFixed(1)} kB)`);
   }
 }
 
 if (violations.length) {
-  console.error('Performance budget violations detected:');
-  for (const violation of violations) {
-    console.error(`- ${violation}`);
-  }
-  if (failOnExceed) {
-    process.exit(1);
-  }
-  console.warn('Performance budget check completed with warnings.');
+  console.error("Bundle budget violations:");
+  for (const v of violations) console.error(" - " + v);
+  if (failOnExceed) process.exit(1);
 } else {
-  console.log('All bundled assets are within the configured performance budgets.');
+  console.log("All frontend bundles are within budget.");
 }

@@ -1,9 +1,29 @@
-#!/bin/bash
+#!/usr/bin/env bash
 
 # Tokenized Fractional RWA Marketplace Setup Script
 # This script automates the local development environment setup.
 
-set -e
+set -euo pipefail
+
+REPO_ROOT=$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)
+NODE_VERSION="$(cat "$REPO_ROOT/.nvmrc" 2>/dev/null || printf '20')"
+CONFIGURE_GIT=false
+FORCE_GIT=false
+cd "$REPO_ROOT"
+
+for argument in "$@"; do
+    case "$argument" in
+        --configure-git) CONFIGURE_GIT=true ;;
+        --force-git) FORCE_GIT=true ;;
+        --help|-h)
+            printf 'Usage: %s [--configure-git] [--force-git]\n' "$0"
+            printf '  --configure-git  Configure origin/upstream for the Trust Analysis SSH alias.\n'
+            printf '  --force-git      Replace existing origin/upstream URLs when configuring Git.\n'
+            exit 0
+            ;;
+        *) printf 'Unknown option: %s\n' "$argument" >&2; exit 1 ;;
+    esac
+done
 
 # Colors for output
 GREEN='\033[0;32m'
@@ -12,44 +32,99 @@ YELLOW='\033[1;33m'
 RED='\033[0;31m'
 NC='\033[0m' # No Color
 
-echo -e "${BLUE}================================================================${NC}"
-echo -e "${BLUE}   🚀 Starting Local Development Setup for Tokenized RWA    ${NC}"
-echo -e "${BLUE}================================================================${NC}"
+printf '%b\n' "${BLUE}================================================================${NC}"
+printf '%b\n' "${BLUE}   Starting Local Development Setup for Tokenized RWA          ${NC}"
+printf '%b\n' "${BLUE}================================================================${NC}"
 
 # Function to print status
 print_status() {
-    echo -e "${BLUE}[INFO]${NC} $1"
+    printf '%b\n' "${BLUE}[INFO]${NC} $1"
 }
 
 print_success() {
-    echo -e "${GREEN}[SUCCESS]${NC} $1"
+    printf '%b\n' "${GREEN}[SUCCESS]${NC} $1"
 }
 
 print_warning() {
-    echo -e "${YELLOW}[WARNING]${NC} $1"
+    printf '%b\n' "${YELLOW}[WARNING]${NC} $1"
 }
 
 print_error() {
-    echo -e "${RED}[ERROR]${NC} $1"
+    printf '%b\n' "${RED}[ERROR]${NC} $1" >&2
 }
 
-# 1. Check Prerequisites
-print_status "Checking prerequisites..."
-
-# Check for curl
-if ! command -v curl &> /dev/null; then
-    print_error "curl is not installed. Please install curl and try again."
+if [[ "$(uname -s)" != "Linux" ]]; then
+    print_error "This script supports Linux only. Use scripts/setup.ps1 on Windows."
     exit 1
 fi
 
-# Check for Node.js
-if ! command -v node &> /dev/null; then
-    print_error "Node.js is not installed. Please install Node.js (v18 or higher) and try again."
-    exit 1
+if command -v apt-get >/dev/null 2>&1; then
+    if [[ "${EUID}" -eq 0 ]]; then
+        SUDO=''
+    elif command -v sudo >/dev/null 2>&1; then
+        SUDO=sudo
+    else
+        print_error "sudo is required to install Linux packages."
+        exit 1
+    fi
+
+    print_status "Installing Linux prerequisites..."
+    $SUDO apt-get update
+    $SUDO apt-get install -y ca-certificates curl gnupg git build-essential docker.io
+    $SUDO systemctl enable --now docker 2>/dev/null || print_warning "Docker service could not be started automatically."
 else
-    NODE_VERSION=$(node -v)
-    print_success "Node.js installed: $NODE_VERSION"
+    print_error "This script requires apt-get (Ubuntu/Debian). Install curl, git, Docker, and build tools manually on other distributions."
+    exit 1
 fi
+
+if ! id -nG "${USER}" | tr ' ' '\n' | grep -qx docker; then
+    $SUDO usermod -aG docker "${USER}" 2>/dev/null || print_warning "Could not add ${USER} to the docker group."
+    print_warning "Log out and back in before using Docker without sudo."
+fi
+
+if ! command -v terraform >/dev/null 2>&1; then
+    print_status "Installing Terraform CLI..."
+    $SUDO install -d -m 0755 /etc/apt/keyrings
+    curl -fsSL https://apt.releases.hashicorp.com/gpg | $SUDO gpg --dearmor --yes -o /etc/apt/keyrings/hashicorp-archive-keyring.gpg
+    printf '%s\n' "deb [signed-by=/etc/apt/keyrings/hashicorp-archive-keyring.gpg] https://apt.releases.hashicorp.com $(. /etc/os-release && printf '%s' "$VERSION_CODENAME") main" | $SUDO tee /etc/apt/sources.list.d/hashicorp.list >/dev/null
+    $SUDO apt-get update
+    $SUDO apt-get install -y terraform
+fi
+print_success "Terraform CLI available: $(terraform version -json | sed -n 's/.*"terraform_version":"\([^"]*\)".*/\1/p')"
+
+# 1. Install Node.js through nvm so contributors can use the repository version.
+print_status "Ensuring Node.js ${NODE_VERSION} is available..."
+export NVM_DIR="${NVM_DIR:-$HOME/.nvm}"
+if [[ ! -s "$NVM_DIR/nvm.sh" ]]; then
+    curl -fsSL https://raw.githubusercontent.com/nvm-sh/nvm/v0.40.3/install.sh | bash
+fi
+# shellcheck source=/dev/null
+source "$NVM_DIR/nvm.sh"
+nvm install "$NODE_VERSION"
+nvm alias default "$NODE_VERSION"
+nvm use "$NODE_VERSION" >/dev/null
+print_success "Node.js installed: $(node --version)"
+
+print_success "Docker available: $(docker --version)"
+
+configure_git() {
+    local ssh_remote='git@Alhaji-naira:Trust-Analysis/Tokenized-Fractional-.git'
+    if [[ "$CONFIGURE_GIT" != true ]]; then
+        return
+    fi
+    for remote_name in origin upstream; do
+        if git remote get-url "$remote_name" >/dev/null 2>&1; then
+            if [[ "$FORCE_GIT" == true ]]; then
+                git remote set-url "$remote_name" "$ssh_remote"
+            else
+                print_warning "Keeping existing $remote_name remote. Use --force-git to replace it."
+            fi
+        elif [[ "$remote_name" == origin ]]; then
+            git remote add origin "$ssh_remote"
+        fi
+    done
+    print_success "Git remote routing uses SSH alias Alhaji-naira."
+}
 
 # 2. Install Rust Toolchain
 if ! command -v rustc &> /dev/null; then
@@ -119,19 +194,57 @@ else
     exit 1
 fi
 
+configure_git
+
 # Final Next Steps
-echo -e "\n${BLUE}================================================================${NC}"
-echo -e "${GREEN}✅ Setup Complete!${NC}"
-echo -e "${BLUE}================================================================${NC}"
-echo -e "To get the project running, follow these steps:\n"
-echo -e "1. ${YELLOW}Configure your environment variables:${NC}"
-echo -e "   - Edit ${BLUE}backend/.env${NC} (set your ADMIN_API_KEY)"
-echo -e "   - Edit ${BLUE}frontend/.env${NC} (add your CONTRACT_ID after deployment)\n"
-echo -e "2. ${YELLOW}Deploy the contract to Testnet:${NC}"
-echo -e "   - See README.md 'Configure Testnet & Deploy' section\n"
-echo -e "3. ${YELLOW}Run the backend:${NC}"
-echo -e "   ${BLUE}cd backend && npm run dev${NC}\n"
-echo -e "4. ${YELLOW}Run the frontend:${NC}"
-echo -e "   ${BLUE}cd frontend && npm run dev${NC}\n"
-echo -e "Open http://localhost:5173 and connect your Freighter wallet."
-echo -e "${BLUE}================================================================${NC}"
+printf '\n%b\n' "${BLUE}================================================================${NC}"
+printf '%b\n' "${GREEN}Setup Complete!${NC}"
+printf '%b\n' "${BLUE}================================================================${NC}"
+printf '%b\n' "Edit backend/.env and frontend/.env, then run:"
+printf '%b\n' "  (cd backend && npm run dev)"
+printf '%b\n' "  (cd frontend && npm run dev)"
+
+# Issue #1105: one-command gitleaks installation helper
+install_gitleaks_helper() {
+  if command -v gitleaks >/dev/null 2>&1; then
+    echo "gitleaks is already installed: $(gitleaks version 2>/dev/null || true)"
+    return 0
+  fi
+
+  echo "Installing gitleaks..."
+  if command -v brew >/dev/null 2>&1; then
+    brew install gitleaks
+  elif command -v apt-get >/dev/null 2>&1; then
+    sudo apt-get update && sudo apt-get install -y gitleaks
+  elif command -v dnf >/dev/null 2>&1; then
+    sudo dnf install -y gitleaks
+  elif command -v winget >/dev/null 2>&1; then
+    winget install --id Gitleaks.Gitleaks -e --accept-source-agreements --accept-package-agreements
+  else
+    echo "No supported package manager found automatically. Install from https://github.com/gitleaks/gitleaks/releases" >&2
+    return 1
+  fi
+}
+
+if [ "${1:-}" = "--gitleaks" ]; then
+  install_gitleaks_helper
+  exit $?
+fi
+
+# Issue #1106: read toolchain manifest and support --env-only parity mode
+sync_env_from_manifest() {
+  node -e "
+    const fs = require('node:fs');
+    const m = JSON.parse(fs.readFileSync('scripts/toolchain.json', 'utf8'));
+    for (const e of m.envFiles || []) {
+      if (fs.existsSync(e.source) && !fs.existsSync(e.target)) {
+        fs.copyFileSync(e.source, e.target);
+        console.log('Created ' + e.target + ' from ' + e.source);
+      }
+    }
+  "
+}
+if [ "${1:-}" = "--env-only" ]; then
+  sync_env_from_manifest
+  exit 0
+fi

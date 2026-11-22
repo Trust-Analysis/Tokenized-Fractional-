@@ -64,7 +64,11 @@ This guide compiles common issues encountered by developers and users of the Tok
   * You are trying to buy more shares than the contract currently has left in its available pool (`AvailableShares`).
 * **Solution**:
   1. Reduce your purchase quantity in the buy input to be less than or equal to the remaining available shares displayed in the marketplace.
-  2. If you are the Administrator, you can increase the available share supply by invoking the `set_total_shares` function (or via the Admin panel).
+  2. If you are the Administrator, you can increase the available share supply by invoking the `increase_total_shares` function (or via the Admin panel). The marketplace must be paused first, and the function only ever adds shares:
+     ```bash
+     soroban contract invoke --id <CONTRACT_ID> --source admin --network testnet -- increase_total_shares --additional 500
+     ```
+     (The legacy `set_total_shares` function also works and can set an absolute total in either direction.)
 
 ### Issue: "Marketplace is currently paused" Error
 * **Symptoms**:
@@ -77,6 +81,29 @@ This guide compiles common issues encountered by developers and users of the Tok
     ```bash
     soroban contract invoke --id <CONTRACT_ID> --source admin --network testnet -- unpause
     ```
+
+### Issue: Price or total supply set at deployment is wrong
+* **Symptoms**:
+  * The price per share shown in the UI does not match the offering terms, or the available supply is lower than the deposited tranche.
+  * Invoking `update_price` / `increase_total_shares` fails with `"Marketplace must be paused before ..."`.
+* **Root Cause**:
+  * `init` fixes the price and total supply once, at deployment. A mis-keyed value can only be changed afterwards by an admin correction.
+* **Solution**:
+  1. Pause the marketplace — the correction functions refuse to run on a live marketplace, which is what guarantees no buy settles at the stale value:
+     ```bash
+     soroban contract invoke --id <CONTRACT_ID> --source admin --network testnet -- pause
+     ```
+  2. Correct the price (must be greater than zero):
+     ```bash
+     soroban contract invoke --id <CONTRACT_ID> --source admin --network testnet -- update_price --new_price 1000000
+     ```
+     ...or add a follow-on tranche of the same underlying asset (this only ever adds shares):
+     ```bash
+     soroban contract invoke --id <CONTRACT_ID> --source admin --network testnet -- increase_total_shares --additional 500
+     ```
+  3. Verify with `get_price` / `get_total_shares` / `get_available_shares`, then `unpause`.
+  4. If an oracle is configured (`get_oracle`), the static price is only a fallback — fix or clear the oracle as well, or the corrected price will not be used by trades.
+  * Full procedure, including the reconciliation and announcement steps, is in [SECURITY.md](../SECURITY.md#runbook-correcting-a-deployment-mistake).
 
 ---
 

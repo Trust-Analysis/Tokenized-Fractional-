@@ -1,0 +1,42 @@
+# Staging overlay (Issue #890)
+#   kubectl apply -k k8s/overlays/staging
+# Values: single replica per service, staging hostname, `staging` image tag.
+apiVersion: kustomize.config.k8s.io/v1beta1
+kind: Kustomization
+
+resources:
+  - ../..
+
+images:
+  - name: rwa-backend
+    newTag: staging
+  - name: rwa-frontend
+    newTag: staging
+
+patches:
+  - path: ingress-patch.yaml
+  - path: backend-replicas-patch.yaml
+  - path: frontend-replicas-patch.yaml
+  # One replica per workload: an HPA floor of 2 and a PDB minAvailable of 1
+  # would pin the only pod and block node drains.
+  - target:
+      group: autoscaling
+      kind: HorizontalPodAutoscaler
+    patch: |-
+      apiVersion: autoscaling/v2
+      kind: HorizontalPodAutoscaler
+      metadata:
+        name: single-replica-hpa
+      spec:
+        minReplicas: 1
+        maxReplicas: 3
+  - target:
+      group: policy
+      kind: PodDisruptionBudget
+    patch: |-
+      apiVersion: policy/v1
+      kind: PodDisruptionBudget
+      metadata:
+        name: single-replica-pdb
+      spec:
+        minAvailable: 0

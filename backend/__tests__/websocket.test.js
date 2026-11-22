@@ -4,7 +4,6 @@
  */
 
 import { WebSocketManager, WS_EVENT_TYPES } from '../websocket.js';
-import { logger } from '../index.js';
 
 describe('WebSocket Implementation', () => {
   let wsManager;
@@ -12,6 +11,20 @@ describe('WebSocket Implementation', () => {
   beforeEach(() => {
     wsManager = new WebSocketManager();
   });
+
+  /**
+   * Register a mock client so subscribe/unsubscribe have a client record
+   * (the manager only tracks subscriptions for connected clients).
+   */
+  function registerMockClient(clientId) {
+    wsManager.clients.set(clientId, {
+      ws: { readyState: 1, send: () => {} },
+      subscriptions: new Set(),
+      clientId,
+      lastSeqId: new Map(),
+    });
+    wsManager.clientLastSeqId.set(clientId, new Map());
+  }
 
   describe('WebSocketManager', () => {
     test('should generate unique client IDs', () => {
@@ -27,6 +40,7 @@ describe('WebSocket Implementation', () => {
       const clientId = 'test-client-1';
       const topic = 'share-purchases';
 
+      registerMockClient(clientId);
       wsManager.subscribe(clientId, topic);
 
       expect(wsManager.subscriptions.has(topic)).toBe(true);
@@ -37,11 +51,14 @@ describe('WebSocket Implementation', () => {
       const clientId = 'test-client-1';
       const topic = 'share-purchases';
 
+      registerMockClient(clientId);
       wsManager.subscribe(clientId, topic);
       expect(wsManager.subscriptions.get(topic).has(clientId)).toBe(true);
 
       wsManager.unsubscribe(clientId, topic);
-      expect(wsManager.subscriptions.get(topic).has(clientId)).toBe(false);
+      // Empty topics are deleted from the map (see the cleanup test below),
+      // so the client must no longer be subscribed either way.
+      expect(wsManager.subscriptions.get(topic)?.has(clientId)).toBeFalsy();
     });
 
     test('should clean up topics with no subscribers', () => {

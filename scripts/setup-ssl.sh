@@ -104,10 +104,10 @@ server {
     resolver_timeout 5s;
 
     # Security headers
-    add_header Strict-Transport-Security "max-age=63072000" always;
+    add_header Strict-Transport-Security "max-age=63072000; includeSubDomains" always;
+    add_header Content-Security-Policy "default-src 'self'; script-src 'self'; style-src 'self' 'unsafe-inline'; img-src 'self' data: https:; font-src 'self' data:; connect-src 'self' https: wss:; frame-src 'none'; object-src 'none'; base-uri 'self'; frame-ancestors 'none'" always;
     add_header X-Frame-Options "SAMEORIGIN" always;
     add_header X-Content-Type-Options "nosniff" always;
-    add_header X-XSS-Protection "1; mode=block" always;
 
     # Logging
     access_log /var/log/nginx/${DOMAIN}_access.log;

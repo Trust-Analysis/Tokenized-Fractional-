@@ -4,7 +4,7 @@
     "portfolio": "Portafolio",
     "admin": "Administrador",
     "history": "Historial",
-    "profile": "Profile"
+    "profile": "Perfil"
   },
   "wallet": {
     "connect": "Conectar Freighter",
@@ -48,15 +48,6 @@
     "emptySub": "Tus transacciones recientes de Stellar aparecerán aquí.",
     "connectWallet": "Conecta tu billetera para ver el historial",
     "fetchError": "Error al cargar el historial. Intenta de nuevo."
-  },
-  "theme": {
-    "toDark": "Cambiar a Tema Oscuro",
-    "toLight": "Cambiar a Tema Claro"
-  },
-  "common": {
-    "loading": "Cargando…",
-    "error": "Ocurrió un error.",
-    "retry": "Reintentar"
   },
   "profile": {
     "dashboard": "Mi Panel",
@@ -117,5 +108,55 @@
     "usd": "USD ($)",
     "eur": "EUR (€)",
     "gbp": "GBP (£)"
+  },
+  "theme": {
+    "toDark": "Cambiar a Tema Oscuro",
+    "toLight": "Cambiar a Tema Claro"
+  },
+  "common": {
+    "loading": "Cargando…",
+    "error": "Ocurrió un error.",
+    "retry": "Reintentar"
+  },
+  "search": {
+    "title": "Buscar y Filtrar",
+    "filters": "Filtros",
+    "search": "Buscar",
+    "placeholder": "Buscar activos...",
+    "priceRange": "Rango de Precio",
+    "assetType": "Tipo de Activo",
+    "category": "Categoría",
+    "availability": "Disponibilidad",
+    "available": "Disponible",
+    "limited": "Limitado",
+    "unavailable": "No disponible",
+    "sortBy": "Ordenar Por",
+    "sortName": "Nombre",
+    "sortPrice": "Precio",
+    "sortRecent": "Añadido Recientemente",
+    "sortPopular": "Popularidad",
+    "ascending": "Ascendente",
+    "descending": "Descendente",
+    "itemsPerPage": "Elementos Por Página",
+    "clearAll": "Borrar Todos los Filtros",
+    "showing": "Mostrando",
+    "of": "de",
+    "results": "resultados",
+    "previous": "Anterior",
+    "next": "Siguiente"
+  },
+  "a11y": {
+    "languageSelector": "Selector de idioma",
+    "switchLanguage": "Cambiar el idioma a {{language}}",
+    "toggleFilters": "Mostrar u ocultar filtros"
+  },
+  "languages": {
+    "en": "Inglés",
+    "es": "Español",
+    "fr": "Francés",
+    "de": "Alemán"
+  },
+  "footer": {
+    "status": "Estado del servicio"
   }
 }

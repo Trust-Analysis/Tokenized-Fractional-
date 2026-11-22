@@ -62,15 +62,26 @@ Comprehensive tiered rate limiting system with Redis support for distributed rat
 |-----------|-----------|----------|--------|---------|
 | **Anonymous** | Read | 50 | 15 min | 3.33 |
 | | Write | 10 | 15 min | 0.67 |
+| | GraphQL | 100 | 1 min | 1.67 |
 | **Authenticated** | Read | 500 | 15 min | 33.3 |
 | | Write | 100 | 15 min | 6.67 |
+| | GraphQL | 1,000 | 1 min | 16.67 |
 | **Admin** | Read | 5,000 | 15 min | 333 |
 | | Write | 1,000 | 15 min | 67 |
+| | GraphQL | 10,000 | 1 min | 166.7 |
+
+### GraphQL Rate Limiting (Issue #464)
+- **Middleware function**: `createGraphQLRateLimiter(options)`
+- **Endpoints**: `/graphql` and `/api/graphql`
+- **Anonymous**: 100 req/min
+- **Authenticated**: 1,000 req/min
+- **Headers returned**: `X-RateLimit-Limit`, `X-RateLimit-Remaining`, `X-RateLimit-Reset`, `X-RateLimit-Tier`
+- **Exceeded response**: HTTP 429 Too Many Requests with `Retry-After` header and `RATE_LIMIT_EXCEEDED` code.
 
 ### Tier Detection
 
 1. **Admin** — Has valid API key in `x-api-key` header
-2. **Authenticated** — Has wallet address (query param, body, or header)
+2. **Authenticated** — Has wallet address (`x-wallet-address` header, body, query, or `Authorization` header)
 3. **Anonymous** — Default (no auth)
 
 ## Architecture

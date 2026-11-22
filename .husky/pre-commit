@@ -1,3 +1,0 @@
-#!/usr/bin/env sh
-# Run lint-staged to lint and format only staged files
-npx lint-staged

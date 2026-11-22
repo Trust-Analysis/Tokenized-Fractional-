@@ -47,3 +47,8 @@ If the promoted environment fails health checks or introduces regressions, rerun
 - Confirm both services are healthy before switching traffic.
 - Keep the same environment variables and contract configuration in both environments.
 - Preserve the deployment state file `.blue-green-state.json` between runs.
+
+## See also
+
+- [Incident Response Playbook](./incident-response.md) — how a backend rollback
+  fits into a full-stack, cross-tier incident.

@@ -19,9 +19,9 @@ The contract ID is always the marketplace contract itself.
 | Event | Triggered By | Fields |
 |---|---|---|
 | `EventInit` | `init()` | `admin: Address`, `payment_token: Address`, `price: i128`, `total_shares: u32` |
-| `EventPause` | `pause()` | *(no fields)* |
-| `EventUnpause` | `unpause()` | *(no fields)* |
-| `EventEmergencyWithdraw` | `emergency_withdraw()` | `to: Address`, `amount: i128` |
+| `EventPause` | `pause()` | `admin: Address` |
+| `EventUnpause` | `unpause()` | `admin: Address` |
+| `EventEmergencyWithdraw` | `emergency_withdraw()` | `admin: Address`, `to: Address`, `amount: i128` |
 | `EventContractUpgraded` | `upgrade()` | `new_wasm_hash: BytesN<32>` |
 
 ### Price & Supply
@@ -29,14 +29,16 @@ The contract ID is always the marketplace contract itself.
 | Event | Triggered By | Fields |
 |---|---|---|
 | `EventSetPrice` | `set_price()` | `old_price: i128`, `new_price: i128` |
+| `EventUpdatePrice` | `update_price()` | `old_price: i128`, `new_price: i128` |
 | `EventSetTotalShares` | `set_total_shares()` | `old_total: u32`, `new_total: u32` |
+| `EventIncreaseTotalShares` | `increase_total_shares()` | `old_total: u32`, `additional: u32`, `new_total: u32` |
 | `EventSetMaxSharesPerUser` | `set_max_shares_per_user()` | `old_max: u32`, `new_max: u32` |
 
 ### Share Purchases
 
 | Event | Triggered By | Fields |
 |---|---|---|
-| `EventBuyShares` | `buy_shares()`, `buy_vested_shares()` | `buyer: Address`, `shares: u32`, `total_cost: i128` |
+| `EventBuyShares` | `buy_shares()`, `buy_vested_shares()` | `caller: Address`, `buyer: Address`, `shares: u32`, `total_cost: i128`, `price: i128` |
 | `EventClaimVestedShares` | `claim_vested_shares()` | `claimer: Address`, `amount: u32` |
 
 ### Dividends
@@ -118,6 +120,14 @@ The contract ID is always the marketplace contract itself.
 | `EventOperationCancelled` | `cancel_operation()` | `action: AdminAction` |
 | `EventOperationExecuted` | `execute_operation()` | `action: AdminAction` |
 
+The delay applied by `schedule_operation()` is read from instance storage via
+`get_timelock_delay()`. `init` accepts a `timelock_delay` in seconds between
+86,400 (24 hours) and 2,592,000 (30 days); deployments that predate the stored
+setting fall back to 172,800 seconds (48 hours). A change to the delay uses
+`AdminAction::SetTimelockDelay(u64)` and is subject to the currently configured
+delay, so `execute_after` always reflects the setting active when the operation
+was scheduled.
+
 ---
 
 ## Off-Chain Indexing Guide
@@ -126,9 +136,9 @@ The contract ID is always the marketplace contract itself.
 
 Events are designed to allow full state reconstruction:
 
-1. **Total shares & available shares**: Track `EventInit`, `EventBuyShares`, `EventSetTotalShares`, `EventBuybackShares`, `EventOrderFilled`.
+1. **Total shares & available shares**: Track `EventInit`, `EventBuyShares`, `EventSetTotalShares`, `EventIncreaseTotalShares`, `EventBuybackShares`, `EventOrderFilled`.
 2. **Per-holder balances**: Track `EventBuyShares`, `EventTransfer`, `EventBuybackShares`, `EventClaimVestedShares`, `EventOrderFilled`, `EventLockForBridge`, `EventUnlockFromBridge`.
-3. **Price history**: Track `EventSetPrice`, `EventOraclePriceFetched`, `EventOraclePriceFallback`.
+3. **Price history**: Track `EventSetPrice`, `EventUpdatePrice`, `EventOraclePriceFetched`, `EventOraclePriceFallback`.
 4. **Dividend history**: Track `EventSetDividendSchedule`, `EventDistributeDividends`, `EventScheduledDividend`.
 
 ### Indexing Strategy

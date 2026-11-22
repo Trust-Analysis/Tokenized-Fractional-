@@ -13,7 +13,7 @@
  * - Performance monitoring and metrics
  */
 
-import { logger } from './index.js';
+import { logger } from './logger.js';
 
 /**
  * Configuration for subscription optimization

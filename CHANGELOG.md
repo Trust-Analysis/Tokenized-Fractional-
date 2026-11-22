@@ -11,6 +11,19 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### Added
+
+- **Opt-in buyer allowlist on `buy_shares`** - deployments can now toggle the allowlist gate with `set_allowlist_enabled` / `is_allowlist_enabled`, and manage buyers with the compliance-named `add_to_allowlist` / `remove_from_allowlist` (aliases of the existing `add_to_whitelist` / `remove_from_whitelist`, sharing the same storage). The gate is **enabled by default**, so existing regulated deployments keep enforcing the allowlist; non-regulated assets can opt out instead of having to allowlist every buyer (#700)
+- **Compliance and regulatory limitations documentation** - README now documents what the allowlist does *not* cover (no KYC, accredited-investor, jurisdiction/geofencing, or secondary-transfer enforcement on-chain) and that deploying this contract is not itself compliance (#700)
+
+### Changed
+
+- **`buy_shares` is gated by the allowlist** - the contract already enforced this since #270, but the README documented `buy_shares` as `Auth: Buyer` and omitted the allowlist functions entirely. The contract API table now reflects the real behavior (#700)
+
+### Fixed
+
+- **Render Node.js runtime pin** - `render.yaml` now sets `NODE_VERSION` to 20.18.0 on all four services, and the `engines.node` ranges in `backend/package.json` / `frontend/package.json` are upper-bounded (`>=20.18.0 <21.0.0`) so the build and runtime environment can no longer drift when Render changes its default Node version (#723)
+
 ## [0.1.0] - 2026-06-28
 
 ### Added

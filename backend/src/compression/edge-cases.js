@@ -169,29 +169,37 @@ export class EdgeCaseHandler {
    * Handle compression error gracefully
    */
   handleCompressionError(error, context = {}) {
-    const errorTypes = {
-      'Memory limit exceeded': {
+    // Prefix matching (not exact equality) because the engine wraps errors as
+    // e.g. 'Memory limit exceeded for compression' / 'Compression failed: …'
+    const errorRules = [
+      {
+        prefix: 'Memory limit exceeded',
         type: 'memory_error',
         recoverable: false,
         message: 'Compression failed due to memory limit'
       },
-      'Unsupported compression algorithm': {
+      {
+        prefix: 'Unsupported compression algorithm',
         type: 'algorithm_error',
         recoverable: true,
         message: 'Compression algorithm not supported, trying fallback'
       },
-      'Compression failed': {
+      {
+        prefix: 'Compression failed',
         type: 'compression_error',
         recoverable: true,
         message: 'Compression failed, returning uncompressed content'
       }
-    };
+    ];
 
-    const errorInfo = errorTypes[error.message] || {
-      type: 'unknown_error',
-      recoverable: false,
-      message: error.message
-    };
+    const rule = errorRules.find((r) => error.message.startsWith(r.prefix));
+    const errorInfo = rule
+      ? { type: rule.type, recoverable: rule.recoverable, message: rule.message }
+      : {
+          type: 'unknown_error',
+          recoverable: false,
+          message: error.message
+        };
 
     return {
       ...errorInfo,
@@ -237,15 +245,18 @@ export class EdgeCaseHandler {
    * Check if response is streaming
    */
   isStreamingResponse(response) {
-    return response && typeof response.pipe === 'function';
+    return Boolean(response && typeof response.pipe === 'function');
   }
 
   /**
    * Check if response has already been compressed
    */
   isResponseCompressed(headers) {
-    const contentEncoding = headers.get('content-encoding') || headers['content-encoding'];
-    return contentEncoding && contentEncoding !== 'identity';
+    if (!headers) return false;
+    // Support both Headers-style objects (with .get()) and plain header maps
+    const fromGet = typeof headers.get === 'function' ? headers.get('content-encoding') : undefined;
+    const contentEncoding = fromGet || headers['content-encoding'];
+    return Boolean(contentEncoding && contentEncoding !== 'identity');
   }
 
   /**
@@ -261,9 +272,10 @@ export class EdgeCaseHandler {
     // Set content-encoding
     sanitized['content-encoding'] = algorithm;
 
-    // Ensure vary header includes accept-encoding
+    // Ensure vary header includes accept-encoding (case-insensitive check so
+    // a standard 'Accept-Encoding' value is not duplicated)
     const vary = sanitized['vary'] || sanitized['Vary'] || '';
-    if (!vary.includes('accept-encoding')) {
+    if (!vary.toLowerCase().includes('accept-encoding')) {
       sanitized['vary'] = vary ? `${vary}, Accept-Encoding` : 'Accept-Encoding';
     }
 

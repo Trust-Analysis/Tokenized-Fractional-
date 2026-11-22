@@ -8,8 +8,9 @@
  *   - TransactionConfirmModal – tx confirmation overlay (props: tx, onConfirm, onCancel)
  */
 
-import React, { useEffect, useCallback, useRef } from "react";
+import React, { useEffect, useCallback, useRef, useState } from "react";
 import { useWalletStore, WALLET_PROVIDERS } from "../../store/useWalletStore";
+import { toQRImageUrl } from "../../services/walletConnectService";
 import styles from "./WalletManager.module.css";
 
 // ─── SVG Icons ────────────────────────────────────────────────────────────────
@@ -149,11 +150,29 @@ const AlbedoLogo = () => (
   </svg>
 );
 
+/** WalletConnect placeholder logo */
+const WalletConnectLogo = () => (
+  <svg
+    width="32"
+    height="32"
+    viewBox="0 0 64 64"
+    fill="none"
+    aria-label="WalletConnect logo"
+    role="img"
+  >
+    <rect width="64" height="64" rx="14" fill="#3396FF" />
+    <circle cx="22" cy="28" r="6" fill="white" opacity="0.95" />
+    <circle cx="42" cy="36" r="6" fill="white" opacity="0.55" />
+    <circle cx="22" cy="44" r="6" fill="white" opacity="0.75" />
+  </svg>
+);
+
 const WALLET_LOGOS = {
   freighter: FreighterLogo,
   lobstr: LobstrLogo,
   xbull: XBullLogo,
   albedo: AlbedoLogo,
+  walletconnect: WalletConnectLogo,
 };
 
 // ─── Helpers ──────────────────────────────────────────────────────────────────
@@ -391,6 +410,105 @@ export function TransactionConfirmModal({ tx, onConfirm, onCancel }) {
   );
 }
 
+// ─── WalletConnectModal (Issue #568) ─────────────────────────────────────────
+
+/**
+ * Modal rendered inside WalletManager that shows the WalletConnect QR code and
+ * waits for the mobile / hardware wallet to approve the pairing session.
+ *
+ * @param {{ uri: string, error?: string|null, onClose: () => void }} props
+ */
+function WalletConnectModal({ uri, error, onClose }) {
+  const escRef = useRef(null);
+
+  useEffect(() => {
+    escRef.current?.focus();
+  }, []);
+
+  useEffect(() => {
+    const handleKey = (e) => {
+      if (e.key === "Escape") onClose();
+    };
+    window.addEventListener("keydown", handleKey);
+    return () => window.removeEventListener("keydown", handleKey);
+  }, [onClose]);
+
+  const imageUrl = uri ? toQRImageUrl(uri) : null;
+
+  return (
+    <div
+      className={styles.wcOverlay}
+      role="dialog"
+      aria-modal="true"
+      aria-labelledby="walletconnect-title"
+      onClick={(e) => {
+        if (e.target === e.currentTarget) onClose();
+      }}
+    >
+      <div className={styles.wcCard} ref={escRef} tabIndex={-1}>
+        <div className={styles.wcCardHeader}>
+          <h3 id="walletconnect-title" className={styles.wcCardTitle}>
+            Connect with WalletConnect
+          </h3>
+          <button
+            className={styles.closeBtn}
+            onClick={onClose}
+            aria-label="Close WalletConnect modal"
+            type="button"
+          >
+            <CloseIcon />
+          </button>
+        </div>
+
+        <p className={styles.wcSubtitle}>
+          Scan this code with your mobile or hardware wallet (Lobstr, xBull, and
+          more) to connect.
+        </p>
+
+        {error ? (
+          <div className={styles.wcError} role="alert">
+            {error}
+          </div>
+        ) : imageUrl ? (
+          <div className={styles.wcCode}>
+            <img src={imageUrl} alt="WalletConnect pairing QR code" width="220" height="220" />
+          </div>
+        ) : (
+          <div className={styles.wcLoading}>
+            <span className={styles.spinnerInline} aria-hidden="true" />
+            Generating pairing code…
+          </div>
+        )}
+
+        {uri && (
+          <button
+            className={styles.wcCopyUriBtn}
+            type="button"
+            onClick={() => navigator.clipboard?.writeText(uri)}
+          >
+            Copy connection link
+          </button>
+        )}
+
+        <p className={styles.wcHint}>
+          Waiting for approval… This window stays open until your wallet confirms
+          the connection.
+        </p>
+      </div>
+    </div>
+  );
+}
+
+/**
+ * Clear the in-memory pairing URI cache after a session is dismissed.
+ */
+function clearPairingUriLocal() {
+  Promise.resolve()
+    .then(() => import("../../services/walletConnectService.js"))
+    .then(({ clearPairingUri }) => clearPairingUri())
+    .catch(() => {});
+}
+
 // ─── WalletManager (main export) ──────────────────────────────────────────────
 
 /**
@@ -411,9 +529,14 @@ export function WalletManager({ isOpen, onClose }) {
     connect,
     disconnect,
     clearWalletError,
+    connectByWalletConnect,
+    finishWalletConnectSession,
   } = useWalletStore();
 
   const panelRef = useRef(null);
+  const [wcOpen, setWcOpen] = useState(false);
+  const [wcUri, setWcUri] = useState(null);
+  const [wcError, setWcError] = useState(null);
 
   // ── Keyboard handling ──────────────────────────────────────────────────────
   useEffect(() => {
@@ -444,15 +567,49 @@ export function WalletManager({ isOpen, onClose }) {
     return () => { document.body.style.overflow = ""; };
   }, [isOpen]);
 
+  // ── WalletConnect session polling (Issue #568) ──────────────────────────────
+  useEffect(() => {
+    if (!wcOpen || !publicKey) return;
+    // Once a wallet has approved and produced a public key, the modal is done.
+    setWcOpen(false);
+    setWcUri(null);
+  }, [wcOpen, publicKey]);
+
+  useEffect(() => {
+    if (!wcOpen) return;
+    const timer = setInterval(async () => {
+      const pubKey = await finishWalletConnectSession();
+      if (pubKey) {
+        setWcOpen(false);
+        setWcUri(null);
+      }
+    }, 2000);
+    return () => clearInterval(timer);
+  }, [wcOpen, finishWalletConnectSession]);
+
   // ── Handlers ───────────────────────────────────────────────────────────────
   const handleConnect = useCallback(
     async (providerId) => {
       if (providerId === "freighter") {
         await connect();
+        return;
+      }
+      if (providerId === "walletconnect") {
+        setWcError(null);
+        setWcOpen(true);
+        const uri = await connectByWalletConnect();
+        if (uri) {
+          setWcUri(uri);
+        } else {
+          setWcError(
+            "Could not start WalletConnect. Make sure VITE_WALLETCONNECT_PROJECT_ID is configured.",
+          );
+          setWcOpen(false);
+        }
       }
       // Future providers would be handled here
     },
-    [connect],
+    [connect, connectByWalletConnect],
   );
 
   const handleDisconnect = useCallback(() => {
@@ -613,6 +770,19 @@ export function WalletManager({ isOpen, onClose }) {
           </a>
         </p>
       </div>
+
+      {/* ── WalletConnect QR modal overlay (Issue #568) ─────────────────── */}
+      {wcOpen && (
+        <WalletConnectModal
+          uri={wcUri}
+          error={wcError}
+          onClose={() => {
+            setWcOpen(false);
+            setWcUri(null);
+            clearPairingUriLocal();
+          }}
+        />
+      )}
     </div>
   );
 }

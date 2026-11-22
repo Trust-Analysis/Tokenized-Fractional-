@@ -1,0 +1,75 @@
+# Issue #734: cut a GitHub Release whenever a new version section lands in
+# CHANGELOG.md on main, with notes pulled straight from that section — so
+# there's always a citable, tagged release corresponding to what the
+# changelog documents.
+name: Changelog Release
+
+on:
+  push:
+    branches: [main]
+    paths:
+      - 'CHANGELOG.md'
+
+permissions:
+  contents: write
+
+jobs:
+  release:
+    name: Cut release from CHANGELOG.md
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+
+      - name: Extract latest versioned section
+        id: changelog
+        run: |
+          # The changelog's top-most "## [X.Y.Z] - date" heading below
+          # "## [Unreleased]" is the version to release. If the very top
+          # heading already has a version number (no separate Unreleased
+          # section pending), use that one instead.
+          awk '
+            /^## \[Unreleased\]/ { in_unreleased = 1; next }
+            /^## \[[0-9]/ {
+              if (found) { exit }
+              match($0, /\[([0-9]+\.[0-9]+\.[0-9]+)\]/, m)
+              version = m[1]
+              found = 1
+              next
+            }
+            found && /^## \[/ { exit }
+            found { print }
+          ' CHANGELOG.md > /tmp/release_notes.md
+
+          version=$(grep -oP '(?<=\[)[0-9]+\.[0-9]+\.[0-9]+(?=\])' CHANGELOG.md | head -1)
+          if [ -z "$version" ]; then
+            echo "No versioned section found in CHANGELOG.md; skipping release." >&2
+            echo "skip=true" >> "$GITHUB_OUTPUT"
+            exit 0
+          fi
+          echo "version=$version" >> "$GITHUB_OUTPUT"
+          echo "skip=false" >> "$GITHUB_OUTPUT"
+
+      - name: Skip if tag already exists
+        if: steps.changelog.outputs.skip != 'true'
+        id: tag_check
+        run: |
+          tag="v${{ steps.changelog.outputs.version }}"
+          if git rev-parse "$tag" >/dev/null 2>&1; then
+            echo "Tag $tag already exists; nothing to do." >&2
+            echo "skip=true" >> "$GITHUB_OUTPUT"
+          else
+            echo "skip=false" >> "$GITHUB_OUTPUT"
+          fi
+
+      - name: Create GitHub Release
+        if: steps.changelog.outputs.skip != 'true' && steps.tag_check.outputs.skip != 'true'
+        uses: softprops/action-gh-release@v2
+        with:
+          tag_name: v${{ steps.changelog.outputs.version }}
+          name: v${{ steps.changelog.outputs.version }}
+          body_path: /tmp/release_notes.md
+          target_commitish: ${{ github.sha }}

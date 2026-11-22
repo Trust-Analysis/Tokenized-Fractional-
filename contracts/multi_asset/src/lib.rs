@@ -1,6 +1,6 @@
 #![no_std]
 
-use soroban_sdk::{contract, contractimpl, contracttype, contractevent, symbol_short, Address, Env, String, Vec, BytesN, panic_with_error};
+use soroban_sdk::{contract, contractimpl, contracterror, contracttype, contractevent, symbol_short, Address, Env, String, Vec, BytesN, panic_with_error};
 
 
 // -- Error Codes --------------------------------------------------
@@ -40,6 +40,26 @@ pub enum Error {
     NameTooLong = 14,
 
     TreasuryNotSet = 15,
+
+    InvalidCuratorSet = 16,
+
+    InsufficientApprovals = 17,
+
+    NotACurator = 18,
+
+    ReentrantCall = 19,
+
+    KYCRequired = 20,
+
+    AccreditationRequired = 21,
+
+    BelowMinInvestment = 22,
+
+    ExceedsMaxPerInvestor = 23,
+
+    RestrictedJurisdiction = 24,
+
+    AssetPaused = 25,
 
 }
 
@@ -252,6 +272,31 @@ pub enum DataKey {
 
     OracleAddress,
 
+    Curators,
+
+    ReentrantGuard,
+
+    KYCVerified(Address),
+
+    AccreditedInvestor(Address),
+
+    BuyerJurisdiction(Address),
+
+    CircuitBreakerTriggered,
+
+    CircuitBreakerConfig,
+
+    AssetPause(u64),
+
+    AcquiredAt(u64, Address),
+
+    IsHolder(u64, Address),
+
+    /// Issue #943: compensation owed to the former holder when an asset is
+    /// burned and reconstituted (buyout / wind-down). Recorded on-chain before
+    /// the holder's balance is zeroed so the owed amount is never lost.
+    ReconstitutionCompensation(u64, Address),
+
 }
 
 
@@ -358,6 +403,27 @@ pub struct EventAssetSharesTransferred {
 
 
 #[contractevent(data_format = "vec")]
+pub struct EventReconstituted {
+
+    pub asset_id: u64,
+
+    pub owner: Address,
+
+    pub burned_supply: u32,
+
+    /// Issue #943: ledger timestamp of the burn, for off-chain settlement
+    /// sequencing and audit trails.
+    pub timestamp: u64,
+
+    /// Issue #943: on-chain valuation of the burned supply
+    /// (`burned_supply * price_per_share`), i.e. the compensation value that an
+    /// off-chain settlement process may act on.
+    pub valuation: i128,
+
+}
+
+
+#[contractevent(data_format = "vec")]
 
 pub struct EventTemplateCreated {
 
@@ -370,23 +436,23 @@ pub struct EventTemplateCreated {
 
 // -- Helper Functions ---------------------------------------------
 
-fn checked_add_u32(a: u32, b: u32) -> u32 {
+fn checked_add_u32(env: &Env, a: u32, b: u32) -> u32 {
 
-    a.checked_add(b).unwrap_or_else(|| panic_with_error!(&Map::new(&Default::default()), Error::InvalidAmount))
-
-}
-
-
-fn checked_sub_u32(a: u32, b: u32) -> u32 {
-
-    a.checked_sub(b).unwrap_or_else(|| panic_with_error!(&Map::new(&Default::default()), Error::InvalidAmount))
+    a.checked_add(b).unwrap_or_else(|| panic_with_error!(env, Error::InvalidAmount))
 
 }
 
 
-fn checked_mul_i128(a: i128, b: i128) -> i128 {
+fn checked_sub_u32(env: &Env, a: u32, b: u32) -> u32 {
 
-    a.checked_mul(b).unwrap_or_else(|| panic_with_error!(&Map::new(&Default::default()), Error::InvalidAmount))
+    a.checked_sub(b).unwrap_or_else(|| panic_with_error!(env, Error::InvalidAmount))
+
+}
+
+
+fn checked_mul_i128(env: &Env, a: i128, b: i128) -> i128 {
+
+    a.checked_mul(b).unwrap_or_else(|| panic_with_error!(env, Error::InvalidAmount))
 
 }
 
@@ -441,6 +507,169 @@ impl MultiAssetManager {
     }
 
 
+    // -- Multi-Sig Curators (Issue #595) -------------------------
+
+    /// Designate the curator set used for the 2-of-3 minting approval
+
+    /// workflow. Requires exactly three unique addresses; only the admin
+
+    /// may change the set.
+
+    pub fn set_curators(env: Env, curators: Vec<Address>) {
+
+        let admin: Address = Self::get_admin(env.clone());
+
+        admin.require_auth();
+
+
+        if curators.len() != 3 {
+
+            panic_with_error!(&env, Error::InvalidCuratorSet);
+
+        }
+
+
+        // The 2-of-3 threshold is only meaningful if the three curators
+
+        // are distinct addresses.
+
+        let mut seen = Vec::<Address>::new(&env);
+
+        for curator in curators.iter() {
+
+            let mut duplicate = false;
+
+            for existing in seen.iter() {
+
+                if existing == curator {
+
+                    duplicate = true;
+
+                    break;
+
+                }
+
+            }
+
+            if duplicate {
+
+                panic_with_error!(&env, Error::InvalidCuratorSet);
+
+            }
+
+            seen.push_back(curator.clone());
+
+        }
+
+
+        env.storage().instance().set(&DataKey::Curators, &curators);
+
+    }
+
+
+    pub fn get_curators(env: Env) -> Vec<Address> {
+
+        env.storage().instance().get(&DataKey::Curators)
+
+            .expect("Curators not configured: call set_curators first")
+
+    }
+
+
+    /// Enforce the 2-of-3 multi-sig approval requirement for minting a new
+
+    /// fractional asset. Every address in `approvers` must be a designated
+
+    /// curator and must authorize the invocation (Soroban `require_auth`),
+
+    /// and at least two distinct curators must approve. This rejects
+
+    /// single-signature minting attempts before any asset is created.
+
+    fn require_multisig_approval(env: &Env, approvers: &Vec<Address>) {
+
+        let curators: Vec<Address> = env.storage().instance()
+
+            .get(&DataKey::Curators)
+
+            .expect("Curators not configured: call set_curators first");
+
+
+        let mut distinct = Vec::<Address>::new(env);
+
+        for approver in approvers.iter() {
+
+            // Every signer must be a designated curator.
+
+            let mut is_curator = false;
+
+            for curator in curators.iter() {
+
+                if curator == approver {
+
+                    is_curator = true;
+
+                    break;
+
+                }
+
+            }
+
+            if !is_curator {
+
+                panic_with_error!(env, Error::NotACurator);
+
+            }
+
+
+            // A single signer cannot satisfy the threshold twice, and
+
+            // `require_auth` may only be invoked once per address per
+
+            // invocation frame.
+
+            let mut already_seen = false;
+
+            for existing in distinct.iter() {
+
+                if existing == approver {
+
+                    already_seen = true;
+
+                    break;
+
+                }
+
+            }
+
+            if already_seen {
+
+                continue;
+
+            }
+
+
+            distinct.push_back(approver.clone());
+
+
+            // Require Soroban authorization from this curator so the
+
+            // transaction must carry their signature.
+
+            approver.require_auth();
+
+        }
+
+
+        if distinct.len() < 2 {
+
+            panic_with_error!(env, Error::InsufficientApprovals);
+
+        }
+
+    }
+
+
     // -- Asset Registration --------------------------------------
 
     pub fn register_asset(
@@ -463,11 +692,32 @@ impl MultiAssetManager {
 
         treasury: Address,
 
+        approvers: Vec<Address>,
+
+        requires_kyc: bool,
+
+        requires_accreditation: bool,
+
+        min_investment: u32,
+
+        max_per_investor: u32,
+
+        transfer_lockup_days: u32,
+
+        restricted_jurisdictions: Vec<String>,
+
     ) -> u64 {
 
         let admin: Address = Self::get_admin(env.clone());
 
         admin.require_auth();
+
+
+        // Multi-sig approval (Issue #595): at least 2-of-3 designated
+
+        // curators must sign off before the fractional asset is minted.
+
+        Self::require_multisig_approval(&env, &approvers);
 
 
         if total_supply == 0 {
@@ -536,17 +786,17 @@ impl MultiAssetManager {
 
         let restrictions = AssetRestrictions {
 
-            requires_kyc: false,
+            requires_kyc,
 
-            min_investment: 1,
+            min_investment,
 
-            max_per_investor: 0,
+            max_per_investor,
 
-            restricted_jurisdictions: Vec::new(&env),
+            restricted_jurisdictions,
 
-            transfer_lockup_days: 0,
+            transfer_lockup_days,
 
-            requires_accreditation: false,
+            requires_accreditation,
 
         };
 
@@ -831,7 +1081,7 @@ impl MultiAssetManager {
 
     // -- Buy / Transfer Shares -----------------------------------
 
-    pub fn buy_asset_shares(env: Env, asset_id: u64, buyer: Address, amount: u32) {
+    pub fn buy_asset_shares(env: Env, asset_id: u64, buyer: Address, amount: u32, max_price_per_share: i128) {
 
         buyer.require_auth();
 
@@ -840,7 +1090,18 @@ impl MultiAssetManager {
 
             panic_with_error!(&env, Error::InvalidAmount);
 
+
         }
+
+        // Reentrancy guard (#934)
+
+        if env.storage().instance().get(&DataKey::ReentrantGuard).unwrap_or(false) {
+
+            panic_with_error!(&env, Error::ReentrantCall);
+
+        }
+
+        env.storage().instance().set(&DataKey::ReentrantGuard, &true);
 
 
         let info = env.storage().persistent()
@@ -854,12 +1115,14 @@ impl MultiAssetManager {
 
             panic_with_error!(&env, Error::AssetArchived);
 
+
         }
 
 
         if amount > info.available_supply {
 
             panic_with_error!(&env, Error::InsufficientShares);
+
 
         }
 
@@ -871,21 +1134,16 @@ impl MultiAssetManager {
             .expect("Pricing not found");
 
 
-        let total_cost = checked_mul_i128(pricing.fixed_price, amount as i128);
+        let total_cost = checked_mul_i128(&env, pricing.fixed_price, amount as i128);
 
 
-        // Transfer payment from buyer to treasury
-
-        let client = soroban_sdk::token::Client::new(&env, &info.payment_token);
-
-        client.transfer(&buyer, &info.treasury, &total_cost);
-
+        // --- Effects: update all contract state BEFORE any external call ---
 
         // Update supplies
 
         let mut updated_info = info.clone();
 
-        updated_info.available_supply = checked_sub_u32(updated_info.available_supply, amount);
+        updated_info.available_supply = checked_sub_u32(&env, updated_info.available_supply, amount);
 
         env.storage().persistent().set(&DataKey::AssetInfo(asset_id), &updated_info);
 
@@ -898,7 +1156,7 @@ impl MultiAssetManager {
 
             .unwrap_or(0);
 
-        let new_balance = checked_add_u32(prev_balance, amount);
+        let new_balance = checked_add_u32(&env, prev_balance, amount);
 
         env.storage().persistent().set(&DataKey::AssetBalance(asset_id, buyer.clone()), &new_balance);
 
@@ -931,6 +1189,269 @@ impl MultiAssetManager {
 
             env.storage().persistent().set(&DataKey::AssetHolders(asset_id), &holders);
 
+
+        }
+
+        env.storage().instance().set(&DataKey::ReentrantGuard, &true);
+
+
+        // Update analytics
+
+        let mut analytics: AssetAnalytics = env.storage().persistent()
+
+            .get(&DataKey::AssetAnalytics(asset_id))
+
+            .expect("Analytics not found");
+
+        analytics.total_holders = if is_new_holder { analytics.total_holders + 1 } else { analytics.total_holders };
+
+        analytics.total_volume = analytics.total_volume.saturating_add(total_cost);
+
+        analytics.avg_price = analytics.total_volume / (analytics.buy_count + 1).max(1) as i128;
+
+        analytics.last_trade_at = env.ledger().timestamp();
+
+        analytics.buy_count += 1;
+
+        env.storage().persistent().set(&DataKey::AssetAnalytics(asset_id), &analytics);
+
+
+        // --- Interaction: external token transfer happens last (#934 CEI) ---
+
+        let client = soroban_sdk::token::Client::new(&env, &info.payment_token);
+
+        client.transfer(&buyer, &info.treasury, &total_cost);
+
+
+        // Release reentrancy guard
+
+        env.storage().instance().set(&DataKey::ReentrantGuard, &false);
+
+
+        EventAssetSharesBought { asset_id, buyer, amount, total_cost }.publish(&env);
+
+    }
+
+
+        let info = env.storage().persistent()
+
+            .get::<DataKey, AssetInfo>(&DataKey::AssetInfo(asset_id))
+
+            .expect("Asset not found");
+
+
+        if info.status != AssetStatus::Active {
+
+            panic_with_error!(&env, Error::AssetArchived);
+
+
+        }
+
+
+        if amount > info.available_supply {
+
+            panic_with_error!(&env, Error::InsufficientShares);
+
+
+        }
+
+        // AssetRestrictions enforcement (#935)
+
+        let restrictions: AssetRestrictions = env.storage().persistent()
+
+            .get(&DataKey::AssetRestrictions(asset_id))
+
+            .expect("Restrictions not found");
+
+        if restrictions.requires_kyc {
+
+            let kyc_verified: bool = env.storage().persistent()
+
+                .get(&DataKey::KYCVerified(buyer.clone()))
+
+                .unwrap_or(false);
+
+            if !kyc_verified {
+
+                panic_with_error!(&env, Error::KYCRequired);
+
+            }
+
+        }
+
+        if restrictions.requires_accreditation {
+
+            let accredited: bool = env.storage().persistent()
+
+                .get(&DataKey::AccreditedInvestor(buyer.clone()))
+
+                .unwrap_or(false);
+
+            if !accredited {
+
+                panic_with_error!(&env, Error::AccreditationRequired);
+
+            }
+
+        }
+
+        if restrictions.min_investment > 0 && amount < restrictions.min_investment {
+
+            panic_with_error!(&env, Error::BelowMinInvestment);
+
+        }
+
+        let current_investor_total: u32 = env.storage().persistent()
+
+            .get(&DataKey::AssetBalance(asset_id, buyer.clone()))
+
+            .unwrap_or(0);
+
+        if restrictions.max_per_investor > 0
+
+            && current_investor_total.saturating_add(amount) > restrictions.max_per_investor
+
+        {
+
+            panic_with_error!(&env, Error::ExceedsMaxPerInvestor);
+
+        }
+
+        if !restrictions.restricted_jurisdictions.is_empty() {
+
+            let buyer_jurisdiction: Option<String> = env.storage().persistent()
+
+                .get(&DataKey::BuyerJurisdiction(buyer.clone()));
+
+            match buyer_jurisdiction {
+
+                Some(j) if restrictions.restricted_jurisdictions.contains(&j) => {
+
+                    panic_with_error!(&env, Error::RestrictedJurisdiction);
+
+                }
+
+                Some(_) => {}
+
+                None => panic_with_error!(&env, Error::RestrictedJurisdiction),
+
+            }
+
+        }
+
+
+        // Safety controls (#937)
+
+        // Circuit breaker check
+
+        let breaker_triggered: bool = env.storage().instance()
+
+            .get(&DataKey::CircuitBreakerTriggered)
+
+            .unwrap_or(false);
+
+        if breaker_triggered {
+
+            panic_with_error!(&env, Error::AssetPaused);
+
+        }
+
+        // Asset-specific pause check
+
+        let asset_paused: bool = env.storage().instance()
+
+            .get(&DataKey::AssetPause(asset_id))
+
+            .unwrap_or(false);
+
+        if asset_paused {
+
+            panic_with_error!(&env, Error::AssetPaused);
+
+        }
+
+
+        let pricing: AssetPricing = env.storage().persistent()
+
+            .get(&DataKey::AssetPricing(asset_id))
+
+            .expect("Pricing not found");
+
+
+        let total_cost = checked_mul_i128(&env, pricing.fixed_price, amount as i128);
+
+
+        // Slippage protection: reject if configured price exceeds buyer's max
+
+        if pricing.fixed_price > max_price_per_share {
+
+            panic_with_error!(&env, Error::InvalidPricingModel);
+
+        }
+
+
+        // --- Effects: update all contract state BEFORE any external call ---
+
+        // Update supplies
+
+        let mut updated_info = info.clone();
+
+        updated_info.available_supply = checked_sub_u32(&env, updated_info.available_supply, amount);
+
+        env.storage().persistent().set(&DataKey::AssetInfo(asset_id), &updated_info);
+
+
+        // Update buyer balance
+
+        let prev_balance: u32 = env.storage().persistent()
+
+            .get(&DataKey::AssetBalance(asset_id, buyer.clone()))
+
+            .unwrap_or(0);
+
+        let new_balance = checked_add_u32(&env, prev_balance, amount);
+
+        env.storage().persistent().set(&DataKey::AssetBalance(asset_id, buyer.clone()), &new_balance);
+
+
+        // Register holder if new (#939): O(1) IsHolder flag instead of
+        // scanning/rewriting the full AssetHolders vector.
+
+        let is_new_holder: bool = !env.storage().persistent()
+
+            .get(&DataKey::IsHolder(asset_id, buyer.clone()))
+
+            .unwrap_or(false);
+
+        if is_new_holder {
+
+            env.storage().persistent().set(
+                &DataKey::IsHolder(asset_id, buyer.clone()),
+
+                &true,
+
+            );
+
+            let mut holders: Vec<Address> = env.storage().persistent()
+
+                .get(&DataKey::AssetHolders(asset_id))
+
+                .unwrap_or_else(|| Vec::new(&env));
+
+            holders.push_back(buyer.clone());
+
+            env.storage().persistent().set(&DataKey::AssetHolders(asset_id), &holders);
+
+
+            // Record per-holder acquisition time (#938)
+
+            env.storage().persistent().set(
+                &DataKey::AcquiredAt(asset_id, buyer.clone()),
+
+                &env.ledger().timestamp(),
+
+            );
+
         }
 
 
@@ -955,6 +1476,18 @@ impl MultiAssetManager {
         env.storage().persistent().set(&DataKey::AssetAnalytics(asset_id), &analytics);
 
 
+        // --- Interaction: external token transfer happens last (#934 CEI) ---
+
+        let client = soroban_sdk::token::Client::new(&env, &info.payment_token);
+
+        client.transfer(&buyer, &info.treasury, &total_cost);
+
+
+        // Release reentrancy guard
+
+        env.storage().instance().set(&DataKey::ReentrantGuard, &false);
+
+
         EventAssetSharesBought { asset_id, buyer, amount, total_cost }.publish(&env);
 
     }
@@ -968,6 +1501,77 @@ impl MultiAssetManager {
 
             .unwrap_or(0)
 
+    }
+
+
+    /// Burn all fractions when one owner has acquired the complete supply and
+    /// permanently lock the asset for reconstitution.
+    ///
+    /// Issue #943: documents the wind-down semantics of this entry point. When
+    /// the sole holder of the entire outstanding supply burns their position
+    /// (a buyout / end-of-life wind-down), the holder may be owed compensation —
+    /// e.g. delivery of the underlying real-world asset itself or an off-chain
+    /// payout. The owed amount is now recorded on-chain before the holder's
+    /// balance is zeroed and is published through `EventReconstituted` together
+    /// with the asset valuation (`burned_supply * price_per_share`), giving the
+    /// off-chain settlement process a reliable, auditable basis to act on.
+    pub fn burn_and_reconstitute(env: Env, asset_id: u64, owner: Address) {
+
+        owner.require_auth();
+
+        let mut info = env.storage().persistent()
+
+            .get::<DataKey, AssetInfo>(&DataKey::AssetInfo(asset_id))
+
+            .expect("Asset not found");
+
+        if info.status != AssetStatus::Active {
+
+            panic_with_error!(&env, Error::AssetArchived);
+
+        }
+
+        let balance: u32 = env.storage().persistent()
+
+            .get(&DataKey::AssetBalance(asset_id, owner.clone()))
+
+            .unwrap_or(0);
+
+        if info.available_supply != 0 || balance != info.total_supply {
+
+            panic_with_error!(&env, Error::InsufficientShares);
+
+        }
+
+        let burned_supply = info.total_supply;
+
+        // Issue #943: compute the buyout valuation (asset value owed as
+        // compensation) before the holder's position is zeroed.
+        let pricing: Option<AssetPricing> = env.storage().persistent().get(&DataKey::AssetPricing(asset_id));
+        let price_per_share: i128 = pricing.map(|p| p.fixed_price).unwrap_or(0);
+        let valuation: i128 = checked_mul_i128(&env, price_per_share, burned_supply as i128);
+
+        // Issue #943: record on-chain the compensation owed to the former holder
+        // so the wind-down / buyout settlement trail is auditable on-chain.
+        env.storage().persistent().set(&DataKey::ReconstitutionCompensation(asset_id, owner.clone()), &valuation);
+
+        env.storage().persistent().set(&DataKey::AssetBalance(asset_id, owner.clone()), &0u32);
+
+        info.total_supply = 0;
+        info.available_supply = 0;
+        info.status = AssetStatus::Archived;
+        info.updated_at = env.ledger().timestamp();
+        env.storage().persistent().set(&DataKey::AssetInfo(asset_id), &info);
+
+        EventReconstituted { asset_id, owner, burned_supply, timestamp: env.ledger().timestamp(), valuation }.publish(&env);
+
+    }
+
+    /// Issue #943: return the compensation owed to a former holder that was
+    /// recorded when the asset was burned and reconstituted (buyout / wind-down).
+    /// Returns 0 when no burn compensation has been recorded for the holder.
+    pub fn get_reconstitution_compensation(env: Env, asset_id: u64, owner: Address) -> i128 {
+        env.storage().persistent().get(&DataKey::ReconstitutionCompensation(asset_id, owner)).unwrap_or(0)
     }
 
 
@@ -1004,19 +1608,24 @@ impl MultiAssetManager {
             .expect("Restrictions not found");
 
 
-        // Check lockup
+        // Check lockup (#938): use per-holder acquisition time instead of
+        // the asset-wide last_trade_at timestamp.
 
         if restrictions.transfer_lockup_days > 0 {
 
-            let analytics: AssetAnalytics = env.storage().persistent()
-
-                .get(&DataKey::AssetAnalytics(asset_id))
-
-                .expect("Analytics not found");
-
             let lockup_seconds = (restrictions.transfer_lockup_days as u64) * 86400;
 
-            if analytics.last_trade_at > 0 && env.ledger().timestamp() < analytics.last_trade_at.saturating_add(lockup_seconds) {
+            let acquired_at: u64 = env.storage().persistent()
+
+                .get(&DataKey::AcquiredAt(asset_id, from.clone()))
+
+                .unwrap_or(0);
+
+            if acquired_at > 0
+
+                && env.ledger().timestamp() < acquired_at.saturating_add(lockup_seconds)
+
+            {
 
                 panic_with_error!(&env, Error::NotAuthorized);
 
@@ -1039,7 +1648,7 @@ impl MultiAssetManager {
         }
 
 
-        let new_from = checked_sub_u32(from_balance, amount);
+        let new_from = checked_sub_u32(&env, from_balance, amount);
 
         let to_balance: u32 = env.storage().persistent()
 
@@ -1047,7 +1656,7 @@ impl MultiAssetManager {
 
             .unwrap_or(0);
 
-        let new_to = checked_add_u32(to_balance, amount);
+        let new_to = checked_add_u32(&env, to_balance, amount);
 
 
         env.storage().persistent().set(&DataKey::AssetBalance(asset_id, from.clone()), &new_from);
@@ -1200,12 +1809,21 @@ mod tests {
 
     use super::*;
 
-    use soroban_sdk::testutils::Address as _;
+    use soroban_sdk::testutils::Address as _;    // `#![no_std]` crate: link `std` in the test build so `format!` works.
+
+    extern crate std;
+
+    use std::format;
 
 
-    fn setup() -> (Env, Address, MultiAssetManagerClient) {
+    fn setup() -> (Env, Address, MultiAssetManagerClient<'static>) {
 
         let env = Env::default();
+
+        // Admin-only functions call `require_auth`; the test env must mock
+        // authorization the same way the main contract's tests do.
+
+        env.mock_all_auths();
 
         let admin = Address::generate(&env);
 
@@ -1220,11 +1838,51 @@ mod tests {
     }
 
 
+    /// Build a `Vec<Address>` of approvers for the 2-of-3 multi-sig check.
+
+    fn approval_vec(env: &Env, addresses: &[&Address]) -> Vec<Address> {
+
+        let mut result = Vec::new(env);
+
+        for address in addresses {
+
+            result.push_back((*address).clone());
+
+        }
+
+        result
+
+    }
+
+
+    /// `setup()` plus the three designated curators required by the
+
+    /// multi-sig minting workflow (Issue #595).
+
+    fn setup_with_curators() -> (Env, Address, MultiAssetManagerClient<'static>, Address, Address, Address) {
+
+        let (env, admin, client) = setup();
+
+        let c1 = Address::generate(&env);
+
+        let c2 = Address::generate(&env);
+
+        let c3 = Address::generate(&env);
+
+        let curators = approval_vec(&env, &[&c1, &c2, &c3]);
+
+        client.set_curators(&curators);
+
+        (env, admin, client, c1, c2, c3)
+
+    }
+
+
     #[test]
 
     fn test_init() {
 
-        let (env, admin, client) = setup();
+        let (env, admin, client, c1, c2, _c3) = setup_with_curators();
 
         assert!(client.is_initialized());
 
@@ -1243,6 +1901,8 @@ mod tests {
 
         let env = Env::default();
 
+        env.mock_all_auths();
+
         let admin = Address::generate(&env);
 
         let contract_id = env.register(MultiAssetManager, ());
@@ -1260,7 +1920,7 @@ mod tests {
 
     fn test_register_and_query_asset() {
 
-        let (env, admin, client) = setup();
+        let (env, admin, client, c1, c2, _c3) = setup_with_curators();
 
         let payment_token = Address::generate(&env);
 
@@ -1275,6 +1935,8 @@ mod tests {
 
         let pricing_model = PricingModel::Fixed;
 
+
+        let approvers = approval_vec(&env, &[&c1, &c2]);
 
         let asset_id = client.register_asset(
 
@@ -1293,6 +1955,20 @@ mod tests {
             &payment_token,
 
             &treasury,
+
+            &approvers,
+
+            &false,
+
+            &false,
+
+            &0u32,
+
+            &0u32,
+
+            &0u32,
+
+            &Vec::<String>::new(&env),
 
         );
 
@@ -1326,7 +2002,7 @@ mod tests {
 
     fn test_register_multiple_assets() {
 
-        let (env, admin, client) = setup();
+        let (env, admin, client, c1, c2, _c3) = setup_with_curators();
 
         let payment_token = Address::generate(&env);
 
@@ -1338,6 +2014,8 @@ mod tests {
             let name = String::from_str(&env, &format!("Asset {}", i));
 
             let meta = String::from_str(&env, &format!("meta{}", i));
+
+            let approvers = approval_vec(&env, &[&c1, &c2]);
 
             let asset_id = client.register_asset(
 
@@ -1356,6 +2034,20 @@ mod tests {
                 &payment_token,
 
                 &treasury,
+
+                &approvers,
+
+                &false,
+
+                &false,
+
+                &0u32,
+
+                &0u32,
+
+                &0u32,
+
+                &Vec::<String>::new(&env),
 
             );
 
@@ -1377,7 +2069,7 @@ mod tests {
 
     fn test_asset_lifecycle() {
 
-        let (env, admin, client) = setup();
+        let (env, admin, client, c1, c2, _c3) = setup_with_curators();
 
         let payment_token = Address::generate(&env);
 
@@ -1387,7 +2079,9 @@ mod tests {
 
         let meta = String::from_str(&env, "ipfs://bond");
 
-        let id = client.register_asset(&name, &AssetType::Debt, &meta, &1000u32, &PricingModel::Fixed, &200i128, &payment_token, &treasury);
+        let approvers = approval_vec(&env, &[&c1, &c2]);
+
+        let id = client.register_asset(&name, &AssetType::Debt, &meta, &1000u32, &PricingModel::Fixed, &200i128, &payment_token, &treasury, &approvers, &false, &false, &0u32, &0u32, &0u32, &Vec::<String>::new(&env));
 
 
         // Draft -> Active
@@ -1432,7 +2126,7 @@ mod tests {
 
     fn test_update_pricing() {
 
-        let (env, admin, client) = setup();
+        let (env, admin, client, c1, c2, _c3) = setup_with_curators();
 
         let payment_token = Address::generate(&env);
 
@@ -1442,7 +2136,9 @@ mod tests {
 
         let meta = String::from_str(&env, "ipfs://dyn");
 
-        let id = client.register_asset(&name, &AssetType::Equity, &meta, &500u32, &PricingModel::Fixed, &100i128, &payment_token, &treasury);
+        let approvers = approval_vec(&env, &[&c1, &c2]);
+
+        let id = client.register_asset(&name, &AssetType::Equity, &meta, &500u32, &PricingModel::Fixed, &100i128, &payment_token, &treasury, &approvers, &false, &false, &0u32, &0u32, &0u32, &Vec::<String>::new(&env));
 
 
         let thresholds = Vec::new(&env);
@@ -1463,14 +2159,15 @@ mod tests {
 
     #[test]
 
-    fn test_buy_asset_shares() {
+    fn test_buy_asset_shares() {        let (env, admin, client, c1, c2, _c3) = setup_with_curators();
 
-        let (env, admin, client) = setup();
+        // Deploy a real Stellar Asset Contract so `StellarAssetClient::mint`
 
-        let payment_token = Address::generate(&env);
+        // and the contract's token `transfer` calls succeed.
+
+        let payment_token = env.register_stellar_asset_contract(admin.clone());
 
         let treasury = Address::generate(&env);
-
 
         // Register asset
 
@@ -1478,7 +2175,9 @@ mod tests {
 
         let meta = String::from_str(&env, "ipfs://test");
 
-        let id = client.register_asset(&name, &AssetType::RealEstate, &meta, &1000u32, &PricingModel::Fixed, &50i128, &payment_token, &treasury);
+        let approvers = approval_vec(&env, &[&c1, &c2]);
+
+        let id = client.register_asset(&name, &AssetType::RealEstate, &meta, &1000u32, &PricingModel::Fixed, &50i128, &payment_token, &treasury, &approvers, &false, &false, &0u32, &0u32, &0u32, &Vec::<String>::new(&env));
 
 
         // Activate
@@ -1496,7 +2195,7 @@ mod tests {
 
         // Buy shares
 
-        client.buy_asset_shares(&id, &buyer, &100);
+        client.buy_asset_shares(&id, &buyer, &100, &i128::MAX);
 
 
         let balance = client.get_asset_balance(&id, &buyer);
@@ -1522,11 +2221,119 @@ mod tests {
 
     #[test]
 
+    fn test_burn_and_reconstitute() {
+
+        let (env, _admin, client, c1, c2, _c3) = setup_with_curators();
+
+        // Deploy a real Stellar Asset Contract so `StellarAssetClient::mint`
+
+        // and the contract's token `transfer` calls succeed.
+
+        let payment_token = env.register_stellar_asset_contract(_admin.clone());
+
+        let treasury = Address::generate(&env);
+
+        let approvers = approval_vec(&env, &[&c1, &c2]);
+
+        let id = client.register_asset(
+            &String::from_str(&env, "Reconstitutable Asset"),
+            &AssetType::RealEstate,
+            &String::from_str(&env, "ipfs://reconstitute"),
+            &100u32,
+            &PricingModel::Fixed,
+            &50i128,
+            &payment_token,
+            &treasury,
+            &approvers,
+            &false,
+            &false,
+            &0u32,
+            &0u32,
+            &0u32,
+            &Vec::<String>::new(&env),
+        );
+
+        client.activate_asset(&id);
+
+        let owner = Address::generate(&env);
+
+        soroban_sdk::token::StellarAssetClient::new(&env, &payment_token).mint(&owner, &5000i128);
+
+        client.buy_asset_shares(&id, &owner, &100, &i128::MAX);
+        client.burn_and_reconstitute(&id, &owner);
+
+        assert_eq!(client.get_asset_balance(&id, &owner), 0);
+
+        let info = client.get_asset(&id).unwrap();
+
+        assert_eq!(info.total_supply, 0);
+
+        assert_eq!(info.available_supply, 0);
+
+        assert_eq!(info.status, AssetStatus::Archived);
+
+    }
+
+
+    #[test]
+
+    #[should_panic(expected = "Error(Contract, #8)")]
+
+    fn test_burn_and_reconstitute_requires_full_supply() {
+
+        let (env, _admin, client, c1, c2, _c3) = setup_with_curators();
+
+        // Deploy a real Stellar Asset Contract so `StellarAssetClient::mint`
+
+        // and the contract's token `transfer` calls succeed.
+
+        let payment_token = env.register_stellar_asset_contract(_admin.clone());
+
+        let treasury = Address::generate(&env);
+
+        let approvers = approval_vec(&env, &[&c1, &c2]);
+
+        let id = client.register_asset(
+            &String::from_str(&env, "Partially Owned Asset"),
+            &AssetType::RealEstate,
+            &String::from_str(&env, "ipfs://partial"),
+            &100u32,
+            &PricingModel::Fixed,
+            &50i128,
+            &payment_token,
+            &treasury,
+            &approvers,
+            &false,
+            &false,
+            &0u32,
+            &0u32,
+            &0u32,
+            &Vec::<String>::new(&env),
+        );
+
+        client.activate_asset(&id);
+
+        let owner = Address::generate(&env);
+
+        soroban_sdk::token::StellarAssetClient::new(&env, &payment_token).mint(&owner, &5000i128);
+
+        client.buy_asset_shares(&id, &owner, &99, &i128::MAX);
+        client.burn_and_reconstitute(&id, &owner);
+
+    }
+
+
+    #[test]
+
     fn test_transfer_asset_shares() {
 
-        let (env, admin, client) = setup();
+        let (env, admin, client, c1, c2, _c3) = setup_with_curators();
 
-        let payment_token = Address::generate(&env);
+        // Deploy a real Stellar Asset Contract so `StellarAssetClient::mint`
+
+        // and the contract's token `transfer` calls succeed.
+
+        let payment_token = env.register_stellar_asset_contract(admin.clone());
 
         let treasury = Address::generate(&env);
 
@@ -1534,7 +2341,9 @@ mod tests {
 
         let meta = String::from_str(&env, "ipfs://transfer");
 
-        let id = client.register_asset(&name, &AssetType::RealEstate, &meta, &1000u32, &PricingModel::Fixed, &50i128, &payment_token, &treasury);
+        let approvers = approval_vec(&env, &[&c1, &c2]);
+
+        let id = client.register_asset(&name, &AssetType::RealEstate, &meta, &1000u32, &PricingModel::Fixed, &50i128, &payment_token, &treasury, &approvers, &false, &false, &0u32, &0u32, &0u32, &Vec::<String>::new(&env));
 
         client.activate_asset(&id);
 
@@ -1544,7 +2353,7 @@ mod tests {
         let sac = soroban_sdk::token::StellarAssetClient::new(&env, &payment_token);
         sac.mint(&buyer, &100000i128);
 
-        client.buy_asset_shares(&id, &buyer, &200);
+        client.buy_asset_shares(&id, &buyer, &200, &i128::MAX);
 
 
         let recipient = Address::generate(&env);
@@ -1563,7 +2372,7 @@ mod tests {
 
     fn test_asset_restrictions() {
 
-        let (env, admin, client) = setup();
+        let (env, admin, client, c1, c2, _c3) = setup_with_curators();
 
         let payment_token = Address::generate(&env);
 
@@ -1573,7 +2382,9 @@ mod tests {
 
         let meta = String::from_str(&env, "ipfs://kyc");
 
-        let id = client.register_asset(&name, &AssetType::Equity, &meta, &1000u32, &PricingModel::Fixed, &100i128, &payment_token, &treasury);
+        let approvers = approval_vec(&env, &[&c1, &c2]);
+
+        let id = client.register_asset(&name, &AssetType::Equity, &meta, &1000u32, &PricingModel::Fixed, &100i128, &payment_token, &treasury, &approvers, &false, &false, &0u32, &0u32, &0u32, &Vec::<String>::new(&env));
 
 
         let restricted = AssetRestrictions {
@@ -1613,7 +2424,7 @@ mod tests {
 
     fn test_templates() {
 
-        let (env, admin, client) = setup();
+        let (env, admin, client, c1, c2, _c3) = setup_with_curators();
 
         let name = String::from_str(&env, "RealEstateTemplate");
 
@@ -1654,7 +2465,7 @@ mod tests {
 
     fn test_list_by_status() {
 
-        let (env, admin, client) = setup();
+        let (env, admin, client, c1, c2, _c3) = setup_with_curators();
 
         let payment_token = Address::generate(&env);
 
@@ -1669,7 +2480,9 @@ mod tests {
 
             let meta = String::from_str(&env, &format!("meta{}", i));
 
-            let id = client.register_asset(&name, &AssetType::Other, &meta, &100u32, &PricingModel::Fixed, &10i128, &payment_token, &treasury);
+            let approvers = approval_vec(&env, &[&c1, &c2]);
+
+            let id = client.register_asset(&name, &AssetType::Other, &meta, &100u32, &PricingModel::Fixed, &10i128, &payment_token, &treasury, &approvers, &false, &false, &0u32, &0u32, &0u32, &Vec::<String>::new(&env));
 
             if i % 2 == 0 {
 
@@ -1688,6 +2501,362 @@ mod tests {
         let draft = client.list_assets_by_status(&AssetStatus::Draft, &0, &10);
 
         assert_eq!(draft.len(), 2);
+
+    }
+
+
+    // -- Multi-Sig Approval Tests (Issue #595) --------------------
+
+    #[test]
+
+    fn test_register_asset_two_of_three_success() {
+
+        let (env, _admin, client, c1, c2, _c3) = setup_with_curators();
+
+        let payment_token = Address::generate(&env);
+
+        let treasury = Address::generate(&env);
+
+        let approvers = approval_vec(&env, &[&c1, &c2]);
+
+        let id = client.register_asset(
+
+            &String::from_str(&env, "Two-Sig Asset"),
+
+            &AssetType::RealEstate,
+
+            &String::from_str(&env, "ipfs://two-sig"),
+
+            &100u32,
+
+            &PricingModel::Fixed,
+
+            &50i128,
+
+            &payment_token,
+
+            &treasury,
+
+            &approvers,
+
+            &false,
+
+            &false,
+
+            &0u32,
+
+            &0u32,
+
+            &0u32,
+
+            &Vec::<String>::new(&env),
+
+        );
+
+        assert_eq!(id, 1);
+
+        let info = client.get_asset(&1).unwrap();
+
+        assert_eq!(info.total_supply, 100);
+
+        assert_eq!(info.status, AssetStatus::Draft);
+
+    }
+
+
+    #[test]
+
+    fn test_register_asset_three_of_three_success() {
+
+        let (env, _admin, client, c1, c2, c3) = setup_with_curators();
+
+        let payment_token = Address::generate(&env);
+
+        let treasury = Address::generate(&env);
+
+        let approvers = approval_vec(&env, &[&c1, &c2, &c3]);
+
+        let id = client.register_asset(
+
+            &String::from_str(&env, "Three-Sig Asset"),
+
+            &AssetType::Commodities,
+
+            &String::from_str(&env, "ipfs://three-sig"),
+
+            &500u32,
+
+            &PricingModel::Fixed,
+
+            &25i128,
+
+            &payment_token,
+
+            &treasury,
+
+            &approvers,
+
+            &false,
+
+            &false,
+
+            &0u32,
+
+            &0u32,
+
+            &0u32,
+
+            &Vec::<String>::new(&env),
+
+        );
+
+        assert_eq!(id, 1);
+
+    }
+
+
+    #[test]
+
+    #[should_panic(expected = "Error(Contract, #17)")]
+
+    fn test_register_asset_rejects_single_signature() {
+
+        let (env, _admin, client, c1, _c2, _c3) = setup_with_curators();
+
+        let payment_token = Address::generate(&env);
+
+        let treasury = Address::generate(&env);
+
+        // Only one curator approves -> minting must be rejected.
+
+        let approvers = approval_vec(&env, &[&c1]);
+
+        client.register_asset(
+
+            &String::from_str(&env, "Single-Sig Asset"),
+
+            &AssetType::Art,
+
+            &String::from_str(&env, "ipfs://single-sig"),
+
+            &100u32,
+
+            &PricingModel::Fixed,
+
+            &10i128,
+
+            &payment_token,
+
+            &treasury,
+
+            &approvers,
+
+            &false,
+
+            &false,
+
+            &0u32,
+
+            &0u32,
+
+            &0u32,
+
+            &Vec::<String>::new(&env),
+
+        );
+
+    }
+
+
+    #[test]
+
+    #[should_panic(expected = "Error(Contract, #17)")]
+
+    fn test_register_asset_rejects_duplicate_single_signer() {
+
+        let (env, _admin, client, c1, _c2, _c3) = setup_with_curators();
+
+        let payment_token = Address::generate(&env);
+
+        let treasury = Address::generate(&env);
+
+        // The same curator listed twice must not count as two approvals.
+
+        let approvers = approval_vec(&env, &[&c1, &c1]);
+
+        client.register_asset(
+
+            &String::from_str(&env, "Dup-Sig Asset"),
+
+            &AssetType::Debt,
+
+            &String::from_str(&env, "ipfs://dup-sig"),
+
+            &100u32,
+
+            &PricingModel::Fixed,
+
+            &10i128,
+
+            &payment_token,
+
+            &treasury,
+
+            &approvers,
+
+            &false,
+
+            &false,
+
+            &0u32,
+
+            &0u32,
+
+            &0u32,
+
+            &Vec::<String>::new(&env),
+
+        );
+
+    }
+
+
+    #[test]
+
+    #[should_panic(expected = "Error(Contract, #18)")]
+
+    fn test_register_asset_rejects_non_curator_signer() {
+
+        let (env, _admin, client, c1, _c2, _c3) = setup_with_curators();
+
+        let payment_token = Address::generate(&env);
+
+        let treasury = Address::generate(&env);
+
+        let outsider = Address::generate(&env);
+
+        // A curator plus an address outside the designated set must fail.
+
+        let approvers = approval_vec(&env, &[&c1, &outsider]);
+
+        client.register_asset(
+
+            &String::from_str(&env, "Outsider Asset"),
+
+            &AssetType::Equity,
+
+            &String::from_str(&env, "ipfs://outsider"),
+
+            &100u32,
+
+            &PricingModel::Fixed,
+
+            &10i128,
+
+            &payment_token,
+
+            &treasury,
+
+            &approvers,
+
+            &false,
+
+            &false,
+
+            &0u32,
+
+            &0u32,
+
+            &0u32,
+
+            &Vec::<String>::new(&env),
+
+        );
+
+    }
+
+
+    #[test]
+
+    #[should_panic(expected = "Error(Contract, #16)")]
+
+    fn test_set_curators_requires_exactly_three() {
+
+        let (env, _admin, client, c1, c2, _c3) = setup_with_curators();
+
+        // Attempting to reconfigure with only two curators is invalid.
+
+        let curators = approval_vec(&env, &[&c1, &c2]);
+
+        client.set_curators(&curators);
+
+    }
+
+
+    #[test]
+
+    #[should_panic(expected = "Error(Contract, #16)")]
+
+    fn test_set_curators_rejects_duplicates() {
+
+        let (env, _admin, client, c1, _c2, _c3) = setup_with_curators();
+
+        let c4 = Address::generate(&env);
+
+        let curators = approval_vec(&env, &[&c1, &c1, &c4]);
+
+        client.set_curators(&curators);
+
+    }
+
+
+    #[test]
+
+    #[should_panic(expected = "Curators not configured")]
+
+    fn test_register_asset_requires_curator_setup() {
+
+        let (env, _admin, client) = setup();
+
+        let payment_token = Address::generate(&env);
+
+        let treasury = Address::generate(&env);
+
+        let approvers = approval_vec(&env, &[&treasury]);
+
+        client.register_asset(
+
+            &String::from_str(&env, "No Curators"),
+
+            &AssetType::Other,
+
+            &String::from_str(&env, "ipfs://no-curators"),
+
+            &100u32,
+
+            &PricingModel::Fixed,
+
+            &10i128,
+
+            &payment_token,
+
+            &treasury,
+
+            &approvers,
+
+            &false,
+
+            &false,
+
+            &0u32,
+
+            &0u32,
+
+            &0u32,
+
+            &Vec::<String>::new(&env),
+
+        );
 
     }
 

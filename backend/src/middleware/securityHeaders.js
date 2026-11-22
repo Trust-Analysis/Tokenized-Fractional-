@@ -23,12 +23,121 @@
 import helmet from 'helmet';
 
 /**
+ * Build connect-src CSP directive with WebSocket and RPC provider support.
+ * @param {boolean} isDevelopment - Whether running in development mode
+ * @returns {Array<string>} Array of allowed connect sources
+ */
+function buildConnectSources(isDevelopment) {
+  const sources = ["'self'"];
+  
+  // Add WebSocket support (ws:// and wss:// for same-origin)
+  sources.push('ws:', 'wss:');
+  
+  // Add verified RPC providers (Stellar and other blockchain RPCs)
+  const rpcProviders = process.env.CSP_RPC_PROVIDERS || 
+    'https://horizon.stellar.org,https://rpc.mainnet.stellar.org,https://rpc.testnet.stellar.org';
+  sources.push(...rpcProviders.split(',').map(s => s.trim()).filter(Boolean));
+  
+  // Add CDN URLs for connect sources (for API calls to CDN)
+  const cdnUrl = process.env.CDN_URL || process.env.ASSET_CDN_URL;
+  if (cdnUrl) {
+    try {
+      const url = new URL(cdnUrl);
+      sources.push(url.origin);
+    } catch {
+      // Invalid URL, skip
+    }
+  }
+  
+  // In development, allow localhost connections
+  if (isDevelopment) {
+    sources.push('http://localhost:*', 'http://127.0.0.1:*');
+  }
+  
+  return sources;
+}
+
+/**
+ * Build img-src CSP directive with CDN asset support.
+ * @param {boolean} isDevelopment - Whether running in development mode
+ * @returns {Array<string>} Array of allowed image sources
+ */
+function buildImgSources(isDevelopment) {
+  const sources = ["'self'", 'data:', 'https:'];
+  
+  // Add CDN URL for images
+  const cdnUrl = process.env.CDN_URL || process.env.ASSET_CDN_URL;
+  if (cdnUrl) {
+    try {
+      const url = new URL(cdnUrl);
+      sources.push(url.origin);
+    } catch {
+      // Invalid URL, skip
+    }
+  }
+  
+  // Add additional image sources from environment
+  const additionalImgSources = process.env.CSP_IMG_SOURCES;
+  if (additionalImgSources) {
+    sources.push(...additionalImgSources.split(',').map(s => s.trim()).filter(Boolean));
+  }
+  
+  return sources;
+}
+
+/**
+ * Build script-src CSP directive with development support.
+ * @param {boolean} isDevelopment - Whether running in development mode
+ * @returns {Array<string>} Array of allowed script sources
+ */
+function buildScriptSources(isDevelopment) {
+  const sources = ["'self'"];
+  
+  // In development, allow unsafe-inline for hot module replacement
+  if (isDevelopment) {
+    sources.push("'unsafe-inline'", "'unsafe-eval'");
+  }
+  
+  // Add additional script sources from environment
+  const additionalScriptSources = process.env.SCRIPT_SOURCES;
+  if (additionalScriptSources) {
+    sources.push(...additionalScriptSources.split(',').map(s => s.trim()).filter(Boolean));
+  }
+  
+  return sources;
+}
+
+/**
+ * Build style-src CSP directive with development support.
+ * @param {boolean} isDevelopment - Whether running in development mode
+ * @returns {Array<string>} Array of allowed style sources
+ */
+function buildStyleSources(isDevelopment) {
+  const sources = ["'self'"];
+  
+  // In development, allow unsafe-inline for hot module replacement
+  if (isDevelopment) {
+    sources.push("'unsafe-inline'");
+  }
+  
+  // Add additional style sources from environment
+  const additionalStyleSources = process.env.STYLE_SOURCES;
+  if (additionalStyleSources) {
+    sources.push(...additionalStyleSources.split(',').map(s => s.trim()).filter(Boolean));
+  }
+  
+  return sources;
+}
+
+/**
  * Create security headers middleware with environment-driven configuration.
  * @param {Object} logger - Logger instance
  * @returns {Function} Express middleware function
  */
 export function createSecurityHeadersMiddleware(logger) {
   // Read configuration from environment with sensible defaults
+  const isDevelopment = process.env.NODE_ENV !== 'production';
+  
   const config = {
     // HSTS: Force HTTPS for 1 year (31536000 seconds), include subdomains
     hstsMaxAge: parseInt(process.env.HSTS_MAX_AGE || '31536000', 10),
@@ -43,16 +152,16 @@ export function createSecurityHeadersMiddleware(logger) {
     // Frame ancestors: Restrict embedding in iframes
     frameAncestors: (process.env.FRAME_ANCESTORS || "'self'").split(',').map((s) => s.trim()),
 
+    // Build connect sources with WebSocket support
+    connectSources: buildConnectSources(isDevelopment),
+    
+    // Build image sources with CDN support
+    imgSources: buildImgSources(isDevelopment),
+
     // Allowed script and style sources
-    scriptSources: (process.env.SCRIPT_SOURCES || "'self' 'unsafe-inline'")
-      .split(',')
-      .map((s) => s.trim()),
-    styleSources: (process.env.STYLE_SOURCES || "'self' 'unsafe-inline'")
-      .split(',')
-      .map((s) => s.trim()),
+    scriptSources: buildScriptSources(isDevelopment),
+    styleSources: buildStyleSources(isDevelopment),
     fontSources: (process.env.FONT_SOURCES || "'self'").split(',').map((s) => s.trim()),
-    imgSources: (process.env.IMG_SOURCES || "'self' data: https:").split(',').map((s) => s.trim()),
-    connectSources: (process.env.CONNECT_SOURCES || "'self'").split(',').map((s) => s.trim()),
     mediaSources: (process.env.MEDIA_SOURCES || "'self'").split(',').map((s) => s.trim()),
 
     // Feature Policy: Restrict dangerous features

@@ -54,7 +54,7 @@ export function useGraphQLSubscription(wsUrl, options = {}) {
         const assetId = message.data.contractId || message.data.id;
         if (assetId) {
           const specificKey = `${cacheKey}:${assetId}`;
-          setQueryData(specificKey, {
+          applySubscriptionDelta(specificKey, {
             ...message.data,
             lastUpdated: Date.now(),
           });

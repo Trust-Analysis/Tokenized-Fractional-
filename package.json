@@ -9,9 +9,21 @@
     "lint": "npm --prefix backend run lint && npm --prefix frontend run lint",
     "lint:ci": "npm --prefix backend run lint:ci && npm --prefix frontend run lint:ci",
     "lint:fix": "npm --prefix backend run lint:fix && npm --prefix frontend run lint:fix",
+    "build:sdk": "npm --prefix sdk run build",
+    "typecheck:sdk": "npm --prefix sdk run typecheck",
+    "test:sdk": "npm --prefix sdk test",
     "lint:backend": "cd backend && npm run lint --if-present",
+    "test": "python3 -m unittest discover -s tests -v",
     "test:backend": "cd backend && npm test",
-    "test:frontend": "cd frontend && npm run test:e2e --if-present"
+    "test:frontend": "cd frontend && npm run test:e2e --if-present",
+    "loadtest:install": "npm --prefix load-test install",
+    "loadtest:smoke": "npm --prefix load-test run test:smoke",
+    "loadtest:orders": "npm --prefix load-test run test:orders",
+    "loadtest:websocket": "npm --prefix load-test run test:websocket",
+    "loadtest:websocket:cross": "npm --prefix load-test run test:websocket:cross-instance",
+    "gateway:check-parity": "node gateway/scripts/check-parity.js",
+    "loadtest:full": "npm --prefix load-test run test:full",
+    "loadtest:baseline": "node load-test/helpers/run-baseline.js"
   },
   "devDependencies": {
     "@commitlint/cli": "^19.6.0",
@@ -29,5 +41,8 @@
     "**/*.json": [
       "node -e \"JSON.parse(require('fs').readFileSync(process.argv[1]))\" --"
     ]
+  },
+  "dependencies": {
+    "recharts": "^3.10.1"
   }
 }

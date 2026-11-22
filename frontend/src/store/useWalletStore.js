@@ -41,6 +41,13 @@ export const WALLET_PROVIDERS = [
     status: "coming_soon",
     downloadUrl: "https://albedo.link",
   },
+  {
+    id: "walletconnect",
+    name: "WalletConnect",
+    description: "Connect mobile & hardware wallets (Lobstr, xBull and more) with a QR code",
+    status: "available",
+    downloadUrl: "https://walletconnect.com/",
+  },
 ];
 
 export const useWalletStore = create(
@@ -106,7 +113,7 @@ export const useWalletStore = create(
       },
 
       checkConnection: async () => {
-        if (import.meta.env.VITE_MOCK_WALLET === 'true') {
+        if (import.meta.env.DEV && import.meta.env.VITE_MOCK_WALLET === 'true') {
           const stored = localStorage.getItem('mock_wallet_pubkey');
           if (stored) {
             set({ publicKey: stored, walletError: null });
@@ -134,7 +141,7 @@ export const useWalletStore = create(
        */
       connect: async () => {
         set({ isConnecting: true, walletError: null });
-        if (import.meta.env.VITE_MOCK_WALLET === 'true') {
+        if (import.meta.env.DEV && import.meta.env.VITE_MOCK_WALLET === 'true') {
           await new Promise((resolve) => setTimeout(resolve, 500));
           const mockPubKey = 'GBAZE64FKVPG4JUUP2BH63746JJ22G3A2S4QPF4UWKVA2RELLFLQZQVR';
           localStorage.setItem('mock_wallet_pubkey', mockPubKey);
@@ -159,9 +166,16 @@ export const useWalletStore = create(
       },
 
       disconnect: () => {
-        if (import.meta.env.VITE_MOCK_WALLET === 'true') {
+        if (import.meta.env.DEV && import.meta.env.VITE_MOCK_WALLET === 'true') {
           localStorage.removeItem('mock_wallet_pubkey');
           localStorage.removeItem('mock_shares_balance');
+        }
+        // Best-effort WalletConnect cleanup (Issue #568); resolved async fire-and-forget.
+        if (get().activeProvider === 'walletconnect' || get().activeWallet === 'walletconnect') {
+          Promise.resolve()
+            .then(() => import('../services/walletConnectService.js'))
+            .then(({ disconnectWalletConnect }) => disconnectWalletConnect())
+            .catch(() => {});
         }
         set({
           publicKey: null,
@@ -169,10 +183,54 @@ export const useWalletStore = create(
           walletError: null,
           isConnecting: false,
           activeProvider: null,
+          activeWallet: null,
         });
       },
 
       setShares: (n) => set({ shares: n }),
+
+      // ── WalletConnect (Issue #568) ──────────────────────────────────────────
+
+      /**
+       * Begin a WalletConnect pairing session and return the URI for the QR
+       * modal. Resolves to null when WalletConnect is unavailable.
+       */
+      connectByWalletConnect: async () => {
+        set({ isConnecting: true, walletError: null, activeProvider: 'walletconnect', activeWallet: 'walletconnect' });
+        try {
+          const { beginWalletConnectPairing } = await import('../services/walletConnectService.js');
+          const uri = await beginWalletConnectPairing();
+          if (!uri) {
+            throw new Error('WalletConnect is not configured. Set VITE_WALLETCONNECT_PROJECT_ID.');
+          }
+          return uri;
+        } catch (err) {
+          const msg = 'Failed to start a WalletConnect session. Check the project id and try again.';
+          console.error('[WalletStore] WalletConnect pairing failed:', err);
+          set({ walletError: msg, isConnecting: false, activeWallet: null });
+          return null;
+        }
+      },
+
+      /**
+       * Poll an active WalletConnect session for the Stellar public key. Called
+       * repeatedly while the QR modal is open until a wallet approves.
+       */
+      finishWalletConnectSession: async () => {
+        if (!get().isConnecting && get().activeWallet !== 'walletconnect') return null;
+        try {
+          const { getWalletConnectPublicKey } = await import('../services/walletConnectService.js');
+          const pubKey = await getWalletConnectPublicKey();
+          if (pubKey) {
+            set({ publicKey: pubKey, isConnecting: false, activeProvider: 'walletconnect' });
+            get().recordConnection({ wallet: 'walletconnect', publicKey: pubKey });
+            return pubKey;
+          }
+        } catch (err) {
+          console.error('[WalletStore] WalletConnect session lookup failed:', err);
+        }
+        return null;
+      },
 
       setWalletError: (msg) => set({ walletError: msg }),
 

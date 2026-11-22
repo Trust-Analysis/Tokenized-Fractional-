@@ -1,7 +1,6 @@
 import React, { memo, useCallback, useRef } from 'react';
 import AssetCard from '../AssetCard/AssetCard';
 import { AssetCardSkeleton } from '../Skeleton';
-import AssetCardSkeleton from '../Skeleton/AssetCardSkeleton';
 import VirtualList from '../VirtualList/VirtualList';
 import Card from '../Card/Card';
 import EmptyState from '../EmptyState/EmptyState';
@@ -22,7 +21,7 @@ const ITEM_HEIGHT = 340;
  * Cards receive a visible focus ring through the CSS class `.cardFocusable` so
  * the indicator is consistent across dark and light themes.
  */
-function AssetGrid({ assets = [], loading = false, error = null, isEmpty = false }) {
+function AssetGrid({ assets = [], loading = false, error = null, isEmpty = false, hasNextPage = false, onLoadMore = null, loadingMore = false }) {
   // Ref for the grid container so we can manage roving-tabindex focus
   const gridRef = useRef(null);
   
@@ -129,20 +128,17 @@ function AssetGrid({ assets = [], loading = false, error = null, isEmpty = false
     );
   }
 
-  if (assets.length < 20) {
-    return (
-      /* eslint-disable jsx-a11y/no-noninteractive-element-interactions */
+  const gridContent = (
+    <>
       <div
         role="list"
         ref={gridRef}
         className={styles.grid}
         onKeyDown={handleKeyDown}
-        /* grid itself is not focusable via tab; cards are */
         tabIndex={-1}
         aria-label="Asset cards — use arrow keys to navigate"
       >
         {assets.map((asset) => (
-          /* Each card wrapper is keyboard-focusable */
           <div
             key={asset.contractId}
             role="listitem"
@@ -155,7 +151,26 @@ function AssetGrid({ assets = [], loading = false, error = null, isEmpty = false
           </div>
         ))}
       </div>
-    );
+
+      {/* Load More button for cursor-based infinite scrolling (Issue #513) */}
+      {hasNextPage && onLoadMore && (
+        <div className={styles.loadMoreWrapper}>
+          <button
+            type="button"
+            className={styles.loadMoreButton}
+            onClick={onLoadMore}
+            disabled={loadingMore}
+            aria-label="Load more assets"
+          >
+            {loadingMore ? 'Loading…' : 'Load More'}
+          </button>
+        </div>
+      )}
+    </>
+  );
+
+  if (assets.length < 20) {
+    return gridContent;
   }
 
   return (
@@ -184,6 +199,20 @@ function AssetGrid({ assets = [], loading = false, error = null, isEmpty = false
           </div>
         )}
       />
+      {/* Load More button for cursor-based infinite scrolling (Issue #513) */}
+      {hasNextPage && onLoadMore && (
+        <div className={styles.loadMoreWrapper}>
+          <button
+            type="button"
+            className={styles.loadMoreButton}
+            onClick={onLoadMore}
+            disabled={loadingMore}
+            aria-label="Load more assets"
+          >
+            {loadingMore ? 'Loading…' : 'Load More'}
+          </button>
+        </div>
+      )}
     </div>
   );
 }

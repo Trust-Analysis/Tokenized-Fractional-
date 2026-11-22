@@ -1,6 +1,7 @@
 import React from 'react';
 import Badge from '../Badge/Badge';
 import Button from '../Button/Button';
+import WalletAddressBadge from '../WalletAddressBadge/WalletAddressBadge';
 import styles from './Header.module.css';
 
 /**
@@ -64,14 +65,8 @@ export default function Header({
             {isConnecting ? 'Connecting…' : 'Connect Freighter'}
           </Button>
         ) : (
-          <div className={styles.walletInfo}>
-            <span className={styles.publicKey} title={publicKey}>
-              {publicKey}
-            </span>
-            <Button onClick={onDisconnect} variant="danger">
-              Disconnect
-            </Button>
-          </div>
+          // Issue #791: persistent truncated address with copy + disconnect.
+          <WalletAddressBadge publicKey={publicKey} onDisconnect={onDisconnect} />
         )}
       </div>
     </header>

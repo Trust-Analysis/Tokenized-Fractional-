@@ -1,4 +1,5 @@
 import { randomUUID } from 'crypto';
+import { getClientIp } from '../utils/clientIp.js';
 
 const MAX_IN_MEMORY_ENTRIES = 1000;
 
@@ -13,7 +14,7 @@ export function createAuditLogService(db = null) {
       userId,
       timestamp: new Date().toISOString(),
       details: typeof details === 'object' ? details : { message: details },
-      ip: req?.ip || req?.connection?.remoteAddress || null,
+      ip: getClientIp(req),
       userAgent: req?.headers?.['user-agent'] || null,
       requestId: req?.requestId || null,
     };

@@ -10,7 +10,7 @@
  */
 
 import { EventEmitter } from 'events';
-import { logger } from './index.js';
+import { logger } from './logger.js';
 import { optimizationManager } from './subscription-optimization.js';
 
 /**
@@ -324,12 +324,39 @@ export function publishAssetListed(data) {
   });
 }
 
+const previousAssetStates = new Map();
+
 export function publishAssetUpdated(data) {
+  const contractId = data.contractId;
+  const prevState = previousAssetStates.get(contractId) || {};
+  
+  const delta = { contractId };
+  let hasChanges = false;
+  
+  // Calculate diff between previous state and current state
+  for (const key of Object.keys(data)) {
+    if (key === 'contractId') continue;
+    
+    // Simple deep comparison for changes
+    if (JSON.stringify(prevState[key]) !== JSON.stringify(data[key])) {
+      delta[key] = data[key];
+      hasChanges = true;
+    }
+  }
+  
+  // If nothing changed, we don't broadcast
+  if (!hasChanges && Object.keys(prevState).length > 0) {
+    return;
+  }
+  
+  // Update state tracking
+  previousAssetStates.set(contractId, JSON.parse(JSON.stringify(data)));
+
   optimizationManager.metricsCollector.incrementCounter('events_published', 'asset_updated');
   pubsub.publish(SUBSCRIPTION_EVENTS.ASSET_UPDATED, {
     event: SUBSCRIPTION_EVENTS.ASSET_UPDATED,
     timestamp: new Date().toISOString(),
-    data,
+    data: delta,
   });
 }
 

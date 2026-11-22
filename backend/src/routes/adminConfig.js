@@ -261,7 +261,7 @@ export function createAdminConfigRoutes() {
   });
 
   // POST /admin/config/export - Export configuration
-  router.post('/config/export', adminAuth, (req, res) => {
+  router.post('/config/export', adminAuth, async (req, res) => {
     const { includeAudit = false } = req.body || {};
 
     const exportData = {

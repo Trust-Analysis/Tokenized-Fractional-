@@ -4,7 +4,7 @@
   "version": "1.0.0",
   "type": "module",
   "engines": {
-    "node": ">=20.18.0"
+    "node": ">=26.13.1 <27.0.0"
   },
   "scripts": {
     "dev": "vite",
@@ -18,17 +18,25 @@
     "storybook": "storybook dev -p 6006",
     "build-storybook": "storybook build",
     "deploy": "npm run build && echo 'Build complete — Render auto-deploys via render.yaml'",
-    "test:e2e": "playwright test",
+    "test:e2e": "cypress run",
     "test:e2e:ui": "playwright test --ui",
+    "test:visual": "playwright test --config playwright.visual.config.js",
+    "test:visual:update": "playwright test --config playwright.visual.config.js --update-snapshots",
     "lint": "eslint . --ext .js,.jsx",
     "lint:ci": "eslint . --ext .js,.jsx --max-warnings=0",
     "lint:fix": "eslint . --ext .js,.jsx --fix",
-    "perf:check": "node scripts/check-performance-budget.js"
+    "perf:check": "node scripts/check-performance-budget.js",
+    "i18n:check": "node scripts/check-locales.js",
+    "test:a11y": "start-server-and-test dev http://localhost:5173 test:e2e"
   },
   "dependencies": {
+    "@apollo/client": "^3.11.8",
     "@sentry/react": "^10.60.0",
     "@stellar/freighter-api": "^6.0.1",
     "@stellar/stellar-sdk": "^16.0.0",
+    "@walletconnect/utils": "^2.17.0",
+    "@walletconnect/web3wallet": "^1.14.0",
+    "graphql": "^16.9.0",
     "html2canvas": "^1.4.1",
     "i18next": "^24.0.0",
     "i18next-browser-languagedetector": "^8.0.0",
@@ -38,6 +46,7 @@
     "react-dom": "^18.3.1",
     "react-i18next": "^15.0.0",
     "react-router-dom": "^6.27.0",
+    "react-hot-toast": "^2.4.1",
     "recharts": "^2.10.3",
     "workbox-background-sync": "^7.4.1",
     "workbox-cacheable-response": "^7.4.1",
@@ -75,6 +84,11 @@
     "vite-plugin-sri3": "^2.0.0",
     "vitest": "^2.1.9",
     "@vitest/coverage-v8": "^2.1.9",
-    "workbox-window": "^7.3.0"
+    "workbox-window": "^7.3.0",
+    "cypress": "^13.0.0",
+    "cypress-axe": "^1.5.0",
+    "axe-core": "^4.8.0",
+    "start-server-and-test": "^2.0.0",
+    "@axe-core/playwright": "^4.10.0"
   }
 }

@@ -129,6 +129,36 @@
   margin: 0;
 }
 
+.nextSteps {
+  margin: 0.25rem 0 0;
+  opacity: 0.85;
+}
+
+.details {
+  margin-top: 0.375rem;
+  font-size: var(--font-size-xs);
+}
+
+.detailsSummary {
+  cursor: pointer;
+  opacity: 0.75;
+  text-decoration: underline;
+  text-underline-offset: 2px;
+}
+
+.detailsSummary:hover {
+  opacity: 1;
+}
+
+.detailsBody {
+  margin: 0.25rem 0 0;
+  font-family: monospace;
+  opacity: 0.75;
+  word-break: break-all;
+  max-height: 6rem;
+  overflow-y: auto;
+}
+
 .txHash {
   font-family: monospace;
   font-size: var(--font-size-xs);

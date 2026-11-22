@@ -16,6 +16,7 @@ export class OAuthService {
       google: {
         clientId: process.env.GOOGLE_CLIENT_ID,
         clientSecret: process.env.GOOGLE_CLIENT_SECRET,
+        previousClientSecret: process.env.GOOGLE_CLIENT_SECRET_PREVIOUS,
         authUrl: 'https://accounts.google.com/o/oauth2/v2/auth',
         tokenUrl: 'https://oauth2.googleapis.com/token',
         userInfoUrl: 'https://openidconnect.googleapis.com/v1/userinfo',
@@ -24,6 +25,7 @@ export class OAuthService {
       github: {
         clientId: process.env.GITHUB_CLIENT_ID,
         clientSecret: process.env.GITHUB_CLIENT_SECRET,
+        previousClientSecret: process.env.GITHUB_CLIENT_SECRET_PREVIOUS,
         authUrl: 'https://github.com/login/oauth/authorize',
         tokenUrl: 'https://github.com/login/oauth/access_token',
         userInfoUrl: 'https://api.github.com/user',
@@ -32,12 +34,65 @@ export class OAuthService {
       discord: {
         clientId: process.env.DISCORD_CLIENT_ID,
         clientSecret: process.env.DISCORD_CLIENT_SECRET,
+        previousClientSecret: process.env.DISCORD_CLIENT_SECRET_PREVIOUS,
         authUrl: 'https://discord.com/api/oauth2/authorize',
         tokenUrl: 'https://discord.com/api/oauth2/token',
         userInfoUrl: 'https://discord.com/api/users/@me',
         scope: 'identify email'
       }
     };
+  }
+
+  /**
+   * All client secrets currently accepted for a provider, newest first.
+   *
+   * During a rotation window both the new secret (`<PROVIDER>_CLIENT_SECRET`)
+   * and the outgoing secret (`<PROVIDER>_CLIENT_SECRET_PREVIOUS`) are active,
+   * so authorization flows started before the rotation still complete. See
+   * `docs/OAUTH_SECRET_ROTATION.md` for the full rotation procedure.
+   *
+   * @param {string} providerName
+   * @returns {{ value: string, source: 'current'|'previous', envVar: string }[]}
+   */
+  getActiveClientSecrets(providerName) {
+    const provider = this.providers[providerName];
+    if (!provider) throw new Error(`Unsupported OAuth provider: ${providerName}`);
+
+    const secrets = [];
+    if (provider.clientSecret) {
+      secrets.push({ value: provider.clientSecret, source: 'current', envVar: `${providerName.toUpperCase()}_CLIENT_SECRET` });
+    }
+    if (provider.previousClientSecret) {
+      secrets.push({
+        value: provider.previousClientSecret,
+        source: 'previous',
+        envVar: `${providerName.toUpperCase()}_CLIENT_SECRET_PREVIOUS`
+      });
+    }
+    return secrets;
+  }
+
+  /**
+   * Check whether a candidate secret matches the current or previous secret
+   * for a provider, using a timing-safe comparison. Used during the rotation
+   * grace period to accept tokens/verifications made with either secret.
+   *
+   * @returns {'current'|'previous'|null} which registered secret matched
+   */
+  matchClientSecret(providerName, candidate) {
+    if (typeof candidate !== 'string' || candidate.length === 0) return null;
+
+    const candidateBuffer = Buffer.from(candidate);
+    for (const secret of this.getActiveClientSecrets(providerName)) {
+      const secretBuffer = Buffer.from(secret.value);
+      if (
+        secretBuffer.length === candidateBuffer.length &&
+        crypto.timingSafeEqual(secretBuffer, candidateBuffer)
+      ) {
+        return secret.source;
+      }
+    }
+    return null;
   }
 
   /**

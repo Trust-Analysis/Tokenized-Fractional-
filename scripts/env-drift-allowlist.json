@@ -1,0 +1,22 @@
+{
+  "ignoreInCode": [
+    "NODE_ENV",
+    "CI",
+    "HOME",
+    "PATH",
+    "TZ",
+    "PORT",
+    "MODE",
+    "DEV",
+    "PROD",
+    "SSR",
+    "BASE_URL"
+  ],
+  "ignoreInDocsOrManifests": [
+    "NODE_ENV",
+    "CI",
+    "TZ"
+  ],
+  "allowUnusedInManifests": [],
+  "allowUndocumentedInCode": []
+}

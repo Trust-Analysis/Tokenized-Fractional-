@@ -12,6 +12,7 @@ import ErrorBoundary from './components/ErrorBoundary/ErrorBoundary';
 import ErrorFallback from './components/ErrorFallback/ErrorFallback';
 import { ThemeProvider } from './context/ThemeContext';
 import OfflineIndicator from './components/OfflineIndicator/OfflineIndicator';
+import MockModeBanner from './components/MockModeBanner/MockModeBanner';
 import { useServiceWorker } from './hooks/useServiceWorker';
 import { initPerformanceMonitoring } from './services/performanceMonitoring';
 
@@ -72,6 +73,7 @@ ReactDOM.createRoot(document.getElementById('root')).render(
       <Sentry.ErrorBoundary fallback={ErrorFallback}>
         <BrowserRouter>
           <ThemeProvider>
+            <MockModeBanner />
             <OfflineIndicator />
             <SWUpdateBanner />
             <App />

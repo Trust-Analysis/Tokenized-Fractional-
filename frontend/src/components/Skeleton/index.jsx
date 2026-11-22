@@ -130,4 +130,5 @@ export function ProfileStatsSkeleton() {
   );
 }
 
+export { default as OrderBookSkeleton } from './OrderBookSkeleton';
 export { default as SkeletonGrid } from './SkeletonGrid';

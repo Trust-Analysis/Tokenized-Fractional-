@@ -277,6 +277,8 @@ async function batchDocuments(contractIds, dataLayer) {
 /**
  * Batch loading function for Price History by contractId
  */
+import { getPriceHistory, invalidatePriceHistoryCache } from './services/priceHistoryCache.js';
+
 async function batchPriceHistory(contractIds, dataLayer) {
   const startTime = Date.now();
   globalMetrics.batchCount += 1;
@@ -284,15 +286,23 @@ async function batchPriceHistory(contractIds, dataLayer) {
 
   try {
     const data = dataLayer.loadData();
-    const results = contractIds.map((contractId) => {
+
+    // For each contractId, try Redis cache first, then fall back to in-memory data
+    const results = await Promise.all(contractIds.map(async (contractId) => {
       const asset = data[contractId];
       if (!asset) return [];
-      if (asset.priceHistory) return asset.priceHistory;
-      return [{
-        price: asset.pricePerShare || 0,
-        timestamp: asset.updatedAt || asset.createdAt || new Date().toISOString(),
-      }];
-    });
+
+      // Use 1D as the default interval for DataLoader batch calls
+      const fetchFn = () => {
+        if (asset.priceHistory) return Promise.resolve(asset.priceHistory);
+        return Promise.resolve([{
+          price: asset.pricePerShare || 0,
+          timestamp: asset.updatedAt || asset.createdAt || new Date().toISOString(),
+        }]);
+      };
+
+      return getPriceHistory(contractId, '1D', fetchFn);
+    }));
 
     globalMetrics.executionTimesMs.push(Date.now() - startTime);
     return results;

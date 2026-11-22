@@ -1,6 +1,7 @@
 import React, { useEffect, useRef, useState, useCallback } from 'react';
 import { Networks } from '@stellar/stellar-sdk';
 import { useToastStore } from '../../store/useToastStore';
+import { SEE_DETAILS } from '../../constants/errors';
 import styles from './Toast.module.css';
 
 const NETWORK_PASSPHRASE = import.meta.env.VITE_NETWORK_PASSPHRASE || Networks.TESTNET;
@@ -116,6 +117,13 @@ function ToastItem({ toast, onDismiss }) {
       {renderIcon()}
       <div className={styles.body}>
         <p className={styles.message}>{toast.message}</p>
+        {toast.nextSteps && <p className={styles.nextSteps}>{toast.nextSteps}</p>}
+        {toast.details && (
+          <details className={styles.details}>
+            <summary className={styles.detailsSummary}>{SEE_DETAILS}</summary>
+            <p className={styles.detailsBody}>{toast.details}</p>
+          </details>
+        )}
         {toast.txHash && (
           <p className={styles.txHash}>
             <a

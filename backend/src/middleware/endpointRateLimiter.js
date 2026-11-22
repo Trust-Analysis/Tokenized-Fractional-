@@ -1,6 +1,7 @@
 import Redis from 'ioredis';
 import { logger } from '../services/logger.js';
 import { REDIS_URL, NODE_ENV } from '../config.js';
+import { getClientIp } from '../utils/clientIp.js';
 
 const ENDPOINT_LIMITS = {
   '/api/v1/rwa': {
@@ -123,7 +124,7 @@ export function createEndpointRateLimiter() {
       const config = methodLimits[req.method] || methodLimits.default;
       if (!config) return next();
 
-      const identifier = req.user?.id || req.wallet || req.ip || 'unknown';
+      const identifier = req.user?.id || req.wallet || getClientIp(req) || 'unknown';
       const windowKey = Math.floor(Date.now() / config.windowMs);
       const key = `endpoint:${matchedPath}:${req.method}:${identifier}:${windowKey}`;
 

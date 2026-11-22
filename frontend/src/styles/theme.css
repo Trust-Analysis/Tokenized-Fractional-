@@ -149,3 +149,63 @@ h1, h2, h3, h4, h5, h6 {
 button, input {
   font-family: inherit;
 }
+
+/* RTL (Right-to-Left) Support for Arabic, Hebrew, Persian, Urdu */
+html.rtl,
+body.rtl {
+  direction: rtl;
+  text-align: right;
+}
+
+html.rtl * {
+  direction: rtl;
+  text-align: right;
+}
+
+/* Override text alignment for code and technical elements in RTL */
+html.rtl code,
+html.rtl pre,
+html.rtl kbd,
+body.rtl code,
+body.rtl pre,
+body.rtl kbd {
+  direction: ltr;
+  text-align: left;
+}
+
+/* Padding and margin adjustments for RTL */
+html.rtl input,
+html.rtl textarea,
+body.rtl input,
+body.rtl textarea {
+  direction: rtl;
+  text-align: right;
+}
+
+/* Common flexbox adjustments for RTL */
+html.rtl [style*="flex"],
+html.rtl [class*="flex"],
+body.rtl [style*="flex"],
+body.rtl [class*="flex"] {
+  direction: rtl;
+}
+
+/* Grid adjustments for RTL - reverse grid auto-flow */
+html.rtl [style*="grid"],
+html.rtl [class*="grid"],
+body.rtl [style*="grid"],
+body.rtl [class*="grid"] {
+  direction: rtl;
+}
+
+/* Specific component RTL adjustments */
+html.rtl button,
+body.rtl button {
+  direction: rtl;
+  text-align: center;
+}
+
+html.rtl a,
+body.rtl a {
+  direction: rtl;
+}

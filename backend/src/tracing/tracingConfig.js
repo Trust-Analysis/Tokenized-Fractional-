@@ -22,6 +22,7 @@ import { ResourceDetectionConfig, detectResources } from '@opentelemetry/resourc
 import { Resource } from '@opentelemetry/resources';
 import { SemanticResourceAttributes } from '@opentelemetry/semantic-conventions';
 import { registerInstrumentations } from '@opentelemetry/instrumentation';
+import { getClientIp } from '../utils/clientIp.js';
 import { HttpInstrumentation } from '@opentelemetry/instrumentation-http';
 import { ExpressInstrumentation } from '@opentelemetry/instrumentation-express';
 import { PgInstrumentation } from '@opentelemetry/instrumentation-pg';
@@ -153,18 +154,6 @@ function createProbabilitySampler(probability) {
     }),
     toString: () => `ProbabilitySampler(${probability})`,
   };
-}
-
-/**
- * Extract client IP from request
- */
-function getClientIp(request) {
-  return (
-    request.headers['x-forwarded-for']?.split(',')[0].trim() ||
-    request.headers['x-real-ip'] ||
-    request.socket?.remoteAddress ||
-    'unknown'
-  );
 }
 
 /**

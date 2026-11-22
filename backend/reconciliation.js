@@ -12,7 +12,7 @@
  * any side effects.
  */
 
-import { logger } from './index.js';
+import { logger } from './logger.js';
 import { cacheDel } from './cache.js';
 
 /**
@@ -240,6 +240,14 @@ export async function executeReconciliation(report, data = {}) {
           report.contractId,
           data.dbAsset,
           issue.details.blockchainData
+        );
+        break;
+
+      case 'onchain_drift':
+        repairResult = await reconcileDbBlockchainMismatch(
+          report.contractId,
+          data.dbAsset,
+          { [issue.details.field]: issue.details.onChainValue }
         );
         break;
 

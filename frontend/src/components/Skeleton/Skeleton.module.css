@@ -125,6 +125,47 @@
   text-align: right;
 }
 
+/* ── Order Book Skeleton (Issue #572) ─────────────────────────────────── */
+.orderBookSkeleton {
+  display: flex;
+  flex-direction: column;
+  gap: 1.5rem;
+}
+
+.orderBookSection {
+  display: flex;
+  flex-direction: column;
+  gap: 0.75rem;
+}
+
+/* Reserve the same 420px footprint as the loaded VirtualList so the swap
+   from skeleton to real rows does not shift the layout (CLS). */
+.orderBookRows {
+  display: flex;
+  flex-direction: column;
+  gap: 0.5rem;
+  min-height: 420px;
+}
+
+/* Matches .orderRow in OrderBook.module.css (48px height, 8px radius). */
+.orderRowSkeleton {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  padding: 0 1rem;
+  height: 48px;
+  box-sizing: border-box;
+  background: var(--bg-surface);
+  border: 1px solid var(--border-color);
+  border-radius: 8px;
+}
+
+.orderRowSkeletonInfo {
+  display: flex;
+  flex-direction: column;
+  gap: 0.25rem;
+}
+
 /* ── Profile Skeleton ─────────────────────────────────────────────────── */
 .profileHeader {
   display: flex;

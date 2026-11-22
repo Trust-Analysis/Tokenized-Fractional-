@@ -134,6 +134,37 @@ describe('Security Headers Middleware', () => {
       const csp = res.headers['content-security-policy'];
       expect(csp).toMatch(/default-src/);
     });
+
+    test('CSP should allow WebSocket connections (ws: and wss:)', async () => {
+      const res = await request(app).get('/health');
+      const csp = res.headers['content-security-policy'];
+      expect(csp).toMatch(/connect-src/);
+      expect(csp).toMatch(/ws:/);
+      expect(csp).toMatch(/wss:/);
+    });
+
+    test('CSP should include Stellar RPC providers by default', async () => {
+      const res = await request(app).get('/health');
+      const csp = res.headers['content-security-policy'];
+      expect(csp).toMatch(/connect-src/);
+      expect(csp).toMatch(/horizon\.stellar\.org/);
+    });
+
+    test('CSP should allow data: and https: for images', async () => {
+      const res = await request(app).get('/health');
+      const csp = res.headers['content-security-policy'];
+      expect(csp).toMatch(/img-src/);
+      expect(csp).toMatch(/data:/);
+      expect(csp).toMatch(/https:/);
+    });
+
+    test('CSP should allow unsafe-inline in development mode', async () => {
+      const res = await request(app).get('/health');
+      const csp = res.headers['content-security-policy'];
+      // In test mode (NODE_ENV=test), it should allow unsafe-inline
+      expect(csp).toMatch(/script-src/);
+      expect(csp).toMatch(/'unsafe-inline'/);
+    });
   });
 
   describe('Referrer-Policy', () => {

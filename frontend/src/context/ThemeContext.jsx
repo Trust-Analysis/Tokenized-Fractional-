@@ -27,6 +27,11 @@ export function ThemeProvider({ children }) {
 
   useEffect(() => {
     if (typeof window === 'undefined' || !window.matchMedia) return;
+    try {
+      if (localStorage.getItem('theme')) return;
+    } catch {
+      // ignore storage errors
+    }
     const mq = window.matchMedia('(prefers-color-scheme: light)');
     const handler = (e) => {
       setTheme(e.matches ? 'light' : 'dark');

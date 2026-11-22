@@ -44,6 +44,19 @@
   font-weight: var(--font-weight-semibold, 600);
 }
 
+.pendingTxAlert {
+  background: var(--bg-warning, #fef3c7);
+  border: 1px solid var(--border-warning, #f59e0b);
+  border-radius: var(--radius-sm, 6px);
+  padding: var(--spacing-sm, 12px);
+  margin-bottom: var(--spacing-md, 16px);
+  display: flex;
+  align-items: center;
+  gap: var(--spacing-sm, 8px);
+  font-size: var(--font-size-sm, 0.875rem);
+  color: var(--text-warning, #92400e);
+}
+
 .purchaseRow {
   display: flex;
   align-items: flex-end;

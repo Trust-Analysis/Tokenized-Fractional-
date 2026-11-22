@@ -13,7 +13,7 @@
  *   CONSISTENCY_LOG_DIR          — directory for check logs (optional)
  */
 
-import { logger } from './index.js';
+import { logger } from './logger.js';
 import { readFileSync } from 'fs';
 import { mkdir, writeFile } from 'fs/promises';
 import { join } from 'path';
@@ -21,6 +21,7 @@ import { cacheGet } from './cache.js';
 import {
   generateConsistencyReport,
   generateSummaryReport,
+  compareWithOnChainState,
 } from './consistency.js';
 import { executeReconciliation } from './reconciliation.js';
 
@@ -67,11 +68,14 @@ function getAllAssetsFromDb(loadDataFn) {
 /**
  * Run a single consistency check across all assets.
  * Returns a summary report of all checks.
- * @param {object} context — { loadDataFn, cacheFn? }
+ * When `chainReader` is supplied (see createChainReader() in consistency.js),
+ * each data.json record is also compared against the contract's on-chain
+ * state and any drift is reported as an `onchain_drift` issue.
+ * @param {object} context — { loadDataFn, cacheFn?, chainReader? }
  * @returns {object} summary report
  */
 export async function runConsistencyCheck(context = {}) {
-  const { loadDataFn, cacheFn = cacheGet } = context;
+  const { loadDataFn, cacheFn = cacheGet, chainReader = null } = context;
 
   if (!loadDataFn) {
     logger.error('runConsistencyCheck called without loadDataFn context');
@@ -93,6 +97,22 @@ export async function runConsistencyCheck(context = {}) {
         dbAsset,
         includeData: false,
       });
+
+      if (chainReader) {
+        const onChainState = await chainReader(contractId);
+        const driftIssues = compareWithOnChainState(contractId, dbAsset, onChainState);
+        if (driftIssues.length > 0) {
+          report.issues.push(...driftIssues);
+          report.recommendations.push(
+            'Action: Re-sync data.json from on-chain state (the contract is authoritative)'
+          );
+          report.hasIssues = true;
+          report.issueCount = report.issues.length;
+          report.consistency.dbBlockchainMatch = false;
+          report.consistency.allMatch = false;
+        }
+      }
+
       reports.push(report);
 
       // Auto-repair if enabled and issues found

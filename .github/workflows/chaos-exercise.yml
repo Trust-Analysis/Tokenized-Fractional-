@@ -1,0 +1,155 @@
+name: Chaos Exercise
+
+# Issue #802 & #1104: periodic failure-injection exercise validating that the
+# platform degrades gracefully within explicit staging blast-radius limits and
+# abort/rollback guardrails. See docs/chaos-engineering.md.
+
+on:
+  pull_request:
+    paths:
+      - 'scripts/chaos/**'
+      - 'backend/index.js'
+      - 'backend/src/services/sorobanMetadataService.js'
+      - 'backend/env.js'
+      - 'backend/cache.js'
+      - 'backend/websocket.js'
+      - 'backend/Dockerfile'
+      - 'nginx/nginx.conf'
+      - 'docker-compose.yml'
+      - '.github/workflows/chaos-exercise.yml'
+      - 'docs/chaos-engineering.md'
+  push:
+    branches: [main, dev]
+    paths:
+      - 'scripts/chaos/**'
+      - 'backend/index.js'
+      - 'backend/src/services/sorobanMetadataService.js'
+      - 'backend/env.js'
+      - 'backend/cache.js'
+      - 'backend/websocket.js'
+      - 'backend/Dockerfile'
+      - 'nginx/nginx.conf'
+      - 'docker-compose.yml'
+      - '.github/workflows/chaos-exercise.yml'
+      - 'docs/chaos-engineering.md'
+  schedule:
+    - cron: '41 6 1 1,4,7,10 *'
+  workflow_dispatch:
+    inputs:
+      strict:
+        description: 'Also fail on recorded UNGRACEFUL verdicts'
+        type: boolean
+        default: false
+
+concurrency:
+  group: chaos-exercise-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  chaos-exercise:
+    name: Failure-injection exercise (staging)
+    runs-on: ubuntu-latest
+    environment: staging
+    timeout-minutes: 15
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version-file: '.nvmrc'
+
+      # `npm install` rather than `npm ci`: backend/package-lock.json is currently
+      # out of sync with backend/package.json, which makes `npm ci` exit before any
+      # experiment runs. Matches backend-docs-and-data-integrity.yml.
+      - name: Install backend dependencies
+        run: npm install --no-audit --no-fund
+        working-directory: backend
+
+      - name: Run the failure-injection exercise
+        id: run_chaos
+        env:
+          CHAOS_ENVIRONMENT: staging
+          CHAOS_MAX_DURATION_MS: ${{ vars.CHAOS_MAX_DURATION_MS || '600000' }}
+          CHAOS_RPC_URL: ${{ secrets.CHAOS_RPC_URL }}
+        run: |
+          set -euo pipefail
+
+          if [ -n "${CHAOS_RPC_URL:-}" ]; then
+            case "${CHAOS_RPC_URL}" in
+              *mainnet* | *prod* | *production*)
+                echo "ERROR: CHAOS_RPC_URL appears to target production/mainnet; aborting to protect real user traffic." >&2
+                exit 1
+                ;;
+            esac
+          fi
+
+          args=()
+          if [ "${{ inputs.strict }}" = "true" ]; then
+            args+=(--strict)
+          fi
+
+          timeout --kill-after=30s 600s node scripts/chaos/run-chaos-exercise.mjs "${args[@]}"
+
+      - name: Abort and rollback chaos state
+        if: always()
+        env:
+          CHAOS_ROLLBACK_CMD: ${{ secrets.CHAOS_ROLLBACK_CMD }}
+          JOB_STATUS: ${{ job.status }}
+          RUN_OUTCOME: ${{ steps.run_chaos.outcome }}
+        run: |
+          set -euo pipefail
+
+          if [ -n "${CHAOS_ROLLBACK_CMD:-}" ]; then
+            echo "Executing configured staging rollback command..."
+            eval "${CHAOS_ROLLBACK_CMD}"
+          fi
+
+          if command -v docker >/dev/null 2>&1; then
+            docker compose down --remove-orphans >/dev/null 2>&1 || true
+          fi
+
+          if [ "${RUN_OUTCOME:-}" = "failure" ] || [ "${RUN_OUTCOME:-}" = "cancelled" ] || [ "${JOB_STATUS:-}" != "success" ]; then
+            echo "WARNING: Chaos exercise ended with outcome=${RUN_OUTCOME:-unknown}, job_status=${JOB_STATUS:-unknown}. Rollback/cleanup completed." >&2
+            node -e '
+              const fs = require("node:fs");
+              const reportPath = "docs/chaos-engineering/latest-run.json";
+              fs.mkdirSync("docs/chaos-engineering", { recursive: true });
+              let report = {};
+              if (fs.existsSync(reportPath)) {
+                try { report = JSON.parse(fs.readFileSync(reportPath, "utf8")); } catch {}
+              }
+              report.guardrails = {
+                environment: "staging",
+                abortedOrRolledBack: true,
+                runOutcome: process.env.RUN_OUTCOME || "unknown",
+                jobStatus: process.env.JOB_STATUS || "unknown",
+                recordedAt: new Date().toISOString(),
+              };
+              fs.writeFileSync(reportPath, JSON.stringify(report, null, 2) + "
+", "utf8");
+            '
+          fi
+
+      # The report is the artifact the acceptance criteria ask for: it is the
+      # recorded observed behaviour for this run, not just a pass/fail.
+      - name: Archive the run report
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: chaos-exercise-report
+          path: docs/chaos-engineering/latest-run.json
+          if-no-files-found: warn
+
+      - name: Summarise the exercise in the job summary
+        if: always()
+        run: |
+          set -euo pipefail
+          if [ -f docs/chaos-engineering/latest-run.json ]; then
+            {
+              echo "## Failure-injection exercise"
+              echo ""
+              echo "```json"
+              cat docs/chaos-engineering/latest-run.json
+              echo "```"
+            } >> "$GITHUB_STEP_SUMMARY"
+          fi

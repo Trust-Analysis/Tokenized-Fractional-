@@ -49,15 +49,6 @@
     "connectWallet": "Connect your wallet to view transaction history",
     "fetchError": "Failed to load transaction history. Please try again."
   },
-  "theme": {
-    "toDark": "Switch to Dark Theme",
-    "toLight": "Switch to Light Theme"
-  },
-  "common": {
-    "loading": "Loading…",
-    "error": "An error occurred.",
-    "retry": "Retry"
-  },
   "profile": {
     "dashboard": "My Dashboard",
     "title": "Your Profile Dashboard",
@@ -117,5 +108,55 @@
     "usd": "USD ($)",
     "eur": "EUR (€)",
     "gbp": "GBP (£)"
+  },
+  "theme": {
+    "toDark": "Switch to Dark Theme",
+    "toLight": "Switch to Light Theme"
+  },
+  "common": {
+    "loading": "Loading…",
+    "error": "An error occurred.",
+    "retry": "Retry"
+  },
+  "search": {
+    "title": "Search & Filter",
+    "filters": "Filters",
+    "search": "Search",
+    "placeholder": "Search assets...",
+    "priceRange": "Price Range",
+    "assetType": "Asset Type",
+    "category": "Category",
+    "availability": "Availability",
+    "available": "Available",
+    "limited": "Limited",
+    "unavailable": "Unavailable",
+    "sortBy": "Sort By",
+    "sortName": "Name",
+    "sortPrice": "Price",
+    "sortRecent": "Recently Added",
+    "sortPopular": "Popularity",
+    "ascending": "Ascending",
+    "descending": "Descending",
+    "itemsPerPage": "Items Per Page",
+    "clearAll": "Clear All Filters",
+    "showing": "Showing",
+    "of": "of",
+    "results": "results",
+    "previous": "Previous",
+    "next": "Next"
+  },
+  "a11y": {
+    "languageSelector": "Language selector",
+    "switchLanguage": "Switch language to {{language}}",
+    "toggleFilters": "Toggle filters"
+  },
+  "languages": {
+    "en": "English",
+    "es": "Spanish",
+    "fr": "French",
+    "de": "German"
+  },
+  "footer": {
+    "status": "Service status"
   }
 }

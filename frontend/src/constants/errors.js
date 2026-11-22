@@ -43,3 +43,12 @@ export const UNEXPECTED_ERROR = 'Something went wrong';
 export const ERROR_REPORTED =
   'An unexpected error occurred. The error has been reported to our team.';
 export const TRY_AGAIN = 'Try Again';
+
+// ── Issue #720: raw RPC/contract error fallback ────────────────────────────────
+// Used whenever an RPC/contract error cannot be recognised by the error-mapping
+// layer (frontend/src/lib/errorMapper.js). The raw error is kept available on
+// expand so support can still see the original string.
+export const GENERIC_ERROR_MESSAGE = 'Something went wrong — see details';
+export const GENERIC_ERROR_NEXT_STEP =
+  'Wait a moment and try again. If it keeps happening, contact support and share the details below.';
+export const SEE_DETAILS = 'Show details';

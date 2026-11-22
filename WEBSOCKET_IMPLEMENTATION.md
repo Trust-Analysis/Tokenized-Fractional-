@@ -81,6 +81,10 @@ WebSocket support has been successfully added to the RWA Marketplace, enabling r
 - Memory-efficient subscription tracking
 - Automatic cleanup of empty topics
 - Per-client subscription management
+- **Multi-node fan-out via Redis Pub/Sub** (Issue #593): every instance
+  publishes broadcasts to a shared Redis channel and delivers messages from
+  other instances to its local subscribers, so order book / price updates
+  reach clients on every horizontal node
 
 ### Reliable Connections
 - Automatic reconnection with backoff
@@ -99,6 +103,8 @@ WebSocket support has been successfully added to the RWA Marketplace, enabling r
 ### New Files
 ```
 backend/websocket.js                          (344 lines)
+backend/websocketRedisAdapter.js              (Redis Pub/Sub cross-instance bridge)
+backend/scripts/websocket-multinode-test.js   (multi-node delivery test)
 frontend/src/hooks/useWebSocket.js            (278 lines)
 docs/WEBSOCKET_EVENTS.md                      (485 lines)
 backend/__tests__/websocket.test.js           (192 lines)

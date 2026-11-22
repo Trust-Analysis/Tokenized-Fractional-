@@ -1,0 +1,145 @@
+/* Copyright (c) 2026 Tokenized Fractional RWA Marketplace Contributors
+   SPDX-License-Identifier: MIT
+   Styles for the public status page (issue #797). Self-contained: the page is
+   meant to be hostable on its own, so it loads no fonts or assets it does not
+   ship. */
+
+:root {
+  --bg: #0f1115;
+  --panel: #171a21;
+  --border: #262b36;
+  --text: #e6e8ee;
+  --muted: #9aa3b2;
+  --operational: #1f9d55;
+  --degraded: #c9821a;
+  --outage: #c0392b;
+  --unknown: #6b7280;
+}
+
+@media (prefers-color-scheme: light) {
+  :root {
+    --bg: #f6f7f9;
+    --panel: #ffffff;
+    --border: #e2e5ea;
+    --text: #16181d;
+    --muted: #5b6472;
+  }
+}
+
+* {
+  box-sizing: border-box;
+}
+
+body {
+  margin: 0;
+  padding: 2rem 1rem;
+  background: var(--bg);
+  color: var(--text);
+  font-family: system-ui, -apple-system, "Segoe UI", Roboto, sans-serif;
+  line-height: 1.5;
+}
+
+.page {
+  max-width: 44rem;
+  margin: 0 auto;
+}
+
+.page__title {
+  margin: 0 0 0.25rem;
+  font-size: 1.75rem;
+}
+
+.page__subtitle {
+  margin: 0 0 1.5rem;
+  color: var(--muted);
+}
+
+.overall {
+  padding: 1rem 1.25rem;
+  border-radius: 0.75rem;
+  border: 1px solid var(--border);
+  background: var(--panel);
+  font-size: 1.125rem;
+  font-weight: 600;
+  border-left: 6px solid var(--unknown);
+}
+
+.overall--operational {
+  border-left-color: var(--operational);
+}
+.overall--degraded {
+  border-left-color: var(--degraded);
+}
+.overall--outage {
+  border-left-color: var(--outage);
+}
+.overall--unknown {
+  border-left-color: var(--unknown);
+}
+
+.tiers {
+  list-style: none;
+  margin: 1.5rem 0;
+  padding: 0;
+  display: grid;
+  gap: 0.75rem;
+}
+
+.tier {
+  position: relative;
+  padding: 0.9rem 1rem;
+  border: 1px solid var(--border);
+  border-radius: 0.6rem;
+  background: var(--panel);
+}
+
+.tier__name {
+  font-weight: 600;
+}
+
+.tier__description,
+.tier__detail {
+  color: var(--muted);
+  font-size: 0.875rem;
+}
+
+.tier__detail {
+  margin-top: 0.25rem;
+}
+
+.pill {
+  position: absolute;
+  top: 0.9rem;
+  right: 1rem;
+  padding: 0.15rem 0.6rem;
+  border-radius: 999px;
+  font-size: 0.75rem;
+  font-weight: 600;
+  color: #fff;
+  background: var(--unknown);
+}
+
+.pill--operational {
+  background: var(--operational);
+}
+.pill--degraded {
+  background: var(--degraded);
+}
+.pill--outage {
+  background: var(--outage);
+}
+
+.page__footer {
+  color: var(--muted);
+  font-size: 0.875rem;
+  border-top: 1px solid var(--border);
+  padding-top: 1rem;
+}
+
+.page__footer a {
+  color: inherit;
+}
+
+.noscript {
+  color: var(--muted);
+}

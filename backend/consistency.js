@@ -106,6 +106,76 @@ export function getBlockchainDigest(dbAsset, contractId) {
 }
 
 /**
+ * data.json fields that mirror on-chain contract state, mapped to the
+ * read-only contract function that returns the authoritative value.
+ */
+export const ON_CHAIN_FIELDS = {
+  availableShares: 'get_available_shares',
+  totalShares: 'get_total_shares',
+  pricePerShare: 'get_price',
+};
+
+/**
+ * Build a chain reader from a low-level RPC query function.
+ *
+ * `queryFn(contractId, method)` must resolve to the decoded return value of a
+ * simulated (read-only) contract call, e.g. via Soroban RPC
+ * `simulateTransaction`. Keeping the RPC transport behind this function lets
+ * tests substitute a mocked RPC response without a network.
+ *
+ * @param {function} queryFn — async (contractId, method) => value
+ * @returns {function} async (contractId) => { availableShares, totalShares, pricePerShare }
+ */
+export function createChainReader(queryFn) {
+  return async function readChainState(contractId) {
+    const state = {};
+    for (const [field, method] of Object.entries(ON_CHAIN_FIELDS)) {
+      const value = await queryFn(contractId, method);
+      state[field] = value === undefined || value === null ? null : Number(value);
+    }
+    return state;
+  };
+}
+
+/**
+ * Compare a data.json record against state read from the contract.
+ *
+ * Only fields that are present on both sides are compared, so a record that
+ * never stored e.g. `pricePerShare` does not raise a false positive.
+ *
+ * @param {string} contractId
+ * @param {object} dbAsset — the data.json record
+ * @param {object} onChainState — from a chain reader
+ * @returns {array<object>} `onchain_drift` issues, one per mismatched field
+ */
+export function compareWithOnChainState(contractId, dbAsset, onChainState) {
+  if (!dbAsset || !onChainState) return [];
+
+  const issues = [];
+  for (const field of Object.keys(ON_CHAIN_FIELDS)) {
+    const dbValue = dbAsset[field];
+    const chainValue = onChainState[field];
+    if (dbValue === undefined || dbValue === null || chainValue === null || chainValue === undefined) {
+      continue;
+    }
+    if (Number(dbValue) !== Number(chainValue)) {
+      issues.push({
+        type: 'onchain_drift',
+        severity: 'high',
+        message: `data.json ${field} (${dbValue}) does not match on-chain value (${chainValue})`,
+        details: {
+          contractId,
+          field,
+          dbValue: Number(dbValue),
+          onChainValue: Number(chainValue),
+        },
+      });
+    }
+  }
+  return issues;
+}
+
+/**
  * Identify discrepancies between three data sources.
  * @param {string} contractId
  * @param {object} cacheDigest — from getCacheDigest()

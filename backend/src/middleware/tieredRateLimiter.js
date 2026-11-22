@@ -16,6 +16,7 @@
 import Redis from 'ioredis';
 import { logger } from '../services/logger.js';
 import { REDIS_URL, NODE_ENV } from '../config.js';
+import { getClientIp } from '../utils/clientIp.js';
 
 /**
  * Rate limit tiers with different windows and thresholds
@@ -77,6 +78,48 @@ const TEST_RATE_LIMIT_TIERS = {
   },
 };
 
+/**
+ * Rate limit tiers for GraphQL endpoints (Issue #464)
+ * Anonymous: 100 req/min
+ * Authenticated: 1000 req/min
+ * Admin: 10000 req/min
+ */
+export const GRAPHQL_RATE_LIMIT_TIERS = {
+  anonymous: {
+    name: 'Anonymous GraphQL User',
+    windowMs: 60 * 1000, // 1 minute
+    max: 100, // 100 req/min
+  },
+  authenticated: {
+    name: 'Authenticated GraphQL User',
+    windowMs: 60 * 1000, // 1 minute
+    max: 1000, // 1000 req/min
+  },
+  admin: {
+    name: 'Admin GraphQL User',
+    windowMs: 60 * 1000,
+    max: 10000,
+  },
+};
+
+export const TEST_GRAPHQL_RATE_LIMIT_TIERS = {
+  anonymous: {
+    name: 'Anonymous GraphQL User (Test)',
+    windowMs: 60 * 1000,
+    max: 10000,
+  },
+  authenticated: {
+    name: 'Authenticated GraphQL User (Test)',
+    windowMs: 60 * 1000,
+    max: 10000,
+  },
+  admin: {
+    name: 'Admin GraphQL User (Test)',
+    windowMs: 60 * 1000,
+    max: 10000,
+  },
+};
+
 const TIERS = NODE_ENV === 'test' ? TEST_RATE_LIMIT_TIERS : RATE_LIMIT_TIERS;
 
 /**
@@ -84,6 +127,21 @@ const TIERS = NODE_ENV === 'test' ? TEST_RATE_LIMIT_TIERS : RATE_LIMIT_TIERS;
  */
 let redisClient = null;
 let redisConnected = false;
+
+/**
+ * Lua script for atomic rate limit increment and expiry setting.
+ * KEYS[1] = rate limit key
+ * ARGV[1] = window in milliseconds
+ * Returns: { count, ttl_in_ms }
+ */
+const RATE_LIMIT_SCRIPT = `
+  local current = redis.call('INCR', KEYS[1])
+  if current == 1 then
+    redis.call('PEXPIRE', KEYS[1], ARGV[1])
+  end
+  local ttl = redis.call('PTTL', KEYS[1])
+  return {current, ttl}
+`;
 
 /**
  * Initialize Redis client if URL is provided
@@ -100,6 +158,12 @@ export async function initializeRedisLimiter() {
       connectTimeout: 3000,
       maxRetriesPerRequest: 0,
       enableReadyCheck: false,
+    });
+
+    // Define custom atomic command
+    redisClient.defineCommand('atomicRateLimit', {
+      numberOfKeys: 1,
+      lua: RATE_LIMIT_SCRIPT,
     });
 
     redisClient.on('error', (err) => {
@@ -151,13 +215,12 @@ const memoryStore = new Map();
 async function getRateLimitInfo(key, windowMs) {
   if (redisConnected && redisClient) {
     try {
-      const count = await redisClient.incr(key);
-      const ttl = await redisClient.ttl(key);
-
-      if (ttl === -1) {
-        // First time seeing this key, set TTL
-        await redisClient.expire(key, Math.ceil(windowMs / 1000));
-      }
+      const result = await redisClient.atomicRateLimit(key, windowMs);
+      const count = result[0];
+      const ttlMs = result[1];
+      
+      // Convert ttl from ms to seconds for consistency with previous implementation
+      const ttl = ttlMs > 0 ? Math.ceil(ttlMs / 1000) : Math.ceil(windowMs / 1000);
 
       return { count, ttl };
     } catch (error) {
@@ -186,14 +249,20 @@ async function getRateLimitInfo(key, windowMs) {
 /**
  * Determine user tier based on request context
  */
-function getUserTier(req) {
+export function getUserTier(req) {
   // Admin has API key
-  if (req.apiKey) {
+  if (req.apiKey || req.headers?.['x-api-key'] || req.headers?.['x-admin-key']) {
     return 'admin';
   }
 
   // Authenticated user has wallet address from Freighter or other auth
-  if (req.user || req.wallet) {
+  if (
+    req.user ||
+    req.wallet ||
+    req.walletAddress ||
+    req.headers?.['x-wallet-address'] ||
+    req.headers?.['authorization']
+  ) {
     return 'authenticated';
   }
 
@@ -216,7 +285,7 @@ export function createTieredRateLimiter(type = 'read') {
     try {
       const tier = getUserTier(req);
       const limits = TIERS[tier][type];
-      const identifier = req.ip || req.connection.remoteAddress || 'unknown';
+      const identifier = getClientIp(req) || 'unknown';
 
       // Create unique key for this user/ip and rate limit window
       const now = Date.now();
@@ -256,14 +325,96 @@ export function createTieredRateLimiter(type = 'read') {
           'Rate limit exceeded'
         );
 
-        return res.status(429).json(error)
-          .set('Retry-After', ttl);
+        res.setHeader('Retry-After', String(ttl));
+        return res.status(429).json(error);
       }
 
       next();
     } catch (error) {
       // On error, allow request to proceed but log it
       req.log?.error({ error: error.message }, 'Rate limiter error, allowing request');
+      next();
+    }
+  };
+}
+
+/**
+ * Create Redis-based rate limiting middleware for the GraphQL server (Issue #464)
+ *
+ * Configured tiers:
+ * - Anonymous: 100 req/min
+ * - Authenticated: 1000 req/min
+ * - Admin: 10000 req/min
+ *
+ * Returns standardized HTTP 429 Too Many Requests response with Retry-After header.
+ *
+ * @param {Object} options - Configuration overrides
+ * @returns {Function} Express middleware
+ */
+export function createGraphQLRateLimiter(options = {}) {
+  const tiers =
+    options.tiers ||
+    (options.strict === true || process.env.STRICT_GRAPHQL_RATE_LIMIT === 'true' || options.enforceLimits
+      ? GRAPHQL_RATE_LIMIT_TIERS
+      : NODE_ENV === 'test'
+        ? TEST_GRAPHQL_RATE_LIMIT_TIERS
+        : GRAPHQL_RATE_LIMIT_TIERS);
+
+  return async (req, res, next) => {
+    try {
+      const tier = options.tier || getUserTier(req);
+      const limits = tiers[tier] || tiers.anonymous;
+      const identifier =
+        req.wallet ||
+        req.walletAddress ||
+        req.headers?.['x-wallet-address'] ||
+        getClientIp(req) ||
+        'unknown';
+
+      // Create unique key for this user/ip and GraphQL rate limit window
+      const now = Date.now();
+      const windowStart = Math.floor(now / limits.windowMs);
+      const key = `ratelimit:graphql:${tier}:${identifier}:${windowStart}`;
+
+      // Check rate limit using Redis atomic Lua script (or in-memory fallback)
+      const { count, ttl } = await getRateLimitInfo(key, limits.windowMs);
+
+      // Set standard response headers
+      res.setHeader('X-RateLimit-Limit', limits.max);
+      res.setHeader('X-RateLimit-Remaining', Math.max(0, limits.max - count));
+      res.setHeader('X-RateLimit-Reset', new Date(now + ttl * 1000).toISOString());
+      res.setHeader('X-RateLimit-Tier', tier);
+
+      req.rateLimit = {
+        tier,
+        type: 'graphql',
+        limit: limits.max,
+        current: count,
+        remaining: Math.max(0, limits.max - count),
+        resetIn: ttl,
+      };
+
+      if (count > limits.max) {
+        const error = {
+          error: 'Too many requests',
+          code: 'RATE_LIMIT_EXCEEDED',
+          tier,
+          retryAfter: ttl,
+          message: `Rate limit exceeded for ${tier} users. Try again in ${ttl}s.`,
+        };
+
+        req.log?.warn(
+          { tier, type: 'graphql', ip: identifier, count, limit: limits.max },
+          'GraphQL rate limit exceeded'
+        );
+
+        res.setHeader('Retry-After', String(ttl));
+        return res.status(429).json(error);
+      }
+
+      next();
+    } catch (error) {
+      req.log?.error({ error: error.message }, 'GraphQL rate limiter error, allowing request');
       next();
     }
   };

@@ -11,6 +11,7 @@
  */
 
 import { randomUUID } from 'crypto';
+import { recordPurchaseMetric } from './metricsService.js';
 
 /**
  * Transaction Service
@@ -38,9 +39,32 @@ export class TransactionService {
   async recordPurchase(data) {
     try {
       const transactionId = `tx_${randomUUID().replace(/-/g, '').slice(0, 20)}`;
+      const eventIndex = data.eventIndex || 0;
+      
+      // Redis duplicate check
+      let redisCache = null;
+      try {
+        const { REDIS_URL } = await import('../config.js');
+        const Redis = (await import('ioredis')).default;
+        if (REDIS_URL && !this._redisClient) {
+          this._redisClient = new Redis(REDIS_URL, { lazyConnect: true });
+          await this._redisClient.connect().catch(() => {});
+        }
+        redisCache = this._redisClient;
+      } catch(e) {}
 
-      // Insert transaction
-      const [transaction] = await this.db('transactions').insert({
+      if (redisCache && data.blockchainHash) {
+         const cacheKey = `processed_tx:${data.blockchainHash}:${eventIndex}`;
+         const setnxRes = await redisCache.setnx(cacheKey, '1');
+         if (setnxRes === 0) {
+           this.logger.info({ blockchainHash: data.blockchainHash }, 'Duplicate transaction ignored by Redis cache');
+           return null;
+         }
+         await redisCache.expire(cacheKey, 86400); // 24 hours
+      }
+
+      // Insert transaction with idempotent ON CONFLICT DO NOTHING
+      const insertData = {
         transaction_id: transactionId,
         contract_id: data.contractId,
         buyer_address: data.buyerAddress,
@@ -50,9 +74,25 @@ export class TransactionService {
         payment_token: data.paymentToken,
         status: 'completed',
         blockchain_hash: data.blockchainHash || null,
+        event_index: eventIndex,
         metadata: data.metadata || {},
         created_at: new Date(),
-      }).returning('*');
+      };
+
+      const query = this.db('transactions').insert(insertData);
+      let transaction;
+      
+      if (data.blockchainHash) {
+        const result = await query.onConflict(['blockchain_hash', 'event_index']).ignore().returning('*');
+        if (result.length === 0) {
+          this.logger.info({ blockchainHash: data.blockchainHash }, 'Duplicate transaction ignored by DB');
+          return null; // DB conflict caught it
+        }
+        transaction = result[0];
+      } else {
+        const result = await query.returning('*');
+        transaction = result[0];
+      }
 
       // Update or create user activity
       const existingUser = await this.db('user_activity')
@@ -89,20 +129,90 @@ export class TransactionService {
         sharesPurchased: data.sharesPurchased,
       }, 'Purchase recorded');
 
+      recordPurchaseMetric({
+        status: 'completed',
+        contractId: data.contractId,
+        sharesPurchased: data.sharesPurchased,
+        totalAmount: data.totalAmount,
+      });
+
       return transaction;
     } catch (error) {
+      recordPurchaseMetric({ status: 'failed' });
       this.logger.error({ error: error.message, data }, 'Failed to record purchase');
       throw new Error(`Failed to record purchase: ${error.message}`);
     }
   }
 
   /**
-   * Get transaction by ID
+   * Get transaction by ID (supports transaction_id string or database integer id)
    */
   async getTransaction(transactionId) {
+    return this.getTransactionById(transactionId);
+  }
+
+  /**
+   * Get transaction by either transaction_id string or primary key id
+   */
+  async getTransactionById(transactionId) {
     return this.db('transactions')
       .where('transaction_id', transactionId)
+      .orWhere('id', transactionId)
       .first();
+  }
+
+  /**
+   * Issue #912: Place a legal hold on a transaction
+   * @param {string|number} transactionId
+   * @param {Object} options
+   * @returns {Promise<Object>}
+   */
+  async placeLegalHold(transactionId, options = {}) {
+    const { reason = 'Active investigation or dispute', placedBy = 'admin' } = options;
+    const tx = await this.getTransactionById(transactionId);
+    if (!tx) {
+      throw new Error(`Transaction ${transactionId} not found`);
+    }
+
+    await this.db('transactions')
+      .where('id', tx.id)
+      .update({
+        legal_hold: true,
+        legal_hold_reason: reason,
+        legal_hold_placed_at: new Date(),
+        legal_hold_placed_by: placedBy,
+        updated_at: new Date(),
+      });
+
+    this.logger.info({ transactionId: tx.transaction_id, reason, placedBy }, 'Legal hold placed on transaction');
+    return this.getTransactionById(tx.id);
+  }
+
+  /**
+   * Issue #912: Release a legal hold on a transaction
+   * @param {string|number} transactionId
+   * @param {Object} options
+   * @returns {Promise<Object>}
+   */
+  async releaseLegalHold(transactionId, options = {}) {
+    const { releasedBy = 'admin' } = options;
+    const tx = await this.getTransactionById(transactionId);
+    if (!tx) {
+      throw new Error(`Transaction ${transactionId} not found`);
+    }
+
+    await this.db('transactions')
+      .where('id', tx.id)
+      .update({
+        legal_hold: false,
+        legal_hold_reason: null,
+        legal_hold_placed_at: null,
+        legal_hold_placed_by: null,
+        updated_at: new Date(),
+      });
+
+    this.logger.info({ transactionId: tx.transaction_id, releasedBy }, 'Legal hold released on transaction');
+    return this.getTransactionById(tx.id);
   }
 
   /**
@@ -186,15 +296,26 @@ export class TransactionService {
    * Get all-time metrics
    */
   async getAllTimeMetrics() {
-    const transactions = await this.db('transactions')
-      .where('status', 'completed');
+    const vaultMetrics = await this.getVaultAggregateMetrics();
 
-    const totalTransactions = transactions.length;
-    const totalVolume = transactions.reduce((sum, t) => sum + parseFloat(t.total_amount), 0);
-    const totalShares = transactions.reduce((sum, t) => sum + parseFloat(t.shares_purchased), 0);
+    let totalTransactions = 0;
+    let totalVolume = 0;
+    let totalShares = 0;
+    let uniqueAssets = 0;
 
-    const uniqueBuyers = new Set(transactions.map(t => t.buyer_address)).size;
-    const uniqueAssets = new Set(transactions.map(t => t.contract_id)).size;
+    for (const v of vaultMetrics) {
+      totalTransactions += Number(v.total_tx_count) || 0;
+      totalVolume += Number(v.total_volume) || 0;
+      totalShares += Number(v.total_shares) || 0;
+      if (v.contract_id) uniqueAssets++;
+    }
+
+    // Exact count of unique buyers across all vaults
+    const buyerResult = await this.db('transactions')
+      .where('status', 'completed')
+      .countDistinct('buyer_address as count')
+      .first();
+    const uniqueBuyers = Number(buyerResult?.count || 0);
 
     return {
       totalTransactions,
@@ -205,6 +326,81 @@ export class TransactionService {
       averageTransactionSize: totalTransactions > 0 ? totalVolume / totalTransactions : 0,
     };
   }
+
+  /**
+   * Get highly optimized aggregate metrics for all fractional vaults using raw SQL CTEs
+   */
+  async getVaultAggregateMetrics() {
+    const isPg = this.db.client.config.client === 'pg';
+    let rawQuery;
+
+    if (isPg) {
+      rawQuery = `
+        WITH live_data AS (
+          SELECT 
+            contract_id,
+            COUNT(id) as live_tx_count,
+            SUM(total_amount) as live_volume,
+            SUM(shares_purchased) as live_shares,
+            COUNT(DISTINCT buyer_address) as live_unique_buyers,
+            MAX(price_per_share) as latest_price
+          FROM transactions
+          WHERE created_at >= NOW() - INTERVAL '24 hours'
+            AND status = 'completed'
+          GROUP BY contract_id
+        )
+        SELECT 
+          COALESCE(l.contract_id, h.contract_id) as contract_id,
+          COALESCE(l.live_tx_count, 0) + COALESCE(h.historical_tx_count, 0) as total_tx_count,
+          COALESCE(l.live_volume, 0) + COALESCE(h.historical_volume, 0) as total_volume,
+          COALESCE(l.live_shares, 0) + COALESCE(h.historical_shares, 0) as total_shares,
+          COALESCE(l.live_unique_buyers, 0) + COALESCE(h.historical_unique_buyers, 0) as approximate_unique_buyers,
+          l.latest_price
+        FROM live_data l
+        FULL OUTER JOIN mv_historical_vault_metrics h ON l.contract_id = h.contract_id
+      `;
+    } else {
+      // SQLite fallback (no FULL OUTER JOIN, using LEFT JOIN and UNION)
+      rawQuery = `
+        WITH live_data AS (
+          SELECT 
+            contract_id,
+            COUNT(id) as live_tx_count,
+            SUM(total_amount) as live_volume,
+            SUM(shares_purchased) as live_shares,
+            COUNT(DISTINCT buyer_address) as live_unique_buyers,
+            MAX(price_per_share) as latest_price
+          FROM transactions
+          WHERE created_at >= datetime('now', '-1 day')
+            AND status = 'completed'
+          GROUP BY contract_id
+        )
+        SELECT 
+          COALESCE(l.contract_id, h.contract_id) as contract_id,
+          COALESCE(l.live_tx_count, 0) + COALESCE(h.historical_tx_count, 0) as total_tx_count,
+          COALESCE(l.live_volume, 0) + COALESCE(h.historical_volume, 0) as total_volume,
+          COALESCE(l.live_shares, 0) + COALESCE(h.historical_shares, 0) as total_shares,
+          COALESCE(l.live_unique_buyers, 0) + COALESCE(h.historical_unique_buyers, 0) as approximate_unique_buyers,
+          l.latest_price
+        FROM live_data l
+        LEFT JOIN mv_historical_vault_metrics h ON l.contract_id = h.contract_id
+        UNION
+        SELECT 
+          COALESCE(l.contract_id, h.contract_id) as contract_id,
+          COALESCE(l.live_tx_count, 0) + COALESCE(h.historical_tx_count, 0) as total_tx_count,
+          COALESCE(l.live_volume, 0) + COALESCE(h.historical_volume, 0) as total_volume,
+          COALESCE(l.live_shares, 0) + COALESCE(h.historical_shares, 0) as total_shares,
+          COALESCE(l.live_unique_buyers, 0) + COALESCE(h.historical_unique_buyers, 0) as approximate_unique_buyers,
+          l.latest_price
+        FROM mv_historical_vault_metrics h
+        LEFT JOIN live_data l ON l.contract_id = h.contract_id
+      `;
+    }
+
+    const result = await this.db.raw(rawQuery);
+    return result.rows || result;
+  }
+
 
   /**
    * Get metrics for a date range

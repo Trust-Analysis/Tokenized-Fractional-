@@ -13,28 +13,31 @@ import { randomUUID } from 'crypto';
 import express from 'express';
 import cors from 'cors';
 import pinoHttp from 'pino-http';
-import * as Sentry from '@sentry/node';
 import swaggerUi from 'swagger-ui-express';
 import swaggerJSDoc from 'swagger-jsdoc';
-import prometheus from 'express-prom-bundle';
 import { validateEnv } from '../env.js';
 
 import {
   CORS_ORIGINS,
-  SENTRY_DSN,
-  SENTRY_TRACES_SAMPLE_RATE,
-  SENTRY_PROFILES_SAMPLE_RATE,
   REDIS_URL,
   DEPLOYMENT_COLOR,
   SERVICE_NAME,
   BUILD_ID,
   NODE_ENV,
+  TRUST_PROXY,
 } from './config.js';
-import { logger } from './services/logger.js';
+import { logger, runWithRequestContext } from '../logger.js';
+import {
+  initErrorTracking,
+  installErrorTrackingRequestScope,
+  captureException,
+  reportError,
+} from './services/errorTracking.js';
 import { apiLimiter } from './middleware/rateLimiter.js';
 import { createAdminAuth, adminAuth as legacyAdminAuth } from './middleware/auth.js';
 import {
   createTieredRateLimiter,
+  createGraphQLRateLimiter,
   initializeRedisLimiter,
   closeRedisLimiter,
   extractWalletMiddleware,
@@ -58,6 +61,7 @@ import {
   isWhitelistEnabled,
 } from './middleware/ipAccessControl.js';
 import { createSecurityHeadersMiddleware } from './middleware/securityHeaders.js';
+import { requireSanitization } from './middleware/sanitizationMiddleware.js';
 import { v1 } from './routes/rwa.js';
 import { swaggerSpec } from '../docs.js';
 import { initDatabase, getDatabase } from './services/database.js';
@@ -78,41 +82,44 @@ import { createFlashLoanProtectionRoutes } from './routes/flashLoanProtection.js
 import { createGraphQLPlaygroundSecurityMiddleware } from '../graphql.js';
 import { createApiMonitoringRoutes } from './routes/apiMonitoring.js';
 import { createIPAccessRoutes } from './routes/ipAccess.js';
+import { createStatementRoutes } from './routes/statements.js';
+import { createAdminConfigRoutes } from './routes/adminConfig.js';
+import { createBackupRoutes } from './routes/backups.js';
+import * as backupService from './services/backupService.js';
+import { createOAuthRouter } from './routes/oauthRoutes.js';
+import { createRateLimitAdminRoutes } from './routes/rateLimitAdmin.js';
+import { RateLimiterService } from './services/rateLimiterService.js';
+import { createTimeWindowRoutes } from './routes/timeWindows.js';
+import { TimeWindowService } from './services/timeWindowService.js';
 import { requestLogger } from './middleware/requestLogger.js';
+import { createClientIpMiddleware } from './utils/clientIp.js';
+import {
+  createProblemDetailsInterceptor,
+  problemDetailsNotFoundHandler,
+  problemDetailsErrorHandler,
+} from './middleware/problemDetails.js';
 import { stitchingMetrics, getSchemaVersion, stitchingConfig } from '../graphql-stitching.js';
+import {
+  metricsMiddleware,
+  metricsHandler,
+  metricsAuthMiddleware,
+  setMetricsApiKeyService,
+  setMetricsTransactionService,
+} from './services/metricsService.js';
 
 validateEnv();
 
-// ── Sentry init ───────────────────────────────────────────────────────────────
-if (SENTRY_DSN && process.env.NODE_ENV !== 'test') {
-  Sentry.init({
-    dsn: SENTRY_DSN,
-    environment: process.env.NODE_ENV || 'development',
-    tracesSampleRate: SENTRY_TRACES_SAMPLE_RATE,
-    profilesSampleRate: SENTRY_PROFILES_SAMPLE_RATE,
-    integrations: [Sentry.httpIntegration({ breadcrumbs: true }), Sentry.expressIntegration()],
-  });
-  logger.info({ dsnPrefix: SENTRY_DSN.slice(0, 30) }, 'Sentry initialized');
-}
-
-// ── Prometheus metrics ────────────────────────────────────────────────────────
-// Only initialize prometheus metrics in non-test environments to avoid registry conflicts
-const metricsMiddleware =
-  NODE_ENV === 'test'
-    ? null
-    : prometheus({
-        includeMethod: true,
-        includePath: true,
-        includeStatusCode: true,
-        includeUp: true,
-        customLabels: { app: 'rwa-backend' },
-        promClient: {
-          collectDefaultMetrics: NODE_ENV === 'test' ? false : { timeout: 5000 },
-        },
-      });
+// ── Error tracking (issue #703) ───────────────────────────────────────────────
+// Opt-in via SENTRY_DSN. See docs/OBSERVABILITY.md for the alerting setup and
+// the elk/ log pipeline that complements it.
+initErrorTracking();
 
 // ── App factory ───────────────────────────────────────────────────────────────
 export const app = express();
+
+// Proxy trust must be configured before any middleware reads req.ip. The value
+// is an exact hop count or an explicit proxy IP/CIDR list — never blanket trust.
+app.set('trust proxy', TRUST_PROXY);
 
 // Store for initialized services
 let apiKeyService = null;
@@ -127,6 +134,13 @@ const webhookRoutes = null;
 const flashLoanProtectionService = null;
 const flashLoanProtectionRoutes = null;
 let ipAccessRoutes = null;
+let adminConfigRoutes = null;
+let backupsRoutes = null;
+let oauthRoutes = null;
+let rateLimitAdminRoutes = null;
+let timeWindowRoutes = null;
+let sqlGuardMiddleware = null;
+let federatedGraphQL = null;
 
 /**
  * Initialize the app with database services.
@@ -161,9 +175,10 @@ export async function initializeApp() {
     const db = await initDatabase(NODE_ENV);
     logger.info('Database initialized');
 
-    // Initialize SQL injection guard (Issue #356)
+    // Initialize SQL injection guard (Issue #356). The middleware itself is
+    // mounted at module load time so it runs before the routes and the 404.
     const sqlGuard = getSqlInjectionGuard();
-    app.use(sqlInjectionGuardMiddleware(db, sqlGuard));
+    sqlGuardMiddleware = sqlInjectionGuardMiddleware(db, sqlGuard);
 
     // Mount SQL Injection Guard admin routes (uses initialized adminAuth)
     const sqlInjectionGuardRoutes = createSqlInjectionGuardRoutes(sqlGuard, adminAuth);
@@ -173,6 +188,7 @@ export async function initializeApp() {
 
     // Create API key service
     apiKeyService = createApiKeyService(db, logger);
+    setMetricsApiKeyService(apiKeyService);
 
     // Create and bind adminAuth middleware
     adminAuth = createAdminAuth(apiKeyService);
@@ -183,36 +199,54 @@ export async function initializeApp() {
 
     // Create transaction service
     transactionService = createTransactionService(db, logger);
+    setMetricsTransactionService(transactionService);
     logger.info('Transaction service initialized');
 
     // Setup analytics and purchases routes
     analyticsRoutes = createAnalyticsRoutes(transactionService, logger, adminAuth);
-    purchasesRoutes = createPurchaseRoutes(transactionService, logger);
+    purchasesRoutes = createPurchaseRoutes(transactionService, logger, adminAuth);
 
     // Setup rate limiting routes
     rateLimitingRoutes = createRateLimitingRoutes(logger, adminAuth);
 
-    // Initialize GraphQL Federation Gateway
-    const federatedGraphQL = await createFederatedGraphQLServer({
+    // Setup admin config routes
+    adminConfigRoutes = createAdminConfigRoutes();
+
+    // Setup backup management routes
+    backupsRoutes = createBackupRoutes(backupService, logger);
+
+    // Setup OAuth routes
+    oauthRoutes = createOAuthRouter(db, logger);
+
+    // Setup Rate Limit Admin routes
+    const rateLimiterService = new RateLimiterService();
+    rateLimitAdminRoutes = createRateLimitAdminRoutes(rateLimiterService, adminAuth);
+
+    // Setup Time Window routes
+    const timeWindowService = new TimeWindowService(db, logger);
+    timeWindowRoutes = createTimeWindowRoutes(timeWindowService, logger, adminAuth);
+
+    // Initialize GraphQL Federation Gateway. The mount lives at module load
+    // time (below) so it is registered before the 404 handler.
+    federatedGraphQL = await createFederatedGraphQLServer({
       dataLayer: dataService,
       transactionService,
       logger,
     });
-    app.use('/graphql', federatedGraphQL.middleware);
     logger.info('GraphQL Federation gateway initialized at /graphql');
 
     return { db, apiKeyService, transactionService, federatedGraphQL };
   } catch (error) {
-    logger.error({ error: error.message }, 'Failed to initialize app');
+    reportError(error, { message: 'Failed to initialize app' });
     throw error;
   }
 }
 
-// Sentry request handlers must be first
-if (SENTRY_DSN) {
-  app.use(Sentry.Handlers.requestHandler());
-  app.use(Sentry.Handlers.tracingHandler());
-}
+// Resolve the client IP once, before anything that keys on it.
+app.use(createClientIpMiddleware());
+
+// Error tracking must see every request before anything else can fail.
+installErrorTrackingRequestScope(app);
 
 // Comprehensive security headers middleware
 app.use(createSecurityHeadersMiddleware(logger));
@@ -224,16 +258,37 @@ app.use(
     allowedHeaders: ['Content-Type', 'x-api-key', 'X-Request-ID'],
   }),
 );
-app.use(express.json({ limit: '10kb' }));
+// Request body size limit: 1MB for asset metadata (including descriptions, images, documents)
+// This is documented and tested - see __tests__/requestBodySize.test.js
+app.use(express.json({ limit: '1mb' }));
+
+// Strict user-input sanitization (DOMPurify + encoding) applied to every
+// incoming request body, query, and params BEFORE it reaches a handler and
+// can be persisted to the database.
+app.use(requireSanitization);
+
+// Deferred SQL injection guard — installed by initializeApp() but registered
+// here so it actually sees requests before the route handlers do.
+app.use((req, res, next) => {
+  if (!sqlGuardMiddleware) return next();
+  return sqlGuardMiddleware(req, res, next);
+});
+
 app.use(partialResponseMiddleware());
 
 // Request-ID middleware
+// The ID is echoed in X-Request-ID and opened as an async context so every log
+// line emitted while handling the request carries it (see logger.js).
 app.use((req, res, next) => {
   const id = req.headers['x-request-id'] || randomUUID();
   req.requestId = id;
   res.setHeader('X-Request-ID', id);
-  next();
+  runWithRequestContext({ requestId: id }, next);
 });
+
+// Issue #519: RFC 7807 problem-details interceptor — normalizes legacy error
+// payloads from every handler into a consistent application/problem+json shape.
+app.use(createProblemDetailsInterceptor());
 
 // API request logging middleware
 app.use(requestLogger);
@@ -244,6 +299,7 @@ app.use(
     logger,
     autoLogging: { ignore: (req) => req.url === '/health' },
     genReqId: (req) => req.requestId,
+    customProps: (req) => ({ requestId: req.requestId }),
   }),
 );
 
@@ -269,22 +325,9 @@ app.use('/api/', createIPAccessControl());
 app.use('/api/', createEndpointRateLimiter());
 app.use('/graphql', createEndpointRateLimiter());
 
-// Prometheus metrics (skip in test mode to avoid metric registration conflicts)
-if (NODE_ENV !== 'test') {
-  app.use(metricsMiddleware);
-  app.get('/metrics', async (_req, res) => {
-    res.setHeader('Content-Type', metricsMiddleware.promClient.register.contentType);
-    res.send(await metricsMiddleware.promClient.register.metrics());
-  });
-} else {
-  // In test mode, return a mock metrics response
-  app.get('/metrics', async (_req, res) => {
-    res.setHeader('Content-Type', 'text/plain; charset=utf-8');
-    res.send(
-      '# HELP http_requests_total Total HTTP requests\n# TYPE http_requests_total counter\nhttp_requests_total{method="GET", status="200"} 0\n',
-    );
-  });
-}
+// Prometheus metrics for backend observability (Issue #518)
+app.use(metricsMiddleware);
+app.get('/metrics', metricsAuthMiddleware, metricsHandler);
 
 // Swagger docs — generated from JSDoc @openapi annotations + static spec (Issue #295)
 const fullSwaggerSpec = swaggerJSDoc({
@@ -308,6 +351,7 @@ app.use(
       docExpansion: 'none',
       filter: true,
       displayRequestDuration: true,
+      persistAuthorization: true,
     },
   }),
 );
@@ -499,6 +543,11 @@ const apiMonitoringRoutes = createApiMonitoringRoutes();
 app.use('/api/v1/api-monitor', apiMonitoringRoutes);
 app.use('/api/api-monitor', apiMonitoringRoutes);
 
+// Mount Statement routes (Issue #910)
+const statementsRoutes = createStatementRoutes();
+app.use('/api/v1/statements', statementsRoutes);
+app.use('/api/statements', statementsRoutes);
+
 // SQL Injection Guard routes are mounted inside initializeApp() below
 // so they use the fully initialized adminAuth middleware
 
@@ -521,8 +570,90 @@ app.use('/api/ip-access', (req, res, next) => {
   adminAuth(req, res, () => ipAccessRoutes(req, res, next));
 });
 
+// Mount Admin Configuration routes (admin only)
+app.use('/api/v1/admin', (req, res, next) => {
+  if (!adminConfigRoutes) {
+    return res.status(503).json({ error: 'Admin config service not initialized', code: 'SERVICE_UNAVAILABLE' });
+  }
+  adminConfigRoutes(req, res, next);
+});
+app.use('/api/admin', (req, res, next) => {
+  if (!adminConfigRoutes) {
+    return res.status(503).json({ error: 'Admin config service not initialized', code: 'SERVICE_UNAVAILABLE' });
+  }
+  adminConfigRoutes(req, res, next);
+});
+
+// Mount Backup routes (admin only)
+app.use('/api/v1/backups', (req, res, next) => {
+  if (!backupsRoutes) {
+    return res.status(503).json({ error: 'Backup service not initialized', code: 'SERVICE_UNAVAILABLE' });
+  }
+  adminAuth(req, res, () => backupsRoutes(req, res, next));
+});
+app.use('/api/backups', (req, res, next) => {
+  if (!backupsRoutes) {
+    return res.status(503).json({ error: 'Backup service not initialized', code: 'SERVICE_UNAVAILABLE' });
+  }
+  adminAuth(req, res, () => backupsRoutes(req, res, next));
+});
+
+// Mount OAuth routes
+app.use('/api/v1/auth', (req, res, next) => {
+  if (!oauthRoutes) {
+    return res.status(503).json({ error: 'OAuth service not initialized', code: 'SERVICE_UNAVAILABLE' });
+  }
+  oauthRoutes(req, res, next);
+});
+app.use('/api/auth', (req, res, next) => {
+  if (!oauthRoutes) {
+    return res.status(503).json({ error: 'OAuth service not initialized', code: 'SERVICE_UNAVAILABLE' });
+  }
+  oauthRoutes(req, res, next);
+});
+
+// Mount Rate Limit Admin routes (admin only)
+app.use('/api/v1/rate-limit-admin', (req, res, next) => {
+  if (!rateLimitAdminRoutes) {
+    return res.status(503).json({ error: 'Rate limit admin service not initialized', code: 'SERVICE_UNAVAILABLE' });
+  }
+  adminAuth(req, res, () => rateLimitAdminRoutes(req, res, next));
+});
+app.use('/api/rate-limit-admin', (req, res, next) => {
+  if (!rateLimitAdminRoutes) {
+    return res.status(503).json({ error: 'Rate limit admin service not initialized', code: 'SERVICE_UNAVAILABLE' });
+  }
+  adminAuth(req, res, () => rateLimitAdminRoutes(req, res, next));
+});
+
+// Mount Time Window routes
+app.use('/api/v1/time-windows', (req, res, next) => {
+  if (!timeWindowRoutes) {
+    return res.status(503).json({ error: 'Time window service not initialized', code: 'SERVICE_UNAVAILABLE' });
+  }
+  timeWindowRoutes(req, res, next);
+});
+app.use('/api/time-windows', (req, res, next) => {
+  if (!timeWindowRoutes) {
+    return res.status(503).json({ error: 'Time window service not initialized', code: 'SERVICE_UNAVAILABLE' });
+  }
+  timeWindowRoutes(req, res, next);
+});
+
+
+// Tiered GraphQL rate limiting (anonymous / authenticated / admin)
+app.use('/graphql', createGraphQLRateLimiter());
+
 // Mount GraphQL Security Middleware
 app.use('/graphql', createGraphQLPlaygroundSecurityMiddleware());
+
+// Deferred federated GraphQL mount (registered before the 404 handler).
+app.use('/graphql', (req, res, next) => {
+  if (!federatedGraphQL) {
+    return res.status(503).json({ error: 'GraphQL service not initialized', code: 'SERVICE_UNAVAILABLE' });
+  }
+  return federatedGraphQL.middleware(req, res, next);
+});
 
 // ── GraphQL Schema Stitching endpoints (Issue #294) ──────────────────────────
 // Expose stitching metrics, health, and schema info
@@ -561,49 +692,27 @@ app.get('/graphql/stitching/info', (_req, res) => {
   });
 });
 
-// 404 handler
-app.use((_req, res) => {
-  res.status(404).json({ error: 'Not found', requestId: _req.requestId });
-});
+// 404 handler (RFC 7807)
+app.use(problemDetailsNotFoundHandler());
 
-// Sentry error handler must precede custom error handler
-if (SENTRY_DSN) {
-  app.use(Sentry.Handlers.errorHandler());
-}
-
-// Generic error handler - Issue #356: prevent SQL details leakage
-app.use((err, req, res, _next) => {
-  req.log?.error({ err }, 'Unhandled error');
-
-  // Prevent SQL details from leaking to clients
-  if (err.code === 'SQL_INJECTION_BLOCKED') {
-    return res.status(403).json({
-      error: 'Invalid request',
+// Error tracking: report server-side failures to Sentry, tagged with the
+// request ID so an alert can be traced back to the structured logs. Registered
+// before problemDetailsErrorHandler(), which owns the log line for the same
+// error. 4xx responses are client errors rather than incidents.
+app.use((err, req, _res, next) => {
+  const status = Number(err?.status) || Number(err?.statusCode) || 500;
+  if (status >= 500) {
+    captureException(err, {
       requestId: req.requestId,
-      code: 'SECURITY_BLOCK',
+      method: req.method,
+      path: req.originalUrl || req.url,
     });
   }
-
-  // Mask database errors to prevent schema/information disclosure
-  if (err.code && (err.code.startsWith('SQLITE_') || err.code.startsWith('42') || err.code.startsWith('28'))) {
-    return res.status(500).json({
-      error: 'Internal server error',
-      requestId: req.requestId,
-      code: 'DATABASE_ERROR',
-    });
-  }
-
-  // Generic error - don't expose error details in production
-  const message = NODE_ENV === 'production'
-    ? 'Internal server error'
-    : err.message || 'Internal server error';
-
-  res.status(err.status || 500).json({
-    error: message,
-    requestId: req.requestId,
-    ...(NODE_ENV !== 'production' && { code: err.code }),
-  });
+  next(err);
 });
+
+// Issue #519: global RFC 7807 error exception filter/interceptor.
+app.use(problemDetailsErrorHandler());
 
 /**
  * Cleanup function to close resources

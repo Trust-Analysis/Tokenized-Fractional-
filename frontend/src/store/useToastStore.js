@@ -12,7 +12,15 @@ export const useToastStore = create((set, get) => ({
     soundEnabled: false,
   },
 
-  addToast: ({ message, type = 'info', txHash = null, duration = null, action = null }) => {
+  addToast: ({
+    message,
+    type = 'info',
+    txHash = null,
+    duration = null,
+    action = null,
+    nextSteps = null,
+    details = null,
+  }) => {
     const id = ++nextId;
     const prefs = get().preferences;
     const toast = {
@@ -22,6 +30,8 @@ export const useToastStore = create((set, get) => ({
       txHash,
       duration: duration ?? prefs.defaultDuration,
       action,
+      nextSteps,
+      details,
       createdAt: Date.now(),
     };
     set((s) => {
