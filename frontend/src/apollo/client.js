@@ -12,6 +12,7 @@ import { ApolloClient, InMemoryCache, HttpLink, from } from '@apollo/client';
 import { setContext } from '@apollo/client/link/context';
 import { onError } from '@apollo/client/link/error';
 import toast from 'react-hot-toast';
+import { getAuthToken } from '../lib/authToken';
 
 // HTTP link to GraphQL API
 const httpLink = new HttpLink({
@@ -19,9 +20,9 @@ const httpLink = new HttpLink({
   credentials: 'include',
 });
 
-// Auth link to add headers
+// Auth link to add headers. The token lives in memory only (Issue #1047).
 const authLink = setContext((_, { headers }) => {
-  const token = localStorage.getItem('auth_token');
+  const token = getAuthToken();
   return {
     headers: {
       ...headers,

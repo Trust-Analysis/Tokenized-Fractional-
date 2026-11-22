@@ -2,6 +2,7 @@ import React, { createContext, useContext, useEffect, useCallback } from 'react'
 import { useTranslation } from 'react-i18next';
 import { SUPPORTED_LANGUAGES } from '../i18n';
 import { getLanguageDirection, isRTLLanguage } from '../utils/i18nFormatters';
+import { readString, writeString, STORAGE_KEYS } from '../lib/storage';
 
 /**
  * LanguageContext provides global language state and utilities
@@ -64,14 +65,14 @@ export const LanguageProvider = ({ children }) => {
    * Get stored language preference
    */
   const getStoredLanguage = useCallback(() => {
-    return localStorage.getItem('i18nextLng') || 'en';
+    return readString(STORAGE_KEYS.LANGUAGE, 'en') || 'en';
   }, []);
 
   /**
    * Save language preference
    */
   const saveLanguagePreference = useCallback((langCode) => {
-    localStorage.setItem('i18nextLng', langCode);
+    writeString(STORAGE_KEYS.LANGUAGE, langCode);
   }, []);
 
   /**

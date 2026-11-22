@@ -1,6 +1,13 @@
 import { create } from 'zustand';
-import { persist } from 'zustand/middleware';
+import { createJSONStorage, persist } from 'zustand/middleware';
 import { isAllowed, setAllowed, getUserInfo } from '@stellar/freighter-api';
+import {
+  createZustandStorage,
+  readString,
+  writeString,
+  removeItem,
+  STORAGE_KEYS,
+} from '../lib/storage';
 
 const FALLBACK_PROVIDER = {
   uuid: 'freighter-builtin',
@@ -114,7 +121,7 @@ export const useWalletStore = create(
 
       checkConnection: async () => {
         if (import.meta.env.DEV && import.meta.env.VITE_MOCK_WALLET === 'true') {
-          const stored = localStorage.getItem('mock_wallet_pubkey');
+          const stored = readString(STORAGE_KEYS.MOCK_WALLET_PUBKEY);
           if (stored) {
             set({ publicKey: stored, walletError: null });
             return stored;
@@ -144,7 +151,7 @@ export const useWalletStore = create(
         if (import.meta.env.DEV && import.meta.env.VITE_MOCK_WALLET === 'true') {
           await new Promise((resolve) => setTimeout(resolve, 500));
           const mockPubKey = 'GBAZE64FKVPG4JUUP2BH63746JJ22G3A2S4QPF4UWKVA2RELLFLQZQVR';
-          localStorage.setItem('mock_wallet_pubkey', mockPubKey);
+          writeString(STORAGE_KEYS.MOCK_WALLET_PUBKEY, mockPubKey);
           set({ publicKey: mockPubKey, isConnecting: false, activeProvider: FALLBACK_PROVIDER });
           return mockPubKey;
         }
@@ -167,8 +174,8 @@ export const useWalletStore = create(
 
       disconnect: () => {
         if (import.meta.env.DEV && import.meta.env.VITE_MOCK_WALLET === 'true') {
-          localStorage.removeItem('mock_wallet_pubkey');
-          localStorage.removeItem('mock_shares_balance');
+          removeItem(STORAGE_KEYS.MOCK_WALLET_PUBKEY);
+          removeItem(STORAGE_KEYS.MOCK_SHARES_BALANCE);
         }
         // Best-effort WalletConnect cleanup (Issue #568); resolved async fire-and-forget.
         if (get().activeProvider === 'walletconnect' || get().activeWallet === 'walletconnect') {
@@ -262,12 +269,24 @@ export const useWalletStore = create(
         set((state) => ({ reconnectAttempts: state.reconnectAttempts + 1 })),
     }),
     {
-      name: 'rwa-wallet-store',
+      name: STORAGE_KEYS.WALLET_STORE,
+      version: 2,
+      storage: createJSONStorage(() => createZustandStorage()),
+      // Wallet public keys and share balances are session state: persisting
+      // them would leak browsing history and show stale balances after reload.
+      // Only the provider choice is rehydrated; the wallet reconnects through
+      // `checkConnection()`.
       partialize: (state) => ({
-        publicKey: state.publicKey,
-        shares: state.shares,
         activeProvider: state.activeProvider,
+        activeWallet: state.activeWallet,
       }),
+      migrate: (persisted) => {
+        const previous = persisted && typeof persisted === 'object' ? persisted : {};
+        return {
+          activeProvider: previous.activeProvider ?? null,
+          activeWallet: previous.activeWallet ?? null,
+        };
+      },
     },
   ),
 );

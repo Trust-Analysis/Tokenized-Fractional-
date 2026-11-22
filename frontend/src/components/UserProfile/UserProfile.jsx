@@ -8,7 +8,19 @@ import Skeleton from '../Skeleton/Skeleton';
 import Spinner from '../Spinner/Spinner';
 import { useWalletStore } from '../../store/useWalletStore';
 import { useToastStore } from '../../store/useToastStore';
+import {
+  readString,
+  writeString,
+  readJson,
+  writeJson,
+  removeItem,
+  STORAGE_KEYS,
+} from '../../lib/storage';
 import styles from './UserProfile.module.css';
+
+const profileStorageKey = (publicKey) => `userProfile_${publicKey}`;
+
+const isProfileObject = (value) => value !== null && typeof value === 'object' && !Array.isArray(value);
 
 export default function UserProfile() {
   const { t } = useTranslation();
@@ -28,14 +40,15 @@ export default function UserProfile() {
 
   // Settings state
   const [preferences, setPreferences] = useState({
-    darkMode: localStorage.getItem('theme') === 'dark',
-    emailNotifications: localStorage.getItem('emailNotifications') !== 'false',
-    priceAlerts: localStorage.getItem('priceAlerts') !== 'false',
-    transactionNotifications: localStorage.getItem('transactionNotifications') !== 'false',
-    marketingEmails: localStorage.getItem('marketingEmails') === 'true',
-    language: localStorage.getItem('language') || 'en',
-    twoFactorEnabled: localStorage.getItem('twoFactorEnabled') === 'true',
-    autoLogout: localStorage.getItem('autoLogout') !== 'false',
+    darkMode: readString(STORAGE_KEYS.THEME) === 'dark',
+    emailNotifications: readString(STORAGE_KEYS.PROFILE_EMAIL_NOTIFICATIONS, 'true') !== 'false',
+    priceAlerts: readString(STORAGE_KEYS.PROFILE_PRICE_ALERTS, 'true') !== 'false',
+    transactionNotifications:
+      readString(STORAGE_KEYS.PROFILE_TRANSACTION_NOTIFICATIONS, 'true') !== 'false',
+    marketingEmails: readString(STORAGE_KEYS.PROFILE_MARKETING_EMAILS, 'false') === 'true',
+    language: readString(STORAGE_KEYS.PROFILE_LANGUAGE, 'en'),
+    twoFactorEnabled: readString(STORAGE_KEYS.PROFILE_TWO_FACTOR, 'false') === 'true',
+    autoLogout: readString(STORAGE_KEYS.PROFILE_AUTO_LOGOUT, 'true') !== 'false',
   });
 
   const [activeTab, setActiveTab] = useState('profile'); // 'profile', 'settings', 'security'
@@ -53,9 +66,12 @@ export default function UserProfile() {
   const loadProfileData = () => {
     setLoading(true);
     try {
-      const stored = localStorage.getItem(`userProfile_${publicKey}`);
+      const stored = readJson(profileStorageKey(publicKey), {
+        fallback: null,
+        validate: isProfileObject,
+      });
       if (stored) {
-        setProfileData(JSON.parse(stored));
+        setProfileData(stored);
       } else {
         // Set default display name from wallet address
         setProfileData((prev) => ({
@@ -139,7 +155,7 @@ export default function UserProfile() {
 
     setIsSaving(true);
     try {
-      localStorage.setItem(`userProfile_${publicKey}`, JSON.stringify(profileData));
+      writeJson(profileStorageKey(publicKey), profileData);
       setSuccessMessage('Profile updated successfully!');
       addToast({ type: 'success', message: 'Profile saved!' });
       setIsEditing(false);
@@ -157,9 +173,9 @@ export default function UserProfile() {
       ...prev,
       [field]: value,
     }));
-    // Save to localStorage immediately
-    localStorage.setItem(
-      field === 'darkMode' ? 'theme' : field,
+    // Persist immediately through the key registry.
+    writeString(
+      field === 'darkMode' ? STORAGE_KEYS.THEME : field,
       field === 'darkMode' ? (value ? 'dark' : 'light') : value ? 'true' : 'false'
     );
     addToast({ type: 'success', message: `${field} updated` });
@@ -193,7 +209,7 @@ export default function UserProfile() {
   const handleDeleteAccount = () => {
     if (window.confirm('Are you sure you want to delete your profile? This action cannot be undone.')) {
       try {
-        localStorage.removeItem(`userProfile_${publicKey}`);
+        removeItem(profileStorageKey(publicKey));
         setProfileData({
           displayName: '',
           email: '',

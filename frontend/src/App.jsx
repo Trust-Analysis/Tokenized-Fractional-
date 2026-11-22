@@ -33,6 +33,8 @@ import {
   CONTRACT_NOT_CONFIGURED,
 } from './constants/errors';
 import { toToastError } from './lib/errorMapper';
+import { clearAuthToken, purgeLegacyCredentialStorage } from './lib/authToken';
+import { readString, writeString, removeItem, STORAGE_KEYS } from './lib/storage';
 import { useAssetStore } from './store/useAssetStore';
 import { useToastStore } from './store/useToastStore';
 import { useFavoritesStore } from './store/useFavoritesStore';
@@ -630,7 +632,7 @@ function App() {
 
   React.useEffect(() => {
     const autoReconnect = async () => {
-      const previouslyConnected = localStorage.getItem("wallet_previously_connected");
+      const previouslyConnected = readString(STORAGE_KEYS.PREVIOUSLY_CONNECTED);
       if (previouslyConnected === "true") {
         setIsReconnecting(true);
         try {
@@ -640,13 +642,13 @@ function App() {
               const publicKey = await window.freighterApi.getPublicKey();
               if (publicKey) {
                 setWalletAddress(publicKey);
-                localStorage.setItem("wallet_previously_connected", "true");
+                writeString(STORAGE_KEYS.PREVIOUSLY_CONNECTED, "true");
               }
             }
           }
         } catch (err) {
           console.warn("Silent wallet reconnection failed, falling back to manual connect:", err);
-          localStorage.removeItem("wallet_previously_connected");
+          removeItem(STORAGE_KEYS.PREVIOUSLY_CONNECTED);
         } finally {
           setIsReconnecting(false);
         }
@@ -662,13 +664,13 @@ function App() {
         const publicKey = await window.freighterApi.getPublicKey();
         if (publicKey) {
           setWalletAddress(publicKey);
-          localStorage.setItem("wallet_previously_connected", "true");
+          writeString(STORAGE_KEYS.PREVIOUSLY_CONNECTED, "true");
         }
       } else {
         // Fallback demo connection
         const mockAddress = "GBRPYHIL2CI3FNQ4BXLFMNDLFIM33A";
         setWalletAddress(mockAddress);
-        localStorage.setItem("wallet_previously_connected", "true");
+        writeString(STORAGE_KEYS.PREVIOUSLY_CONNECTED, "true");
       }
     } catch (err) {
       console.error("Manual wallet connection error:", err);
@@ -677,7 +679,7 @@ function App() {
 
   const handleDisconnectWallet = () => {
     setWalletAddress("");
-    localStorage.removeItem("wallet_previously_connected");
+    removeItem(STORAGE_KEYS.PREVIOUSLY_CONNECTED);
   };
 
   // ── Global store state ─────────────────────────────────────────────────────
@@ -1103,10 +1105,8 @@ function App() {
     clearAssets();
     setTxResult(null);
     setTxError(null);
-    ['auth_token', 'jwt', 'access_token', 'refresh_token'].forEach((key) => {
-      localStorage.removeItem(key);
-      sessionStorage.removeItem(key);
-    });
+    clearAuthToken();
+    purgeLegacyCredentialStorage();
     if (location.pathname !== '/') navigate('/', { replace: true });
   }, [disconnect, clearMeta, clearAssets, location.pathname, navigate]);
 

@@ -19,6 +19,8 @@
  *   - Wallet A → wallet B: no merge; B's saved list is loaded.
  */
 
+import { readJson, writeJson, removeItem } from '../lib/storage';
+
 /**
  * Helper to get wallet-specific localStorage key (#277)
  */
@@ -76,38 +78,28 @@ try {
  * Helper to load persistent state from localStorage for a given wallet
  */
 function loadStateFromStorage(walletAddress) {
-  if (typeof window === 'undefined' || !window.localStorage) {
-    return { favorites: [], categories: DEFAULT_CATEGORIES, notifications: [] };
-  }
-  try {
-    const raw = window.localStorage.getItem(getStorageKey(walletAddress));
-    if (!raw) return { favorites: [], categories: DEFAULT_CATEGORIES, notifications: [] };
-    const parsed = JSON.parse(raw);
-    return {
-      favorites: Array.isArray(parsed.favorites) ? parsed.favorites : [],
-      categories: Array.isArray(parsed.categories) ? parsed.categories : DEFAULT_CATEGORIES,
-      notifications: Array.isArray(parsed.notifications) ? parsed.notifications : [],
-    };
-  } catch (err) {
-    return { favorites: [], categories: DEFAULT_CATEGORIES, notifications: [] };
-  }
+  const empty = { favorites: [], categories: DEFAULT_CATEGORIES, notifications: [] };
+  const parsed = readJson(getStorageKey(walletAddress), {
+    fallback: null,
+    validate: (value) => value !== null && typeof value === 'object' && !Array.isArray(value),
+  });
+  if (!parsed) return empty;
+  return {
+    favorites: Array.isArray(parsed.favorites) ? parsed.favorites : [],
+    categories: Array.isArray(parsed.categories) ? parsed.categories : DEFAULT_CATEGORIES,
+    notifications: Array.isArray(parsed.notifications) ? parsed.notifications : [],
+  };
 }
 
 /**
  * Helper to save state to localStorage for a given wallet
  */
 function saveStateToStorage(walletAddress, state) {
-  if (typeof window === 'undefined' || !window.localStorage) return;
-  try {
-    const payload = {
-      favorites: state.favorites,
-      categories: state.categories,
-      notifications: state.notifications,
-    };
-    window.localStorage.setItem(getStorageKey(walletAddress), JSON.stringify(payload));
-  } catch (err) {
-    // Ignore storage write error
-  }
+  writeJson(getStorageKey(walletAddress), {
+    favorites: state.favorites,
+    categories: state.categories,
+    notifications: state.notifications,
+  });
 }
 
 function normalizeWallet(walletAddress) {
@@ -115,12 +107,7 @@ function normalizeWallet(walletAddress) {
 }
 
 function clearGuestStorage() {
-  if (typeof window === 'undefined' || !window.localStorage) return;
-  try {
-    window.localStorage.removeItem(getStorageKey(null));
-  } catch (err) {
-    // Ignore storage error
-  }
+  removeItem(getStorageKey(null));
 }
 
 /**
