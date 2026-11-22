@@ -58,3 +58,10 @@ variable "redis_security_group_ids" {
   description = "Security group IDs to attach to the Redis replication group"
   default     = []
 }
+
+
+variable "cidr_block" {
+  description = "CIDR Block for resources"
+  type        = string
+  default     = "0.0.0.0/0"
+}
