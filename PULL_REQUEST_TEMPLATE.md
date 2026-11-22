@@ -9,7 +9,6 @@ Brief description of changes.
 - [ ] Documentation (`docs(scope): message`)
 - [ ] Refactoring (`refactor(scope): message`)
 - [ ] CI/CD (`ci(scope): message`)
-- [ ] Other
 
 ## PR Title Format
 
