@@ -54,7 +54,7 @@ import WalletAddressBadge from './components/WalletAddressBadge/WalletAddressBad
 import ContractVerificationBanner from './components/ContractVerificationBanner/ContractVerificationBanner';
 import PreferencesPanel from './components/PreferencesPanel/PreferencesPanel';
 import OptimizedImage from './components/OptimizedImage/OptimizedImage';
-import VirtualTour from './components/VirtualTour/VirtualTour';
+const VirtualTour = lazy(() => import('./components/VirtualTour/VirtualTour'));
 import ShortcutHelpModal from './components/ShortcutHelp/ShortcutHelp';
 import Spinner from './components/Spinner/Spinner';
 import useContractManifest from './hooks/useContractManifest';
