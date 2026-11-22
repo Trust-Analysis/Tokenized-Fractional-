@@ -291,6 +291,14 @@ export const useFavoritesStore = createStoreImpl((set, get) => ({
     saveStateToStorage(walletAddress, get());
   },
 
+  clearWalletData: (walletAddress) => {
+    const address = normalizeWallet(walletAddress);
+    removeItem(getStorageKey(address));
+    if (normalizeWallet(get().walletAddress) === address) {
+      set({ favorites: [], categories: DEFAULT_CATEGORIES, notifications: [] });
+    }
+  },
+
   /** Clear all favorites for active wallet. */
   clearFavorites: () => {
     const { walletAddress } = get();

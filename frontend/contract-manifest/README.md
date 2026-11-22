@@ -1,6 +1,6 @@
 # Official Contract Manifest — Trust Model & Tamper-Evidence
 
-This directory contains the canonical source of truth for officially recognized contract deployments on the Tokenized Fractional RWA Platform (Issue #792, Issue #906).
+The deployment registry supplies the active contract addresses used to generate this signed frontend manifest.
 
 ---
 
@@ -8,7 +8,7 @@ This directory contains the canonical source of truth for officially recognized 
 
 | File | Role | Security Property |
 |---|---|---|
-| `official-contracts.payload.json` | Unsigned, human-editable address list | Git-tracked source of truth for contract addresses. |
+| `official-contracts.payload.json` | Unsigned, human-editable address list | [Deployment registry](../../backend/deployments.json) supplies active contract addresses. |
 | `frontend/public/official-contracts.json` | Signed JSON envelope (`payload`, `signer`, `signature`) | Cryptographically signed artifact served at `/official-contracts.json`. |
 | `frontend/scripts/sign-contract-manifest.mjs` | Offline signing CLI | Signs payload using offline Ed25519 private keys. |
 | `frontend/src/utils/contractManifest.js` | Browser verification engine | Cryptographically verifies Ed25519 signature against pinned public keys. |

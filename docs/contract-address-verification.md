@@ -15,7 +15,7 @@ manifest cannot be verified, the UI raises a prominent warning banner.
 
 | Path | Purpose |
 | --- | --- |
-| `frontend/contract-manifest/official-contracts.payload.json` | Unsigned, human-editable source of truth for the address list. |
+| `frontend/contract-manifest/official-contracts.payload.json` | Signing metadata template. The deployment registry supplies active contract addresses. |
 | `frontend/public/official-contracts.json` | The **signed** artifact that is served to the app at `/official-contracts.json`. |
 | `frontend/scripts/sign-contract-manifest.mjs` | Dependency-free CLI to generate a key, sign the payload, or verify the artifact. |
 | `frontend/src/utils/contractManifest.js` | Runtime verification + policy (pinned signers, canonicalisation, deployment status). |

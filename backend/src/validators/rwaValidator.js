@@ -5,6 +5,7 @@
  * src/validators/rwaValidator.js — validation helpers for RWA asset and webhook requests.
  */
 
+import { rwaFields } from './rwaFields.js';
 import { StrKey } from '@stellar/stellar-sdk';
 import { WEBHOOK_VALID_EVENTS } from '../config.js';
 
@@ -44,10 +45,20 @@ export function validateContractId(id) {
  * @param {object} body
  * @returns {string|null} Error message or null if valid
  */
-export function validateRwaBody(body) {
-  const required = ['title', 'location', 'description', 'assetType'];
-  const missing = required.filter(f => !body[f]);
+export function validateRwaBody(body, { partial = false } = {}) {
+  const missing = Object.entries(rwaFields)
+    .filter(([name, rule]) => rule.required && (!partial || Object.prototype.hasOwnProperty.call(body ?? {}, name)) && (body?.[name] == null ||
+      (typeof body[name] === 'string' && body[name].trim() === '')))
+    .map(([name]) => name);
   if (missing.length > 0) return `Missing required fields: ${missing.join(', ')}`;
+  for (const [name, rule] of Object.entries(rwaFields)) {
+    const value = body[name];
+    if (value == null) continue;
+    if (rule.type === 'String' && typeof value !== 'string') return `${name} must be a string`;
+    if (rule.type === 'Int' && (!Number.isInteger(value) || value < rule.min || value > 2147483647)) {
+      return `${name} must be an integer between ${rule.min} and 2147483647`;
+    }
+  }
   return null;
 }
 
