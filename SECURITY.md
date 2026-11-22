@@ -245,3 +245,11 @@ We will credit researchers who responsibly disclose valid vulnerabilities (unles
 - Issues that require physical access to a user's device.
 - Social engineering attacks.
 - Freighter Wallet bugs (report to [Freighter](https://github.com/stellar/freighter)).
+
+## Rotate Pushed Secrets Even When CI Blocks the PR (#1105)
+
+If a credential or secret is committed and pushed to a remote branch or pull request—even when local `gitleaks` was skipped and CI later blocks the PR—treat the secret as compromised immediately:
+
+1. **Revoke and rotate** the exposed credential/token/key at the provider right away.
+2. **Remove/scrub** the secret from the branch and Git history if appropriate.
+3. **Do not rely on a blocked PR alone** to contain exposure, as remote refs, CI logs, or clones may have already observed the value.

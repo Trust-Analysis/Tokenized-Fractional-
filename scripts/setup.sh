@@ -203,3 +203,30 @@ printf '%b\n' "${BLUE}==========================================================
 printf '%b\n' "Edit backend/.env and frontend/.env, then run:"
 printf '%b\n' "  (cd backend && npm run dev)"
 printf '%b\n' "  (cd frontend && npm run dev)"
+
+# Issue #1105: one-command gitleaks installation helper
+install_gitleaks_helper() {
+  if command -v gitleaks >/dev/null 2>&1; then
+    echo "gitleaks is already installed: $(gitleaks version 2>/dev/null || true)"
+    return 0
+  fi
+
+  echo "Installing gitleaks..."
+  if command -v brew >/dev/null 2>&1; then
+    brew install gitleaks
+  elif command -v apt-get >/dev/null 2>&1; then
+    sudo apt-get update && sudo apt-get install -y gitleaks
+  elif command -v dnf >/dev/null 2>&1; then
+    sudo dnf install -y gitleaks
+  elif command -v winget >/dev/null 2>&1; then
+    winget install --id Gitleaks.Gitleaks -e --accept-source-agreements --accept-package-agreements
+  else
+    echo "No supported package manager found automatically. Install from https://github.com/gitleaks/gitleaks/releases" >&2
+    return 1
+  fi
+}
+
+if [ "${1:-}" = "--gitleaks" ]; then
+  install_gitleaks_helper
+  exit $?
+fi

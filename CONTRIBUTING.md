@@ -684,3 +684,8 @@ If you have questions about contributing, feel free to:
 - Reach out to the maintainers
 
 Thank you for contributing! 🚀
+
+### One-Command Gitleaks Install & Pushed Secret Rotation (#1105)
+
+- **One-command install**: Run `./scripts/setup.sh --gitleaks` so `.husky/pre-commit` scans staged changes locally instead of warning and skipping.
+- **Rotation rule**: If a secret is ever pushed to a remote branch or PR—even if CI later blocks the PR—**rotate and revoke the secret immediately**, rather than assuming a blocked PR prevents exposure.
