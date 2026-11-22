@@ -1,27 +1,26 @@
 name: Database Backup
 
-# Scheduled offsite backup of the production database.
+# Scheduled offsite backup of the production database using GitHub OIDC.
 #
-# Runs daily at 03:00 UTC. The job creates a verified backup and uploads it to
-# S3 (a second, offsite location for disaster recovery). The backup artifact is
-# also attached to the workflow run as a third copy / audit trail.
-#
-# Required repository secrets (Settings → Secrets and variables → Actions):
+# Required repository secrets / variables:
 #   DATABASE_URL          PostgreSQL connection string of the production DB
-#   BACKUP_S3_BUCKET      target S3 bucket
-#   AWS_ACCESS_KEY_ID     credentials with s3:PutObject on the bucket
-#   AWS_SECRET_ACCESS_KEY
+#   BACKUP_S3_BUCKET      Target S3 bucket (with Versioning & Object Lock enabled)
+#   AWS_BACKUP_ROLE_ARN   IAM Role ARN trusted by GitHub OIDC and scoped to BACKUP_S3_BUCKET
 # Optional:
 #   BACKUP_S3_PREFIX (default: backups), BACKUP_S3_REGION (default: us-east-1)
 
 on:
   schedule:
-    - cron: '0 3 * * *' # daily at 03:00 UTC
-  workflow_dispatch: {} # allow manual runs from the Actions tab
+    - cron: '0 3 * * *'
+  workflow_dispatch: {}
 
 concurrency:
   group: db-backup
   cancel-in-progress: false
+
+permissions:
+  id-token: write
+  contents: read
 
 jobs:
   backup:
@@ -35,6 +34,12 @@ jobs:
           node-version-file: '.nvmrc'
           cache: npm
           cache-dependency-path: backend/package-lock.json
+
+      - name: Configure AWS credentials via OIDC
+        uses: aws-actions/configure-aws-credentials@v4
+        with:
+          role-to-assume: ${{ secrets.AWS_BACKUP_ROLE_ARN }}
+          aws-region: ${{ secrets.BACKUP_S3_REGION || 'us-east-1' }}
 
       - name: Install dependencies
         working-directory: backend
@@ -59,8 +64,6 @@ jobs:
           BACKUP_S3_BUCKET: ${{ secrets.BACKUP_S3_BUCKET }}
           BACKUP_S3_PREFIX: ${{ secrets.BACKUP_S3_PREFIX }}
           BACKUP_S3_REGION: ${{ secrets.BACKUP_S3_REGION }}
-          AWS_ACCESS_KEY_ID: ${{ secrets.AWS_ACCESS_KEY_ID }}
-          AWS_SECRET_ACCESS_KEY: ${{ secrets.AWS_SECRET_ACCESS_KEY }}
         run: npm run backup
 
       - name: Upload backup artifact (retained 30 days)
