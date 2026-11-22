@@ -23,6 +23,8 @@ class WebhookService {
     this.webhooks = new Map(); // id -> webhook config
     this.deliveries = new Map(); // deliveryId -> delivery log
     this.maxRetries = 5;
+    this.maxDeliveryLogs = Number(process.env.WEBHOOK_MAX_DELIVERY_LOGS || 500);
+    this.secretEncryptionKey = process.env.WEBHOOK_SECRET_ENCRYPTION_KEY || "";
   }
 
   /**
@@ -219,6 +221,7 @@ class WebhookService {
       if (response.ok) {
         deliveryLog.status = 'success';
         this.deliveries.set(deliveryId, deliveryLog);
+      this.enforceDeliveryRetention();
         this.logger.info({ webhookId: webhook.id, deliveryId, attempt }, 'Webhook delivery succeeded');
         return deliveryLog;
       } else {
@@ -229,6 +232,7 @@ class WebhookService {
       deliveryLog.status = 'failed';
       deliveryLog.error = err.message;
       this.deliveries.set(deliveryId, deliveryLog);
+      this.enforceDeliveryRetention();
 
       this.logger.warn({ webhookId: webhook.id, deliveryId, attempt, error: err.message }, 'Webhook delivery attempt failed');
 
