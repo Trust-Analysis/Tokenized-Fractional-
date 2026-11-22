@@ -75,6 +75,9 @@ jobs:
       - name: Checkout repository
         uses: actions/checkout@v4
 
+      - name: Check repository hygiene
+        run: node scripts/check-repository-hygiene.mjs
+
       - name: Setup Node.js
         uses: actions/setup-node@v4
         with:

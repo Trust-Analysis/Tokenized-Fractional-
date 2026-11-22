@@ -45,6 +45,7 @@ storybook-static/
 
 # Temporary PR description files
 PR_DESCRIPTION_ISSUE_*.md
+*PROMPT*.md
 
 # Contract-manifest signing key (Issue #792) — release secret, never commit
 .contract-manifest-signing-key.json
