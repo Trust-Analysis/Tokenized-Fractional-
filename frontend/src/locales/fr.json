@@ -156,6 +156,17 @@
     "fr": "Français",
     "de": "Allemand"
   },
+  "priceHistory": {
+    "export": {
+      "csv": "Exporter en CSV",
+      "png": "Exporter en PNG",
+      "csvLabel": "Exporter l'historique des prix de {{asset}} au format CSV",
+      "pngLabel": "Exporter le graphique de l'historique des prix de {{asset}} au format PNG",
+      "exporting": "Exportation…",
+      "empty": "Aucun historique de prix à exporter",
+      "error": "Échec de l'exportation. Veuillez réessayer."
+    }
+  },
   "footer": {
     "status": "État du service"
   }

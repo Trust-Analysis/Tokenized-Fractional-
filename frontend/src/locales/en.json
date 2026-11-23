@@ -156,6 +156,17 @@
     "fr": "French",
     "de": "German"
   },
+  "priceHistory": {
+    "export": {
+      "csv": "Export CSV",
+      "png": "Export PNG",
+      "csvLabel": "Export price history for {{asset}} as CSV",
+      "pngLabel": "Export price history chart for {{asset}} as PNG",
+      "exporting": "Exporting…",
+      "empty": "No price history to export",
+      "error": "Export failed. Please try again."
+    }
+  },
   "footer": {
     "status": "Service status"
   }
