@@ -78,6 +78,9 @@ jobs:
       - name: Check repository hygiene
         run: node scripts/check-repository-hygiene.mjs
 
+      - name: Check tracked text encoding and line endings
+        run: node scripts/check-text-encoding.mjs
+
       - name: Setup Node.js
         uses: actions/setup-node@v4
         with:

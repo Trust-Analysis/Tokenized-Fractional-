@@ -6,6 +6,7 @@ import { fileURLToPath } from 'node:url';
 const root = path.resolve(fileURLToPath(new URL('../', import.meta.url)));
 const rootFileAllowlist = new Set([
   '.editorconfig',
+  '.gitattributes',
   '.gitignore',
   '.gitleaks.toml',
   '.node-version',
