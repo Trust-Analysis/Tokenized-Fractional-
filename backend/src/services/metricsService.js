@@ -34,6 +34,7 @@ import { wsManager } from '../../websocket.js';
 import { websocketDLQService } from './websocketDLQService.js';
 import { getPoolStats, getDatabase } from './database.js';
 import { readDiskUsageSync, resolveDataDirectory } from '../utils/diskUsage.js';
+import { verifyAdminKey } from '../utils/adminKey.js';
 import { loadData } from './dataService.js';
 
 const promClient = prometheus.promClient;
@@ -469,15 +470,18 @@ export function createMetricsAuthMiddleware(options = {}) {
       return next();
     }
 
-    const expectedApiKey = env.METRICS_API_KEY || env.ADMIN_API_KEY;
-    const expectedBearer = env.METRICS_BEARER_TOKEN || env.METRICS_TOKEN || env.ADMIN_API_KEY;
+    const expectedApiKey = env.METRICS_API_KEY;
+    const expectedBearer = env.METRICS_BEARER_TOKEN || env.METRICS_TOKEN;
     const expectedUser = env.METRICS_USER || 'metrics';
-    const expectedPassword = env.METRICS_PASSWORD || env.ADMIN_API_KEY;
+    const expectedPassword = env.METRICS_PASSWORD;
 
     // 1. API Key via x-api-key header
     const apiKeyHeader = req.headers['x-api-key'];
     if (apiKeyHeader) {
-      if (expectedApiKey && safeTimingCompare(apiKeyHeader, expectedApiKey)) {
+      if (
+        (expectedApiKey && safeTimingCompare(apiKeyHeader, expectedApiKey)) ||
+        (!expectedApiKey && verifyAdminKey(req, apiKeyHeader, env.ADMIN_API_KEY))
+      ) {
         return next();
       }
       if (apiKeyService && typeof apiKeyService.validate === 'function') {
@@ -497,7 +501,10 @@ export function createMetricsAuthMiddleware(options = {}) {
     if (authHeader) {
       if (authHeader.startsWith('Bearer ')) {
         const token = authHeader.slice(7).trim();
-        if (expectedBearer && safeTimingCompare(token, expectedBearer)) {
+        if (
+          (expectedBearer && safeTimingCompare(token, expectedBearer)) ||
+          (!expectedBearer && verifyAdminKey(req, token, env.ADMIN_API_KEY))
+        ) {
           return next();
         }
       }
@@ -513,7 +520,9 @@ export function createMetricsAuthMiddleware(options = {}) {
 
             const passMatches =
               (expectedPassword && safeTimingCompare(pass, expectedPassword)) ||
-              (expectedApiKey && safeTimingCompare(pass, expectedApiKey));
+              (!expectedPassword && verifyAdminKey(req, pass, env.ADMIN_API_KEY)) ||
+              (expectedApiKey && safeTimingCompare(pass, expectedApiKey)) ||
+              (!expectedApiKey && verifyAdminKey(req, pass, env.ADMIN_API_KEY));
 
             if (passMatches) {
               const userMatches =

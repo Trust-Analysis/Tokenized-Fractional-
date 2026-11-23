@@ -7,6 +7,7 @@ import { readFileSync } from 'fs';
 import { fileURLToPath } from 'url';
 import { dirname, join } from 'path';
 import { resolvers, typeDefs } from './resolvers.js';
+import { verifyAdminKey } from '../../src/utils/adminKey.js';
 
 const __filename = fileURLToPath(import.meta.url);
 const __dirname = dirname(__filename);
@@ -27,7 +28,7 @@ const { url } = await startStandaloneServer(server, {
   context: async ({ req }) => {
     // Extract authentication information
     const apiKey = req.headers['x-api-key'] || null;
-    const isAdmin = apiKey === process.env.ADMIN_API_KEY;
+    const isAdmin = verifyAdminKey(req);
     
     return {
       isAdmin,
