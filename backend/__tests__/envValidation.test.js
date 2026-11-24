@@ -9,6 +9,7 @@ const BACKEND_DIR = resolve(dirname(fileURLToPath(import.meta.url)), '..');
 
 const VALID_ENV = {
   ADMIN_API_KEY: 'a-sufficiently-long-admin-key',
+  JWT_SECRET: 'a-sufficiently-long-jwt-signing-secret-value',
   CORS_ORIGINS: 'http://localhost:5173,http://localhost:4173',
   DATA_FILE: 'data.json',
 };
@@ -40,6 +41,26 @@ describe('collectEnvErrors', () => {
     const { message } = errors.find((e) => e.key === 'ADMIN_API_KEY');
     expect(message).toContain('<redacted>');
     expect(message).not.toContain('leak-me');
+  });
+
+  test('requires a JWT_SECRET of at least 32 bytes', () => {
+    expect(collectEnvErrors({ ...VALID_ENV, JWT_SECRET: undefined }).map((e) => e.key)).toContain(
+      'JWT_SECRET',
+    );
+    expect(collectEnvErrors({ ...VALID_ENV, JWT_SECRET: '   ' }).map((e) => e.key)).toContain(
+      'JWT_SECRET',
+    );
+
+    const weak = collectEnvErrors({ ...VALID_ENV, JWT_SECRET: 'too-short' });
+    expect(weak.map((e) => e.key)).toContain('JWT_SECRET');
+    expect(weak.find((e) => e.key === 'JWT_SECRET').message).toMatch(/at least 32 bytes/i);
+  });
+
+  test('validates JWT_SECRET_PREVIOUS only when it is set', () => {
+    expect(
+      collectEnvErrors({ ...VALID_ENV, JWT_SECRET_PREVIOUS: 'short' }).map((e) => e.key),
+    ).toContain('JWT_SECRET_PREVIOUS');
+    expect(collectEnvErrors({ ...VALID_ENV, JWT_SECRET_PREVIOUS: 'b'.repeat(32) })).toEqual([]);
   });
 
   test('requires CORS_ORIGINS and validates each origin', () => {
@@ -144,5 +165,27 @@ describe('validateEnv', () => {
     expect(result.status).toBe(1);
     expect(result.stderr).toContain('Environment configuration errors');
     expect(result.stderr).toContain('ADMIN_API_KEY');
+  });
+
+  test('refuses to boot when JWT_SECRET is missing or too short', () => {
+    const script = "import('./env.js').then((m) => m.validateEnv());";
+    const baseEnv = {
+      PATH: process.env.PATH,
+      NODE_ENV: 'production',
+      ADMIN_API_KEY: 'a-sufficiently-long-admin-key',
+      CORS_ORIGINS: 'http://localhost:5173',
+      DATA_FILE: 'data.json',
+    };
+
+    [undefined, 'short-secret'].forEach((jwtSecret) => {
+      const result = spawnSync(process.execPath, ['--input-type=module', '-e', script], {
+        cwd: BACKEND_DIR,
+        env: { ...baseEnv, ...(jwtSecret ? { JWT_SECRET: jwtSecret } : {}) },
+        encoding: 'utf8',
+      });
+
+      expect(result.status).toBe(1);
+      expect(result.stderr).toContain('JWT_SECRET');
+    });
   });
 });

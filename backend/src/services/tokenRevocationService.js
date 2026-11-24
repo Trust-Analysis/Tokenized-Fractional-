@@ -11,6 +11,7 @@
 import jwt from 'jsonwebtoken';
 import Redis from 'ioredis';
 import { randomBytes } from 'crypto';
+import { getJwtSecret, getJwtVerificationSecrets, verifyJwt } from '../config/jwtSecret.js';
 
 /**
  * Token Revocation Service for JWT management
@@ -18,7 +19,12 @@ import { randomBytes } from 'crypto';
 export class TokenRevocationService {
   constructor(options = {}) {
     this.redisUrl = options.redisUrl || process.env.REDIS_URL;
-    this.jwtSecret = options.jwtSecret || process.env.JWT_SECRET || 'your-secret-key-change-in-production';
+    // Issue #1144: no hardcoded fallback. `getJwtSecret()` throws outside
+    // NODE_ENV=test when JWT_SECRET is missing or shorter than 32 bytes.
+    this.jwtSecret = options.jwtSecret || getJwtSecret();
+    this.jwtVerificationSecrets = options.jwtSecret
+      ? [options.jwtSecret]
+      : getJwtVerificationSecrets();
     this.accessTokenExpiry = options.accessTokenExpiry || '15m'; // 15 minutes
     this.refreshTokenExpiry = options.refreshTokenExpiry || '7d'; // 7 days
     this.logger = options.logger || console;
@@ -96,7 +102,7 @@ export class TokenRevocationService {
    */
   async verifyToken(token) {
     try {
-      const decoded = jwt.verify(token, this.jwtSecret, {
+      const decoded = verifyJwt(token, this.jwtVerificationSecrets, {
         issuer: 'rwa-marketplace',
       });
 
@@ -203,7 +209,7 @@ export class TokenRevocationService {
    */
   async refreshAccessToken(refreshToken) {
     try {
-      const decoded = jwt.verify(refreshToken, this.jwtSecret, {
+      const decoded = verifyJwt(refreshToken, this.jwtVerificationSecrets, {
         issuer: 'rwa-marketplace',
       });
 

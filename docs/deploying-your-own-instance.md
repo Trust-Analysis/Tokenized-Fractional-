@@ -127,6 +127,7 @@ Start from `backend/.env.example` and set, at minimum:
 |---|---|
 | `NODE_ENV` | `production` |
 | `ADMIN_API_KEY` | A long random secret (≥ 16 characters; use ≥ 32). Rotate it if it is ever shared. |
+| `JWT_SECRET` | A random secret of at least 32 bytes (`openssl rand -hex 32`). Required — the backend refuses to start without it. See [rotation guidance](AUTHENTICATION.md#jwt-secret-requirements-and-rotation). |
 | `CORS_ORIGINS` | Your frontend origin(s) only — never `*` |
 | `PUBLIC_SITE_URL` | Your public frontend URL (used for sitemap links) |
 | `DATA_FILE` / `DATABASE_URL` | Durable storage. Render's filesystem is ephemeral, so `data.json` on local disk is lost on redeploy; attach a persistent disk or use PostgreSQL. |

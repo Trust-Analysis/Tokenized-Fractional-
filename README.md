@@ -307,6 +307,7 @@ VITE_API_URL=http://localhost:3001
 PORT=3001
 CORS_ORIGINS=http://localhost:5173
 ADMIN_API_KEY=<generate-a-strong-random-key>
+JWT_SECRET=<generate-with-openssl-rand-hex-32>
 DATA_FILE=data.json
 # Optional CDN for relative image/document metadata URLs
 # CDN_URL=https://cdn.example.com
@@ -324,6 +325,8 @@ production environment. Secret values are redacted from the error output.
 | Variable | Required | Validation | Notes |
 | --- | --- | --- | --- |
 | `ADMIN_API_KEY` | ✅ | non-empty, **≥ 16 characters** | Secret. Guards all write endpoints. |
+| `JWT_SECRET` | ✅ | **≥ 32 bytes** | Secret. Signs access/refresh/session tokens. No fallback — boot fails without it. |
+| `JWT_SECRET_PREVIOUS` | | **≥ 32 bytes** when set | Secret. Old key accepted only during a [rotation grace window](docs/AUTHENTICATION.md#jwt-secret-requirements-and-rotation). |
 | `CORS_ORIGINS` | ✅ | comma-separated; each entry a valid `http(s)` origin or `*` | No default fallback. |
 | `DATA_FILE` | ✅ | relative path ending in `.json`, no `..` | Asset store. `data.json` in production. |
 | `PORT` | | integer `1–65535` | Default `3001`. |

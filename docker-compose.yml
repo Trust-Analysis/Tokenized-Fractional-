@@ -6,8 +6,11 @@
 # With Redis + TLS:        docker compose --profile redis-tls up
 #
 # Setup steps:
-#   1. Copy backend/.env.example → backend/.env and fill in values.
+#   1. Copy backend/.env.example → backend/.env and fill in values, including a
+#      32+ byte JWT_SECRET (`openssl rand -hex 32`).
 #   2. Generate TLS certificates:  bash scripts/generate-certs.sh
+#   3. Export POSTGRES_USER, POSTGRES_PASSWORD and JWT_SECRET in your shell or a
+#      root .env — compose interpolates these before starting the containers.
 #      (creates ./certs/  with CA, nginx, and Redis client certs)
 
 x-backend-common: &backend-common
@@ -41,6 +44,7 @@ services:
     environment:
       PORT: "3001"
       NODE_ENV: \${NODE_ENV:-development}
+      JWT_SECRET: \${JWT_SECRET:?JWT_SECRET must be set to a 32+ byte random value (openssl rand -hex 32)}
       DATABASE_URL: postgresql://\${POSTGRES_USER:?POSTGRES_USER must be set}:${POSTGRES_PASSWORD:?POSTGRES_PASSWORD must be set}@postgres:5432/${POSTGRES_DB:-rwa_marketplace}
       REDIS_URL: redis://redis:6379
     ports:
@@ -53,6 +57,7 @@ services:
     environment:
       PORT: "3001"
       NODE_ENV: \${NODE_ENV:-production}
+      JWT_SECRET: \${JWT_SECRET:?JWT_SECRET must be set to a 32+ byte random value (openssl rand -hex 32)}
       DATABASE_URL: postgresql://\${POSTGRES_USER:?POSTGRES_USER must be set}:${POSTGRES_PASSWORD:?POSTGRES_PASSWORD must be set}@postgres:5432/${POSTGRES_DB:-rwa_marketplace}
       REDIS_URL: redis://redis:6379
     expose:

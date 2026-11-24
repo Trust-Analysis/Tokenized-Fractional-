@@ -15,6 +15,7 @@ import crypto from 'crypto';
 import PDFDocument from 'pdfkit';
 import { logger } from '../services/logger.js';
 import { createJwtAuth } from '../middleware/jwtAuth.js';
+import { getJwtSecret } from '../config/jwtSecret.js';
 
 export const KEY_ID = 'rwa-statement-signer-v1';
 
@@ -77,7 +78,7 @@ export async function statementAuthMiddleware(req, res, next) {
     const token = authHeader.startsWith('Bearer ') ? authHeader.slice(7) : authHeader;
     try {
       const jwt = (await import('jsonwebtoken')).default;
-      const secret = process.env.JWT_SECRET || 'jwt-secret';
+      const secret = getJwtSecret();
       let decoded = null;
       try {
         decoded = jwt.verify(token, secret);
