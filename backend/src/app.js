@@ -294,6 +294,15 @@ app.use((req, res, next) => {
 // payloads from every handler into a consistent application/problem+json shape.
 app.use(createProblemDetailsInterceptor());
 
+app.use((req, res, next) => {
+  if (Object.prototype.hasOwnProperty.call(req.query, 'api_key')) {
+    return res.status(400).json({
+      error: 'API keys must be sent in the x-api-key header; api_key in the query string is not supported.',
+    });
+  }
+  return next();
+});
+
 // API request logging middleware
 app.use(requestLogger);
 

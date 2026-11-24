@@ -53,7 +53,7 @@ export function createRateLimiter(rateLimiterService, options = {}) {
 }
 
 function defaultExtractApiKey(req) {
-  return req.headers['x-api-key'] || req.query.api_key || null;
+  return req.headers['x-api-key'] || null;
 }
 
 function defaultExtractGeo(req) {
