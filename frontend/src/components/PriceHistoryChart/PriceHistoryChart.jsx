@@ -60,8 +60,12 @@ export default function PriceHistoryChart({
   if (!data || data.length === 0) {
     return (
       <div className={styles.container}>
-        <div className={styles.noData}>
-          <p>No price history available for {assetName}</p>
+        <div className={styles.noData} role="status">
+          <p>No price history yet for {assetName}</p>
+          <p className={styles.noDataHint}>
+            No trades have been recorded for this asset. It will be charted here once trading
+            begins.
+          </p>
         </div>
       </div>
     );
