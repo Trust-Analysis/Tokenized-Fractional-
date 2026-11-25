@@ -49,6 +49,14 @@ const DEMO_REVIEWS = [
   },
 ];
 
+// NOTE: The contract previously exposed two overlapping income-distribution
+// paths: `distribute_dividends`/`claim_dividends`/`set_dividend_policy` and the
+// accumulator-based `deposit_distribution`/`claim_distribution`. Per ADR-0001
+// (docs/adr/) the accumulator-based distribution path is canonical. The legacy
+// dividend entry points are deprecated and must not be surfaced in the UI.
+// Any income shown here is sourced from the canonical distribution path only.
+const INCOME_PATH = 'distribution';
+
 const DEMO_RELATED = [
   {
     contractId: 'CDEMO0001',
@@ -203,6 +211,8 @@ export default function AssetDetailPage({ asset, onBack, publicKey, onBuyShares 
   const [shareToast, setShareToast] = useState(false);
   const [avgRating] = useState(4.7);
   const [reviewCount] = useState(34);
+  // Canonical income path (see INCOME_PATH). Legacy dividend UI is deprecated.
+  const [incomePath] = useState(INCOME_PATH);
 
   // Build gallery images — use asset images if available, else placeholders
   const images = asset?.images?.length
@@ -378,6 +388,12 @@ export default function AssetDetailPage({ asset, onBack, publicKey, onBuyShares 
               <span className={styles.metricLabel}>Shares Available</span>
               <span className={styles.metricValue}>100</span>
             </div>
+            <div className={styles.metric}>
+              <span className={styles.metricLabel}>Income Distribution</span>
+              <span className={styles.metricValue}>
+                {incomePath === 'distribution' ? 'Accumulator' : 'Deprecated'}
+              </span>
+            </div>
           </div>
           {/* Contract ID */}
           {asset.contractId && (
@@ -415,6 +431,15 @@ export default function AssetDetailPage({ asset, onBack, publicKey, onBuyShares 
             <div>
               <h2 className={styles.sectionHeading}>About This Asset</h2>
               <p className={styles.description}>{asset.description || 'No description provided.'}</p>
+
+              <h2 className={styles.sectionHeading} style={{ marginTop: '1.5rem' }}>Income Distribution</h2>
+              <p className={styles.description}>
+                Income for this asset is distributed through the canonical accumulator-based
+                distribution path (<code>deposit_distribution</code> / <code>claim_distribution</code>).
+                The legacy dividend functions (<code>distribute_dividends</code>,{' '}
+                <code>claim_dividends</code>, <code>set_dividend_policy</code>) are deprecated and
+                are not used by this interface. See ADR-0001 for migration notes.
+              </p>
 
               <h2 className={styles.sectionHeading} style={{ marginTop: '1.5rem' }}>User Reviews</h2>
               <div className={styles.reviewList}>

@@ -65,6 +65,24 @@ export class SorobanClient {
   }
 
   /**
+   * Canonical income path: deposit a token amount into the distribution
+   * accumulator. This is the single supported income-distribution entry
+   * point (see docs/adr for the consolidation decision); the former
+   * dividend entry points (`distribute_dividends`, `claim_dividends`,
+   * `set_dividend_policy`) have been removed from the ABI.
+   */
+  async depositDistribution(accountId: string, args: unknown[] = [], fee = '10000') {
+    return this.write('deposit_distribution', accountId, args, fee);
+  }
+
+  /**
+   * Canonical income path: claim the caller's accrued distribution.
+   */
+  async claimDistribution(accountId: string, args: unknown[] = [], fee = '10000') {
+    return this.write('claim_distribution', accountId, args, fee);
+  }
+
+  /**
    * Read the deployed contract's `get_contract_metadata().version`
    * (the same value tracked in contracts/src/lib.rs contract metadata).
    * Requires a funded `accountId` because the read is a simulation, like

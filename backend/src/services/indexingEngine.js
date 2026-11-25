@@ -13,6 +13,49 @@ import { fileURLToPath } from 'url';
 const __filename = fileURLToPath(import.meta.url);
 const __dirname = path.dirname(__filename);
 
+/**
+ * Income-distribution event consolidation (ADR docs/adr/0001-income-distribution-consolidation.md).
+ *
+ * The canonical income path is the accumulator-based distribution model, which emits
+ * `EventDistributionDeposited` / `EventDistributionClaimed`. The legacy dividend path
+ * (`EventDividendDistributed` / `EventDividendClaimed`) is deprecated and no longer
+ * indexed; such events are dropped on ingest so they never reach the database.
+ *
+ * Migration notes for existing indexed data:
+ * - Rows previously written from dividend events should be backfilled into the
+ *   distribution tables (or archived) before the dividend entry points are removed
+ *   from the contract ABI.
+ * - Re-index historical ledgers after deploying this change so that any dividend
+ *   rows still present are superseded by distribution rows.
+ */
+export const CANONICAL_INCOME_EVENTS = Object.freeze([
+  'EventDistributionDeposited',
+  'EventDistributionClaimed',
+]);
+
+export const DEPRECATED_INCOME_EVENTS = Object.freeze([
+  'EventDividendDistributed',
+  'EventDividendClaimed',
+]);
+
+const DEPRECATED_INCOME_EVENT_SET = new Set(DEPRECATED_INCOME_EVENTS);
+
+/**
+ * Returns true when the event belongs to the deprecated dividend path.
+ */
+export function isDeprecatedIncomeEvent(event) {
+  if (!event) return false;
+  const name = event.type ?? event.eventType ?? event.name;
+  return DEPRECATED_INCOME_EVENT_SET.has(name);
+}
+
+/**
+ * Drops deprecated dividend events from a batch of parsed events.
+ */
+export function filterDeprecatedIncomeEvents(events = []) {
+  return events.filter((event) => !isDeprecatedIncomeEvent(event));
+}
+
 let reorgInProgress = false;
 
 export function isReorgInProgress() {
@@ -104,6 +147,10 @@ export class IndexingEngine {
       parsedEvents = parsedEvents.concat(decoded);
     }
 
+    // Only the consolidated distribution events are indexed; deprecated dividend
+    // events are explicitly ignored (see ADR on income-distribution consolidation).
+    parsedEvents = filterDeprecatedIncomeEvents(parsedEvents);
+
     // Check for genesis or initial block
     if (!this.chainHead) {
       this.chainHead = block;
@@ -160,7 +207,10 @@ export class IndexingEngine {
            const decoded = await this.parseBlockAsync(block.xdrBuffer.buffer, block.xdrBuffer.byteLength);
            parsedEvents = parsedEvents.concat(decoded);
         }
-        
+
+        // Ignore deprecated dividend events during re-sync as well.
+        parsedEvents = filterDeprecatedIncomeEvents(parsedEvents);
+
         if (parsedEvents.length > 0) {
           this.indexedEvents.push(
             ...parsedEvents.map((e) => ({ ...e, sequence: block.sequence, ledger_hash: block.ledger_hash }))
