@@ -9,7 +9,8 @@
 import { gql } from 'graphql-tag';
 import { pubsub, SUBSCRIPTION_EVENTS } from './pubsub.js';
 import { getClientIp } from './src/utils/clientIp.js';
-import { isValidContractId, INVALID_CONTRACT_ID_MESSAGE } from './src/validators/rwaValidator.js';
+import { rwaGraphQLInput } from './src/validators/rwaFields.js';
+import { validateRwaBody, isValidContractId, INVALID_CONTRACT_ID_MESSAGE } from './src/validators/rwaValidator.js';
 
 /**
  * GraphQL Type Definitions
@@ -80,16 +81,7 @@ export const typeDefs = gql`
   }
 
   # Asset creation/update input
-  input RWAInput {
-    contractId: String!
-    title: String!
-    location: String!
-    description: String!
-    assetType: String!
-    totalShares: Int
-    pricePerShare: Int
-    availableShares: Int
-  }
+  ${rwaGraphQLInput('RWAInput')}
 
   # Root Query type
   type Query {
@@ -442,7 +434,7 @@ export function createResolvers(dataLayer) {
         if (!isValidContractId(contractId)) {
           throw new Error(INVALID_CONTRACT_ID_MESSAGE);
         }
-        const error = dataLayer.validateRwaBody(input);
+        const error = validateRwaBody(input);
         if (error) throw new Error(error);
 
         const now = new Date().toISOString();
@@ -485,12 +477,13 @@ export function createResolvers(dataLayer) {
         const existing = data[contractId];
         if (!existing) throw new Error('Asset not found');
 
-        const error = dataLayer.validateRwaBody(input);
+        const error = validateRwaBody(input);
         if (error) throw new Error(error);
 
         const updated = {
           ...existing,
           ...input,
+          contractId,
           updatedAt: new Date().toISOString(),
         };
 

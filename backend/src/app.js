@@ -31,7 +31,7 @@ import {
   reportError,
 } from './services/errorTracking.js';
 import { apiLimiter } from './middleware/rateLimiter.js';
-import { createAdminAuth, adminAuth as legacyAdminAuth } from './middleware/auth.js';
+import { configureAdminAuth, createAdminAuth, adminAuth as legacyAdminAuth } from './middleware/auth.js';
 import {
   createTieredRateLimiter,
   createGraphQLRateLimiter,
@@ -192,6 +192,7 @@ export async function initializeApp() {
 
     // Create and bind adminAuth middleware
     adminAuth = createAdminAuth(apiKeyService);
+    configureAdminAuth(adminAuth);
     logger.info('API key service initialized');
 
     // Setup API keys router
@@ -231,6 +232,7 @@ export async function initializeApp() {
     // time (below) so it is registered before the 404 handler.
     federatedGraphQL = await createFederatedGraphQLServer({
       dataLayer: dataService,
+      apiKeyService,
       transactionService,
       logger,
     });
@@ -285,6 +287,15 @@ app.use((req, res, next) => {
 // Issue #519: RFC 7807 problem-details interceptor — normalizes legacy error
 // payloads from every handler into a consistent application/problem+json shape.
 app.use(createProblemDetailsInterceptor());
+
+app.use((req, res, next) => {
+  if (Object.prototype.hasOwnProperty.call(req.query, 'api_key')) {
+    return res.status(400).json({
+      error: 'API keys must be sent in the x-api-key header; api_key in the query string is not supported.',
+    });
+  }
+  return next();
+});
 
 // API request logging middleware
 app.use(requestLogger);

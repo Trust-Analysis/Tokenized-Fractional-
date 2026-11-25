@@ -5,7 +5,19 @@
 
 const jwt = require('jsonwebtoken');
 
-const JWT_SECRET = process.env.JWT_SECRET || 'dev-secret-change-in-production';
+/**
+ * Issue #1144: no hardcoded fallback. Throwing at init fails the deployment
+ * loudly instead of accepting tokens signed with a public string.
+ */
+const JWT_SECRET = (() => {
+  const secret = (process.env.JWT_SECRET || '').trim();
+  if (Buffer.byteLength(secret, 'utf8') < 32) {
+    throw new Error(
+      'JWT_SECRET must be set to at least 32 bytes. Generate one with: openssl rand -hex 32',
+    );
+  }
+  return secret;
+})();
 
 /**
  * Generates IAM policy for API Gateway

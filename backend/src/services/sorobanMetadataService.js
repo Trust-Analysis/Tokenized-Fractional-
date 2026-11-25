@@ -9,6 +9,11 @@
  *
  * Invokes `set_metadata_uri(uri: Bytes)` on the RwaMarketplace Soroban smart contract,
  * associating the decentralized IPFS metadata URI (`ipfs://<CID>`) with the asset on-chain.
+ *
+ * Note (Issue #1021): income distribution is consolidated onto a single canonical path
+ * (`deposit_distribution` / `claim_distribution`) in the contract ABI. This service only
+ * writes metadata and must not invoke the removed dividend entry points
+ * (`distribute_dividends`, `claim_dividends`, `set_dividend_policy`).
  */
 
 import { Contract, Keypair, Networks, rpc, TransactionBuilder, xdr } from '@stellar/stellar-sdk';

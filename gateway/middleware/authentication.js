@@ -6,6 +6,24 @@
 import jwt from 'jsonwebtoken';
 import crypto from 'crypto';
 
+const MIN_JWT_SECRET_BYTES = 32;
+
+/**
+ * Resolve the JWT signing secret. Issue #1144: no hardcoded fallback — fail
+ * at module load rather than verifying tokens with a public string.
+ */
+function requireJwtSecret() {
+  const secret = (process.env.JWT_SECRET || '').trim();
+  if (Buffer.byteLength(secret, 'utf8') < MIN_JWT_SECRET_BYTES) {
+    throw new Error(
+      'JWT_SECRET must be set to at least 32 bytes. Generate one with: openssl rand -hex 32',
+    );
+  }
+  return secret;
+}
+
+const JWT_SECRET = requireJwtSecret();
+
 /**
  * API Key validation middleware
  */
@@ -88,7 +106,7 @@ export function validateJwt(req, res, next) {
   }
 
   try {
-    const decoded = jwt.verify(token, process.env.JWT_SECRET || 'dev-secret', {
+    const decoded = jwt.verify(token, JWT_SECRET, {
       algorithms: ['HS256', 'RS256'],
       clockTolerance: 10,
     });
@@ -236,7 +254,7 @@ export function authorize(...requiredScopes) {
  * Generate JWT token (for testing and development)
  */
 export function generateToken(payload, expiresIn = '1h') {
-  return jwt.sign(payload, process.env.JWT_SECRET || 'dev-secret', {
+  return jwt.sign(payload, JWT_SECRET, {
     algorithm: 'HS256',
     expiresIn,
   });
@@ -247,7 +265,7 @@ export function generateToken(payload, expiresIn = '1h') {
  */
 export function verifyToken(token) {
   try {
-    return jwt.verify(token, process.env.JWT_SECRET || 'dev-secret', {
+    return jwt.verify(token, JWT_SECRET, {
       algorithms: ['HS256', 'RS256'],
     });
   } catch (error) {

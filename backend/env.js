@@ -61,6 +61,23 @@ const RULES = [
     invalid: 'must be at least 16 characters',
   },
   {
+    key: 'JWT_SECRET',
+    required: true,
+    secret: true,
+    description:
+      'JWT signing secret (required, min 32 bytes; generate with `openssl rand -hex 32`)',
+    validate: (v) => Buffer.byteLength(v.trim(), 'utf8') >= 32,
+    invalid: 'must be at least 32 bytes',
+  },
+  {
+    key: 'JWT_SECRET_PREVIOUS',
+    required: false,
+    secret: true,
+    description: 'Previous JWT signing secret accepted during a rotation grace window',
+    validate: (v) => Buffer.byteLength(v.trim(), 'utf8') >= 32,
+    invalid: 'must be at least 32 bytes',
+  },
+  {
     key: 'CORS_ORIGINS',
     required: true,
     description: 'Comma-separated list of allowed CORS origins',

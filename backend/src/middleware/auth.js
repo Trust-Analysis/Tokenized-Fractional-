@@ -63,6 +63,13 @@ export function createAdminAuth(apiKeyService) {
  * This will be initialized in app.js with the actual service.
  * @deprecated Use createAdminAuth(apiKeyService) instead
  */
-export let adminAuth = (_req, res, _next) => {
-  res.status(500).json({ error: 'adminAuth middleware not initialized' });
-};
+let activeAdminAuth;
+
+export function configureAdminAuth(middleware) {
+  activeAdminAuth = middleware;
+}
+
+export function adminAuth(req, res, next) {
+  if (!activeAdminAuth) return res.status(503).json({ error: 'Admin authentication unavailable' });
+  return activeAdminAuth(req, res, next);
+}

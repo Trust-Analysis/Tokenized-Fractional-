@@ -120,7 +120,8 @@ Pods simply fail to start until one of the following has provisioned them:
   band:
   ```bash
   kubectl create secret generic rwa-backend-secrets -n rwa-marketplace \
-    --from-literal=ADMIN_API_KEY="$(openssl rand -hex 32)"
+    --from-literal=ADMIN_API_KEY="$(openssl rand -hex 32)" \
+    --from-literal=JWT_SECRET="$(openssl rand -hex 32)"
   kubectl create secret generic rwa-frontend-secrets -n rwa-marketplace \
     --from-literal=VITE_CONTRACT_ID="<your-contract-id>"
   ```

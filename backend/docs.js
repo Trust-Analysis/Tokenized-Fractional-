@@ -12,7 +12,9 @@ const options = {
         '## API Versioning\n\n' +
         'All routes are available under two prefixes:\n\n' +
         '- **`/api/v1/rwa`** — versioned path (preferred, use in new integrations)\n' +
-        '- **`/api/rwa`** — legacy path (backward-compatible alias, defaults to v1)',
+        '- **`/api/rwa`** — legacy path (backward-compatible alias, defaults to v1)\n\n' +
+        '## API Key Authentication\n\n' +
+        'Send API keys only in the `x-api-key` header. Requests containing an `api_key` query parameter are rejected with **400 Bad Request**.',
     },
     servers: [
       { url: 'http://localhost:3001', description: 'Development' },
@@ -29,7 +31,7 @@ const options = {
           type: 'apiKey',
           in: 'header',
           name: 'x-api-key',
-          description: 'Admin API key for write operations.',
+          description: 'Admin API key for write operations. Send this key only in the header; requests containing an `api_key` query parameter are rejected with 400 Bad Request.',
         },
       },
       schemas: {

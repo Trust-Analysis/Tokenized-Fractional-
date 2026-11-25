@@ -28,7 +28,7 @@ pub trait NftContractInterface {
     fn mint_certificate(env: Env, to: Address) -> u32;
 }
 
-/// Issue #169 â€“ Minimal oracle interface.
+/// Issue #169 – Minimal oracle interface.
 /// The oracle contract must expose a `get_price() -> i128` function
 /// that returns the current asset price per share in the payment token's
 /// smallest unit. This is intentionally minimal to support any Stellar-based
@@ -161,6 +161,18 @@ pub enum DataKey {
     DistributionSnapshot(Address),
     /// Issue #765: accrued but unclaimed distribution amount for a holder.
     DistributionPending(Address),
+    /// Issue #1021: canonical income path. Withholding applied to the
+    /// distribution accumulator, in basis points (0 = no withholding).
+    DistributionWithholdingBps,
+    /// Issue #1021: canonical income path. Token distributed by the
+    /// accumulator (defaults to the payment token when unset).
+    DistributionToken,
+    /// Issue #1021: canonical income path. Number of distributions made.
+    DistributionHistoryCounter,
+    /// Issue #1021: canonical income path. Distribution history entry by id.
+    DistributionHistory(u64),
+    /// Issue #1021: canonical income path. Total amount withheld so far.
+    DistributionWithheld,
 
     /// Issue #766: permanent wind-down (end-of-life) flag. Set by
     /// `wind_down()` together with `Paused`; once closed the marketplace
@@ -246,6 +258,20 @@ pub struct SellOrder {
     pub seller: Address,
     pub amount: u32,
     pub price_per_share: i128,
+}
+
+/// Issue #1021: canonical income-distribution record. Replaces the legacy
+/// `DividendHistoryEntry`; both the accumulator path and any future income
+/// source write through this single type.
+#[contracttype]
+#[derive(Clone)]
+pub struct DistributionRecord {
+    pub id: u64,
+    pub timestamp: u64,
+    pub total_amount: i128,
+    pub holder_count: u32,
+    pub withholding_bps: u32,
+    pub payout_token: Address,
 }
 
 #[contracttype]
@@ -1465,7 +1491,7 @@ impl RwaMarketplace {
         // Issue #268: Oracle-aware price (reusable helper)
         let price: i128 = _get_current_price(&env);
 
-        // Issue #635: Slippage protection â€” reject if price exceeds caller's max
+        // Issue #635: Slippage protection — reject if price exceeds caller's max
         if let Some(max_price) = max_price_per_share {
             if price > max_price {
                 _set_non_reentrant(&env, false);
@@ -4730,8 +4756,8 @@ impl RwaMarketplace {
     /// without aborting the entire batch (partial fulfillment).
     ///
     /// # Arguments
-    /// * `buyer` â€“ The address purchasing shares (must authorize).
-    /// * `requests` â€“ A vector of `BatchPurchaseRequest` items.
+    /// * `buyer` – The address purchasing shares (must authorize).
+    /// * `requests` – A vector of `BatchPurchaseRequest` items.
     ///
     /// # Returns
     /// A vector of `BatchPurchaseResult` with per-item outcomes.
@@ -5483,7 +5509,7 @@ mod test {
         c.buy_shares(&te.buyer, &10, &te.token_id, &None);
         assert_eq!(c.get_holders().len(), 1);
 
-        // Second buy by same buyer â€” should NOT add duplicate
+        // Second buy by same buyer — should NOT add duplicate
         c.buy_shares(&te.buyer, &5, &te.token_id, &None);
         assert_eq!(c.get_holders().len(), 1);
     }
@@ -5591,12 +5617,16 @@ mod test {
         mint(&te, &te.contract_id, dividend_amount);
         c.distribute_dividends(&te.token_id, &dividend_amount);
 
-        // buyer had 0 shares â€” removed from registry
+        // buyer had 0 shares — removed from registry
         assert_eq!(c.get_holders().len(), 1);
     }
 
+    // Issue #1021: the legacy dividend path was consolidated into the
+    // accumulator-based distribution path. These tests exercise the single
+    // canonical income path, including withholding and history.
+
     #[test]
-    fn test_dividend_policy_withholding_and_claims() {
+    fn test_distribution_withholding_and_claims() {
         let te = setup();
         let c = client(&te);
         c.init(&te.admin, &te.token_id, &100, &1000, &None, &DEFAULT_TIMELOCK_DELAY);
@@ -5610,28 +5640,24 @@ mod test {
         c.buy_shares(&te.buyer, &500, &te.token_id, &None);
         c.buy_shares(&buyer2, &500, &te.token_id, &None);
 
-        c.set_dividend_policy(&0, &te.token_id, &1000, &false);
-        let dividend_amount: i128 = 1_000;
-        mint(&te, &te.contract_id, dividend_amount);
+        c.set_distribution_withholding(&1000);
+        let distribution_amount: i128 = 1_000;
+        mint(&te, &te.contract_id, distribution_amount);
 
-        c.distribute_dividends(&te.token_id, &dividend_amount);
+        c.deposit_distribution(&te.token_id, &distribution_amount);
 
-        let position = c.get_dividend_position(&te.buyer);
-        assert_eq!(position.accrued_amount, 450);
-        assert_eq!(position.claimed_amount, 0);
-        assert_eq!(c.get_dividend_history_count(), 1);
+        // 10% withheld: 900 accrues to holders, 100 to the treasury.
+        assert_eq!(c.get_distribution_history_count(), 1);
+        assert_eq!(c.get_distribution_withheld(), 100);
 
-        c.claim_dividends(&te.buyer);
-        let updated_position = c.get_dividend_position(&te.buyer);
-        assert_eq!(updated_position.claimed_amount, 450);
-
+        c.claim_distribution(&te.buyer);
         let token_client = token::TokenClient::new(&te.env, &te.token_id);
         assert_eq!(token_client.balance(&te.buyer), 100_000 - 50_000 + 450);
         assert_eq!(token_client.balance(&te.admin), 100_000 + 100);
     }
 
     #[test]
-    fn test_dividend_reinvestment_toggle() {
+    fn test_distribution_history_records_canonical_entry() {
         let te = setup();
         let c = client(&te);
         c.init(&te.admin, &te.token_id, &100, &1000, &None, &DEFAULT_TIMELOCK_DELAY);
@@ -5639,29 +5665,31 @@ mod test {
         c.add_to_whitelist(&te.buyer);
         c.buy_shares(&te.buyer, &500, &te.token_id, &None);
 
-        c.set_dividend_policy(&0, &te.token_id, &0, &false);
-        c.set_dividend_reinvestment(&te.buyer, &true);
+        mint(&te, &te.contract_id, 1_000);
+        c.deposit_distribution(&te.token_id, &1_000);
 
-        let position = c.get_dividend_position(&te.buyer);
-        assert!(position.reinvestment_enabled);
+        let record = c.get_distribution_record(&0).unwrap();
+        assert_eq!(record.total_amount, 1_000);
+        assert_eq!(record.holder_count, 1);
+        assert_eq!(record.payout_token, te.token_id);
     }
 
     #[test]
-    #[should_panic(expected = "Dividend amount must be positive")]
-    fn test_distribute_zero_amount() {
+    #[should_panic(expected = "Distribution amount must be positive")]
+    fn test_deposit_distribution_zero_amount() {
         let te = setup();
         let c = client(&te);
         c.init(&te.admin, &te.token_id, &100, &1000, &None, &DEFAULT_TIMELOCK_DELAY);
-        c.distribute_dividends(&te.token_id, &0);
+        c.deposit_distribution(&te.token_id, &0);
     }
 
     #[test]
     #[should_panic(expected = "No holders registered")]
-    fn test_distribute_no_holders() {
+    fn test_deposit_distribution_no_holders() {
         let te = setup();
         let c = client(&te);
         c.init(&te.admin, &te.token_id, &100, &1000, &None, &DEFAULT_TIMELOCK_DELAY);
-        c.distribute_dividends(&te.token_id, &1000);
+        c.deposit_distribution(&te.token_id, &1000);
     }
 
     // â”€â”€ Tests for set_price and set_total_shares â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
@@ -5809,22 +5837,21 @@ mod test {
 
     #[test]
     #[should_panic(expected = "Arithmetic overflow")]
-    fn test_distribute_dividends_multiply_overflow() {
+    fn test_deposit_distribution_multiply_overflow() {
         let te = setup();
         let c = client(&te);
         c.init(&te.admin, &te.token_id, &100, &1000, &None, &DEFAULT_TIMELOCK_DELAY);
         c.add_to_whitelist(&te.buyer);
         mint(&te, &te.buyer, 100_000);
         c.add_to_whitelist(&te.buyer);
-        
+
         c.buy_shares(&te.buyer, &500, &te.token_id, &None);
-        
-        // Use extremely large dividend amount that will overflow when multiplied by holder_shares
-        let huge_dividend: i128 = i128::MAX / 2;
-        mint(&te, &te.contract_id, huge_dividend);
-        
-        // This should panic because total_amount * holder_shares overflows
-        c.distribute_dividends(&te.token_id, &huge_dividend);
+
+        // Use an extremely large amount that overflows the accumulator math.
+        let huge_distribution: i128 = i128::MAX / 2;
+        mint(&te, &te.contract_id, huge_distribution);
+
+        c.deposit_distribution(&te.token_id, &huge_distribution);
     }
 
     #[test]
@@ -6114,11 +6141,14 @@ mod test {
         client.increase_total_shares(&500);
     }
 
+    // Issue #1021: the legacy dividend entry points were removed from the ABI
+    // in favour of the accumulator-based distribution path. The generated
+    // client no longer exposes them, so there is nothing to call pre-init.
     #[test]
     #[should_panic(expected = "Contract not initialized")]
-    fn test_pre_init_distribute_dividends() {
+    fn test_pre_init_deposit_distribution() {
         let (_, client, token_id, _) = pre_init_client();
-        client.distribute_dividends(&token_id, &1000);
+        client.deposit_distribution(&token_id, &1000);
     }
 
     #[test]
@@ -6257,7 +6287,7 @@ mod test {
         c.init(&te.admin, &te.token_id, &100, &1000, &None, &DEFAULT_TIMELOCK_DELAY);
 
         c.set_dividend_schedule(&10, &86400);
-        // Call immediately â€” interval (86400s = 1 day) has not elapsed
+        // Call immediately — interval (86400s = 1 day) has not elapsed
         c.process_scheduled_dividend();
     }
 
@@ -6364,7 +6394,7 @@ mod test {
     }
 
     #[test]
-    fn test_process_scheduled_dividend_honors_policy_withholding_and_history() {
+    fn test_deposit_distribution_honors_withholding_and_history() {
         let te = setup();
         let c = client(&te);
         c.init(&te.admin, &te.token_id, &100, &1000, &None, &DEFAULT_TIMELOCK_DELAY);
@@ -6373,42 +6403,27 @@ mod test {
         c.add_to_whitelist(&te.buyer);
         c.buy_shares(&te.buyer, &500, &te.token_id, &None);
 
-        c.set_dividend_policy(&0, &te.token_id, &1000, &false);
-        c.set_dividend_schedule(&10, &100);
+        c.set_distribution_withholding(&1000);
         mint(&te, &te.contract_id, 5_000);
 
-        te.env.ledger().set_timestamp(te.env.ledger().timestamp() + 101);
-        c.process_scheduled_dividend();
+        c.deposit_distribution(&te.token_id, &5_000);
 
-        let position = c.get_dividend_position(&te.buyer);
-        assert_eq!(position.accrued_amount, 4_500);
-        assert_eq!(position.claimed_amount, 0);
-        assert_eq!(c.get_dividend_history_count(), 1);
+        // 10% of 5_000 withheld; the rest accrues to the single holder.
+        assert_eq!(c.get_distribution_history_count(), 1);
+        assert_eq!(c.get_distribution_withheld(), 500);
 
         let token_client = token::TokenClient::new(&te.env, &te.token_id);
         assert_eq!(token_client.balance(&te.admin), 50_500);
     }
 
     #[test]
-    #[should_panic(expected = "Unsupported dividend type")]
-    fn test_set_dividend_policy_rejects_unsupported_type() {
+    #[should_panic(expected = "Withholding cannot exceed 10000 bps")]
+    fn test_set_distribution_withholding_rejects_out_of_range() {
         let te = setup();
         let c = client(&te);
         c.init(&te.admin, &te.token_id, &100, &1000, &None, &DEFAULT_TIMELOCK_DELAY);
 
-        c.set_dividend_policy(&2, &te.token_id, &0, &false);
-    }
-
-    #[test]
-    #[should_panic(expected = "No holders registered")]
-    fn test_process_scheduled_dividend_no_holders() {
-        let te = setup();
-        let c = client(&te);
-        c.init(&te.admin, &te.token_id, &100, &1000, &None, &DEFAULT_TIMELOCK_DELAY);
-
-        c.set_dividend_schedule(&10, &1);
-        te.env.ledger().set_timestamp(te.env.ledger().timestamp() + 2);
-        c.process_scheduled_dividend();
+        c.set_distribution_withholding(&10_001);
     }
 
     // â”€â”€ Max shares per user tests â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
@@ -6792,7 +6807,7 @@ mod test {
         mint(&te, &te.contract_id, 50_000);
         c.auto_buyback_config(&3600_u64, &50_u32, &50_000_i128);
 
-        // Do NOT advance time â€” should fail immediately
+        // Do NOT advance time — should fail immediately
         c.process_auto_buyback(&te.buyer, &10);
     }
 
@@ -6903,7 +6918,7 @@ mod test {
         mint(&te, &te.buyer, 100_000);
         c.add_to_whitelist(&te.buyer);
 
-        // No NFT contract configured â€” buy_shares should succeed normally
+        // No NFT contract configured — buy_shares should succeed normally
         c.buy_shares(&te.buyer, &5, &te.token_id, &None);
         assert_eq!(c.get_shares(&te.buyer), 5);
     }
@@ -7633,7 +7648,7 @@ mod test {
         let te = setup();
         let c = client(&te);
         c.init(&te.admin, &te.token_id, &100, &1000, &None, &DEFAULT_TIMELOCK_DELAY);
-        // init emits EventInit â€“ no panic means success
+        // init emits EventInit – no panic means success
     }
 
     #[test]
@@ -8461,7 +8476,7 @@ mod fuzz_order_book_transitions {
     const INIT_PRICE: i128 = 100;
     const INIT_TOTAL: u32 = 10_000;
 
-    /// Fuzz: order book state transitions â€” place, fill, cancel.
+    /// Fuzz: order book state transitions — place, fill, cancel.
     /// Invariant: total shares (available + escrowed + held) == total_shares.
     proptest! {
         #[test]
@@ -8991,7 +9006,7 @@ mod oracle_bridge_tests {
         let te = setup();
         let c = client(&te);
         let oracle_addr = Address::generate(&te.env);
-        // No init() called â€” must panic
+        // No init() called — must panic
         c.set_oracle(&oracle_addr);
     }
 
@@ -9146,7 +9161,7 @@ mod oracle_bridge_tests {
         let te = setup();
         init(&te);
         let c = client(&te);
-        // No lock operations performed â€” should return 0
+        // No lock operations performed — should return 0
         assert_eq!(c.get_bridge_locked(&te.buyer), 0);
     }
 
@@ -9755,7 +9770,7 @@ mod sip4_metadata_tests {
         let c = client(&te);
         c.init(&te.admin, &te.token_id, &100, &1000, &None, &DEFAULT_TIMELOCK_DELAY);
 
-        // None means no slippage check â€” should pass regardless of price
+        // None means no slippage check — should pass regardless of price
         c.buy_shares(&te.buyer, &10, &te.token_id, &None);
         assert_eq!(c.get_shares(&te.buyer), 10);
     }

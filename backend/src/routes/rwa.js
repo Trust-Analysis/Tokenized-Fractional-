@@ -698,6 +698,9 @@ v1.patch('/rwa/:contractId', adminAuth, writeLimiter, async (req, res) => {
   const data = loadData();
   if (!data[contractId]) return res.status(404).json({ error: 'Asset metadata not found' });
 
+  const validationError = validateRwaBody(patch, { partial: true });
+  if (validationError) return res.status(400).json({ error: validationError });
+
   const allowedFields = ['title', 'location', 'description', 'assetType', 'imageUrl', 'totalValuation', 'documents'];
   allowedFields.forEach(field => {
     if (field in patch && patch[field] !== undefined) {

@@ -1,18 +1,29 @@
-# Canonical Official Contract Deployments Registry
+# Official contract deployments
 
-This document serves as the cryptographically verifiable and community-monitored registry of official smart contract addresses for the Tokenized Fractional RWA Marketplace. Cautious users and integrators should always cross-check deployment addresses against this list before interacting with funds or approving transactions.
+[The deployment registry](../backend/deployments.json) records the contract
+ID, network, Wasm SHA-256, deploy transaction hash and source commit.
 
-## Mainnet Deployments
-| Asset Name | Contract ID (Stellar Soroban) | Status | Deployment Date |
-| :--- | :--- | :--- | :--- |
-| Luxury Manhattan Condo Unit 12B | `CA3D5KRYM6CB7OWQ6TWYRR3Z4T7GNZLKERYNZGGA5SOAOPIFY6YQGAXE` | Active (Audited / Verified) | 2026-06-01 |
-| Silicon Valley Tech Park Parcel A | `CC1234567890ABCDEFGHJKLMNOPQRSTUVWXYZ23456789ABCDEFGH` | Active (Verified) | 2026-07-15 |
+Run the marketplace deployment with Stellar CLI 27.1 or newer and a configured
+signing identity. Run it from the repository root after building the Wasm
+from the checked-out source commit.
 
-## Testnet Deployments
-| Asset Name | Contract ID (Stellar Soroban) | Status | Deployment Date |
-| :--- | :--- | :--- | :--- |
-| Testnet RWA Marketplace Core | `CDLZFC3SYJYDZT7K67VZ75HPJVIEUVNIXF47ZG2FB2RMQQVU2HHGCYSC` | Active (Testnet) | 2026-05-10 |
+```sh
+node scripts/deploy-marketplace.mjs testnet admin \
+  contracts/target/wasm32-unknown-unknown/release/rwa_marketplace.wasm
+```
 
-## Anti-Phishing Verification Guide
-1. **Compare Addresses:** Always verify that the contract address shown in your wallet matches the exact string listed in this official registry.
-2. **Check Official Links:** Ensure you are accessing the marketplace via our official verified domain.
+The command records the new contract as pending after deployment and confirms
+the remote Wasm hash. Review the entry and commit the registry update. Promote
+the entry to active when it is ready for release and regenerate the frontend
+manifest using the existing offline signing command. The signed manifest
+must include the active contracts for its network. Use a new payload version
+and issuance date when publishing an updated manifest.
+
+The pre-registry Testnet reference is retained as a legacy entry because it
+appears in the current signed manifest. The Testnet RPC returned no contract
+for this address during registry migration. Its deployment metadata is
+unavailable.
+
+To pin a registered deployment in backend configuration, set
+`SOROBAN_NETWORK` and `SOROBAN_CONTRACT_ID`. CI checks committed contract
+IDs against the registry for their configured networks.

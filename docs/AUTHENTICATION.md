@@ -118,8 +118,9 @@ Adds:
 Add to `.env`:
 
 ```bash
-# JWT Configuration
-JWT_SECRET=your-super-secret-key-change-this-in-production
+# JWT Configuration — REQUIRED, at least 32 bytes.
+# Generate with: openssl rand -hex 32
+JWT_SECRET=<output of openssl rand -hex 32>
 JWT_EXPIRY=24h
 JWT_REFRESH_EXPIRY=7d
 
@@ -129,6 +130,26 @@ BCRYPT_ROUNDS=12
 # Environment
 NODE_ENV=production
 ```
+
+### JWT secret requirements and rotation
+
+There is no fallback secret. `backend/env.js` validates `JWT_SECRET` at
+startup and the process exits non-zero when it is missing or shorter than 32
+bytes (`NODE_ENV=test` is the only exception). `JWT_SECRET_PREVIOUS` is
+optional and must also be at least 32 bytes when set.
+
+To rotate the signing key without logging everyone out:
+
+1. Generate a new key: `openssl rand -hex 32`.
+2. Move the current value into `JWT_SECRET_PREVIOUS` and set `JWT_SECRET` to
+   the new key. Restart the service; new tokens are signed with the new key
+   while both keys are accepted for verification.
+3. Wait for the longest-lived token to expire (refresh tokens live up to 7
+   days), then remove `JWT_SECRET_PREVIOUS` and restart again.
+
+Never commit real secrets — set them in your deployment platform's secret
+store (Render generates one via `render.yaml`, Kubernetes reads it from the
+`rwa-backend-secrets` Secret).
 
 ### 3. Initialize Auth Service
 
@@ -429,8 +450,8 @@ wsManager.wss.on('connection', (ws, req) => {
 1. Enforce strong password policies
 2. Implement rate limiting on login attempts
 3. Use HTTPS for all auth endpoints
-4. Store JWT_SECRET securely (use environment variables)
-5. Rotate keys periodically
+4. Store JWT_SECRET securely (use environment variables, never a code fallback)
+5. Rotate keys periodically using the `JWT_SECRET_PREVIOUS` grace window
 6. Implement password reset with email verification
 
 ## Token Management

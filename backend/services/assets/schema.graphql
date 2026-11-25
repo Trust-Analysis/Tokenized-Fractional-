@@ -21,6 +21,23 @@ type Asset @key(fields: "contractId") {
   # Extended fields from other services
   owner: User @provides(fields: "walletAddress")
   transactions: [Transaction!] @provides(fields: "transactionId type status")
+  # Canonical income path: accumulator-based distribution (see docs/adr).
+  # The legacy dividend path (distribute_dividends/claim_dividends) has been
+  # removed from the contract ABI; no GraphQL fields are exposed for it.
+  distribution: AssetDistribution
+}
+
+# Canonical income distribution state for an asset.
+# Mirrors the on-chain accumulator model (deposit_distribution/claim_distribution).
+type AssetDistribution {
+  contractId: ID!
+  # Total amount deposited into the distribution accumulator (base units).
+  totalDistributed: String!
+  # Amount currently claimable by the given holder, if requested.
+  claimable(walletAddress: String!): String
+  # Accumulator index used to compute per-holder entitlements.
+  accumulatorIndex: String!
+  lastUpdatedAt: String!
 }
 
 type DocumentHash {
@@ -47,6 +64,7 @@ input AssetFilter {
   isPaused: Boolean
 }
 
+# BEGIN GENERATED ASSET INPUT
 input AssetInput {
   contractId: String!
   title: String!
@@ -57,6 +75,7 @@ input AssetInput {
   pricePerShare: Int!
   availableShares: Int!
 }
+# END GENERATED ASSET INPUT
 
 type Query {
   assets(filter: AssetFilter, limit: Int, offset: Int): [Asset!]!
@@ -65,6 +84,8 @@ type Query {
   searchAssets(query: String!, limit: Int): [Asset!]!
   pendingAssets: [Asset!]!
   assetStatistics: AssetStatistics!
+  # Canonical income path query.
+  assetDistribution(contractId: ID!): AssetDistribution
 }
 
 type AssetStatistics {
@@ -87,4 +108,7 @@ type Mutation {
   approveAsset(contractId: ID!): Asset!
   pauseAsset(contractId: ID!): Asset!
   unpauseAsset(contractId: ID!): Asset!
+  # Canonical income path mutation: record a distribution deposit.
+  # Replaces the removed dividend mutations (distributeDividends/claimDividends).
+  depositDistribution(contractId: ID!, amount: String!): AssetDistribution!
 }

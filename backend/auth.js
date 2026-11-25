@@ -8,6 +8,7 @@
 import jwt from 'jsonwebtoken';
 import bcrypt from 'bcryptjs';
 import { randomBytes } from 'crypto';
+import { getJwtSecret, getJwtVerificationSecrets, verifyJwt } from './src/config/jwtSecret.js';
 
 /**
  * User Roles Definition
@@ -91,7 +92,12 @@ export const ROLE_PERMISSIONS = {
  */
 export class AuthService {
   constructor(config = {}) {
-    this.jwtSecret = config.jwtSecret || process.env.JWT_SECRET || 'your-secret-key-change-in-production';
+    // Issue #1144: no hardcoded fallback. `getJwtSecret()` throws outside
+    // NODE_ENV=test when JWT_SECRET is missing or shorter than 32 bytes.
+    this.jwtSecret = config.jwtSecret || getJwtSecret();
+    this.jwtVerificationSecrets = config.jwtSecret
+      ? [config.jwtSecret]
+      : getJwtVerificationSecrets();
     this.jwtExpiry = config.jwtExpiry || process.env.JWT_EXPIRY || '24h';
     this.refreshTokenExpiry = config.refreshTokenExpiry || '7d';
     this.logger = config.logger || console;
@@ -151,7 +157,7 @@ export class AuthService {
    */
   verifyToken(token) {
     try {
-      return jwt.verify(token, this.jwtSecret, {
+      return verifyJwt(token, this.jwtVerificationSecrets, {
         issuer: 'rwa-marketplace',
       });
     } catch (error) {
@@ -234,7 +240,7 @@ export class AuthService {
    */
   refreshAccessToken(refreshToken) {
     try {
-      const payload = jwt.verify(refreshToken, this.jwtSecret, {
+      const payload = verifyJwt(refreshToken, this.jwtVerificationSecrets, {
         issuer: 'rwa-marketplace',
       });
 
@@ -328,7 +334,7 @@ export function generateSessionToken(userId, expiresIn = '30d') {
     type: 'session',
   };
 
-  return jwt.sign(payload, process.env.JWT_SECRET || 'your-secret-key', {
+  return jwt.sign(payload, getJwtSecret(), {
     expiresIn,
   });
 }

@@ -36,7 +36,8 @@ them any more.
 | `rwa.preferences` | Display/notification preferences (zustand persist envelope) | Until reset or site-data clear | none | zustand JSON |
 | `rwa-wallet-store` | Last active wallet provider only. **No `publicKey`, no share balance** since schema v2 | Until site-data clear | none | zustand JSON |
 | `i18nextLng` | Language detector cache, e.g. `"en"` | Until the user changes language or site data | none | string |
-| `analytics_anon_id` | Random `anon_…` identifier; no PII | Permanent (until site data is cleared) | none | string |
+| `analytics_anon_id` | Explicitly opted-in browser identifier | Until opt-out, wallet disconnect, or local data clear | none | string |
+| `analytics_consent` | Explicit opt-in to purchase analytics | Until opt-out, wallet disconnect, or local data clear | none | string |
 | `emailNotifications` | `"true"` / `"false"` profile switch | Until changed or site-data clear | none | string |
 | `priceAlerts` | `"true"` / `"false"` profile switch | Until changed or site-data clear | none | string |
 | `transactionNotifications` | `"true"` / `"false"` profile switch | Until changed or site-data clear | none | string |

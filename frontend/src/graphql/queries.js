@@ -5,6 +5,13 @@
  * src/graphql/queries.js — GraphQL queries and mutations.
  *
  * Defines GraphQL operations for the marketplace including order management.
+ *
+ * Issue #1021: The contract previously exposed two overlapping income
+ * distribution systems (dividends vs. accumulator-based distribution). The
+ * canonical income path is now the accumulator-based distribution
+ * (`deposit_distribution` / `claim_distribution`). All dividend-specific
+ * queries/mutations have been removed from this module. See
+ * `docs/adr/` for the consolidation ADR and migration notes.
  */
 
 export const GET_ORDERS = `
@@ -134,3 +141,91 @@ export const GET_ORDER_HISTORY = `
     }
   }
 `;
+
+// Issue #1021: Canonical income distribution (accumulator-based).
+// Replaces the deprecated dividend queries/mutations.
+
+/**
+ * Query the canonical distribution state for an asset.
+ * Returns the accumulator index, total deposited, and per-holder claimable
+ * amounts derived from the on-chain accumulator.
+ */
+export const GET_DISTRIBUTION_STATE = `
+  query GetDistributionState($assetId: ID!) {
+    distributionState(assetId: $assetId) {
+      assetId
+      accumulatorIndex
+      totalDeposited
+      totalClaimed
+      lastDepositAt
+      updatedAt
+    }
+  }
+`;
+
+/**
+ * Query the claimable distribution balance for a specific holder.
+ */
+export const GET_CLAIMABLE_DISTRIBUTION = `
+  query GetClaimableDistribution($assetId: ID!, $holder: String!) {
+    claimableDistribution(assetId: $assetId, holder: $holder) {
+      assetId
+      holder
+      claimable
+      claimed
+      lastClaimedAt
+    }
+  }
+`;
+
+/**
+ * Query the distribution history (deposits and claims) for an asset.
+ */
+export const GET_DISTRIBUTION_HISTORY = `
+  query GetDistributionHistory($assetId: ID!, $limit: Int, $cursor: String) {
+    distributionHistory(assetId: $assetId, limit: $limit, cursor: $cursor) {
+      entries {
+        id
+        assetId
+        holder
+        kind
+        amount
+        accumulatorIndex
+        createdAt
+        txHash
+      }
+      pageInfo {
+        hasNextPage
+        hasPreviousPage
+        startCursor
+        endCursor
+      }
+      totalCount
+    }
+  }
+`;
+
+/**
+ * Mutation: claim accrued distribution for the connected holder.
+ */
+export const CLAIM_DISTRIBUTION = `
+  mutation ClaimDistribution($assetId: ID!) {
+    claimDistribution(assetId: $assetId) {
+      assetId
+      holder
+      amount
+      accumulatorIndex
+      txHash
+    }
+  }
+`;
+
+/**
+ * Helper: Build variables for the distribution history query.
+ * @param {object} opts - { assetId, limit, cursor }
+ */
+export function buildDistributionHistoryVariables({ assetId, limit = 20, cursor = null } = {}) {
+  const variables = { assetId, limit };
+  if (cursor) variables.cursor = cursor;
+  return variables;
+}
