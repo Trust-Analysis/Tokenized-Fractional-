@@ -9,6 +9,8 @@ MAX_CPU_INSTRUCTIONS="${MAX_CPU_INSTRUCTIONS:-0}"
 cd "$ROOT_DIR/contracts"
 
 cargo test --test resource_benchmarks -- --nocapture 2>&1 | tee "$REPORT_FILE"
+cargo test --package multi-asset-manager --test gas_benchmark -- --nocapture 2>&1 | tee -a "$REPORT_FILE"
+cargo test --manifest-path vault/Cargo.toml --test state_integration_tests -- --nocapture 2>&1 | tee -a "$REPORT_FILE"
 
 if [[ "$MAX_CPU_INSTRUCTIONS" != 0 ]]; then
     max_observed=$(awk -F'cpu=' '/BENCHMARK / { split($2, value, " "); if (value[1] > max) max = value[1] } END { print max + 0 }' "$REPORT_FILE")
