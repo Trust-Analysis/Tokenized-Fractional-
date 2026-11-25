@@ -252,13 +252,12 @@ soroban network add --global testnet \
 
 soroban keys generate --global admin --network testnet
 
-soroban contract deploy \
-  --wasm target/wasm32-unknown-unknown/release/rwa_marketplace.wasm \
-  --source admin \
-  --network testnet
+node ../scripts/deploy-marketplace.mjs testnet admin \
+  target/wasm32-unknown-unknown/release/rwa_marketplace.wasm
 ```
 
-Copy the returned Contract ID (starts with `C`).
+The command prints the new contract ID and records it in the
+[deployment registry](docs/official-deployments.md).
 
 ### 4. Initialize the Marketplace
 

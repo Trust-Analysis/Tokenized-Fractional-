@@ -1,11 +1,8 @@
+import type { AssetInput } from './asset-input.js';
 import { warnOnIncompatibleCombination, type CompatibilityReport } from './compatibility.js';
 
-export interface Asset {
+export interface Asset extends Partial<Pick<AssetInput, 'title' | 'location' | 'description' | 'assetType'>> {
   contractId: string;
-  title?: string;
-  location?: string;
-  description?: string;
-  assetType?: string;
   imageUrl?: string;
   totalValuation?: number | string;
   [key: string]: unknown;

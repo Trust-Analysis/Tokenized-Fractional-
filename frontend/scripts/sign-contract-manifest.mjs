@@ -42,6 +42,7 @@ import {
 import { mkdirSync, readFileSync, writeFileSync } from 'node:fs';
 import { fileURLToPath } from 'node:url';
 import { dirname, resolve } from 'node:path';
+import { deploymentRegistry, normalizeNetwork } from '../../backend/src/deployments.js';
 
 const SCRIPT_DIR = dirname(fileURLToPath(import.meta.url));
 const FRONTEND_DIR = resolve(SCRIPT_DIR, '..');
@@ -163,6 +164,12 @@ function cmdKeygen(args) {
   return 0;
 }
 
+export function registryManifestContracts(network) {
+  return deploymentRegistry.deployments
+    .filter((entry) => entry.network === normalizeNetwork(network) && entry.status === 'active')
+    .map(({ contractId, network, asset, label, status }) => ({ id: contractId, network, asset, label, status }));
+}
+
 function cmdSign(args) {
   const keyFile = args['key-file'];
   if (!keyFile) throw new Error('sign requires --key-file <path>');
@@ -171,6 +178,9 @@ function cmdSign(args) {
 
   const jwk = JSON.parse(readFileSync(keyFile, 'utf8'));
   const payload = JSON.parse(readFileSync(payloadPath, 'utf8'));
+  if (resolve(payloadPath) === DEFAULT_PAYLOAD_PATH) {
+    payload.contracts = registryManifestContracts(payload.network);
+  }
   const { signer, signature } = buildEnvelope(payload, privateKeyFromJwk(jwk));
 
   const envelope = {

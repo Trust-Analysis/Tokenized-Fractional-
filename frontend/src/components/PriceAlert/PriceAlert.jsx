@@ -4,6 +4,7 @@ import Input from '../Input/Input';
 import Card from '../Card/Card';
 import { useToastStore } from '../../store/useToastStore';
 import { readJson, writeJson, STORAGE_KEYS } from '../../lib/storage';
+import { LOCAL_DATA_CLEARED } from '../../lib/profilePrivacy';
 import styles from './PriceAlert.module.css';
 
 const isAlertList = (value) => Array.isArray(value);
@@ -30,6 +31,12 @@ export default function PriceAlert({ contractId, assetTitle, currentPrice }) {
 
   useEffect(() => {
     setAlerts(loadAlerts());
+    const reset = () => {
+      setAlerts([]);
+      setTriggered(new Set());
+    };
+    window.addEventListener(LOCAL_DATA_CLEARED, reset);
+    return () => window.removeEventListener(LOCAL_DATA_CLEARED, reset);
   }, []);
 
   const activeAlerts = alerts.filter((a) => a.contractId === contractId && a.active !== false);

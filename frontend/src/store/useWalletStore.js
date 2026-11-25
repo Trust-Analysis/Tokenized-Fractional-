@@ -1,3 +1,5 @@
+import { clearProfileStorage } from '../lib/profilePrivacy';
+import { useFavoritesStore } from './useFavoritesStore';
 import { create } from 'zustand';
 import { createJSONStorage, persist } from 'zustand/middleware';
 import { isAllowed, setAllowed, getUserInfo } from '@stellar/freighter-api';
@@ -139,6 +141,7 @@ export const useWalletStore = create(
         } catch (err) {
           console.error('[WalletStore] Freighter check failed:', err);
         }
+        if (get().publicKey) get().clearLocalData();
         set({ publicKey: null, shares: 0 });
         return null;
       },
@@ -172,7 +175,14 @@ export const useWalletStore = create(
         }
       },
 
+      clearLocalData: () => {
+        const { publicKey } = get();
+        useFavoritesStore.getState().clearWalletData(publicKey);
+        clearProfileStorage(publicKey);
+      },
+
       disconnect: () => {
+        get().clearLocalData();
         if (import.meta.env.DEV && import.meta.env.VITE_MOCK_WALLET === 'true') {
           removeItem(STORAGE_KEYS.MOCK_WALLET_PUBKEY);
           removeItem(STORAGE_KEYS.MOCK_SHARES_BALANCE);

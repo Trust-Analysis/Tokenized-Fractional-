@@ -13,7 +13,8 @@
 import { parse } from 'graphql';
 import { buildSubgraphSchema } from '@apollo/subgraph';
 import { entityCache } from '../../entityCache.js';
-import { isValidContractId, INVALID_CONTRACT_ID_MESSAGE } from '../../../validators/rwaValidator.js';
+import { rwaGraphQLInput } from '../../../validators/rwaFields.js';
+import { validateRwaBody, isValidContractId, INVALID_CONTRACT_ID_MESSAGE } from '../../../validators/rwaValidator.js';
 
 export const typeDefs = parse(`#graphql
   extend schema
@@ -53,16 +54,7 @@ export const typeDefs = parse(`#graphql
     location: String
   }
 
-  input RWAInput {
-    contractId: String!
-    title: String!
-    location: String!
-    description: String!
-    assetType: String!
-    totalShares: Int
-    pricePerShare: Int
-    availableShares: Int
-  }
+  ${rwaGraphQLInput('RWAInput')}
 
   type Statistics {
     totalAssets: Int!
@@ -235,10 +227,10 @@ export function createAssetsSubgraph(dataLayer) {
         if (!isValidContractId(contractId)) {
           throw new Error(INVALID_CONTRACT_ID_MESSAGE);
         }
-        if (dataLayer?.validateRwaBody) {
-          const error = dataLayer.validateRwaBody(input);
-          if (error) throw new Error(error);
-        }
+        const error = validateRwaBody(input);
+        if (error) throw new Error(error);
+
+        if (!dataLayer) throw new Error('Asset storage unavailable');
 
         const now = new Date().toISOString();
         const newAsset = {
@@ -269,7 +261,7 @@ export function createAssetsSubgraph(dataLayer) {
           throw new Error('Unauthorized: Only admins can update assets');
         }
         const { contractId, input } = args;
-        if (dataLayer?.validateContractId && !dataLayer.validateContractId(contractId)) {
+        if (!isValidContractId(contractId)) {
           throw new Error('Invalid contract ID');
         }
 
@@ -277,14 +269,13 @@ export function createAssetsSubgraph(dataLayer) {
         const existing = data[contractId];
         if (!existing) throw new Error('Asset not found');
 
-        if (dataLayer?.validateRwaBody) {
-          const error = dataLayer.validateRwaBody(input);
-          if (error) throw new Error(error);
-        }
+        const error = validateRwaBody(input);
+        if (error) throw new Error(error);
 
         const updated = {
           ...existing,
           ...input,
+          contractId,
           updatedAt: new Date().toISOString(),
         };
 

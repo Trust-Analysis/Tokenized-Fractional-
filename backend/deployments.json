@@ -1,0 +1,16 @@
+{
+  "schemaVersion": 1,
+  "deployments": [
+    {
+      "contractId": "CA3D5KRYM6CB7OWQ6TWYRR3Z4T7GNZLKERYNZGGA5SOAOPIFY6YQGAXE",
+      "network": "TESTNET",
+      "asset": "marketplace",
+      "label": "RWA Marketplace — testnet reference deployment",
+      "status": "active",
+      "wasmHash": null,
+      "deployTx": null,
+      "commitSha": null,
+      "provenance": "legacy"
+    }
+  ]
+}

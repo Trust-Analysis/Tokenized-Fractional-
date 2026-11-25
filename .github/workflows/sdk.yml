@@ -15,6 +15,9 @@ on:
     branches: [ main, dev ]
     paths:
       - 'sdk/**'
+      - 'backend/src/validators/rwaFields.js'
+      - 'backend/services/assets/schema.graphql'
+      - 'scripts/generate-rwa-sdk-input.mjs'
       - '.github/workflows/sdk.yml'
   push:
     branches: [ main, dev ]
@@ -23,6 +26,9 @@ on:
     tags: [ 'sdk-v*' ]
     paths:
       - 'sdk/**'
+      - 'backend/src/validators/rwaFields.js'
+      - 'backend/services/assets/schema.graphql'
+      - 'scripts/generate-rwa-sdk-input.mjs'
       - '.github/workflows/sdk.yml'
   workflow_dispatch:
 
@@ -44,6 +50,9 @@ jobs:
       - name: Install dependencies
         working-directory: sdk
         run: npm ci
+
+      - name: Verify generated asset inputs
+        run: node scripts/generate-rwa-sdk-input.mjs --check
 
       - name: Typecheck
         working-directory: sdk

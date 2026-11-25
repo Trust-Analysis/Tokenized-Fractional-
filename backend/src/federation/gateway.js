@@ -37,6 +37,7 @@ export function createSubgraphServer(subgraphSchema, { name, complexityLimits } 
 
 export async function createFederatedGraphQLServer({
   dataLayer,
+  apiKeyService,
   transactionService,
   logger,
   complexityLimits,
@@ -76,11 +77,17 @@ export async function createFederatedGraphQLServer({
   await server.start();
 
   const middleware = expressMiddleware(server, {
-    context: async ({ req }) => ({
-      isAdmin: req.headers['x-admin-key'] || req.isAdmin || false,
-      walletAddress: req.walletAddress || req.headers['x-wallet-address'] || null,
-      requestId: req.requestId,
-    }),
+    context: async ({ req }) => {
+      const key = req.headers['x-api-key'] ?? req.headers['x-admin-key'];
+      const keyIsValid = typeof key === 'string' && apiKeyService
+        ? (await apiKeyService.validate(key)).valid
+        : false;
+      return {
+        isAdmin: req.isAdmin === true || keyIsValid === true,
+        walletAddress: req.walletAddress || req.headers['x-wallet-address'] || null,
+        requestId: req.requestId,
+      };
+    },
   });
 
   return {

@@ -6,6 +6,12 @@
  * All other modules should import from here rather than reading process.env directly.
  */
 
+import { requireRegisteredContract } from './deployments.js';
+
+export const CONTRACT_DEPLOYMENT = process.env.SOROBAN_CONTRACT_ID
+  ? requireRegisteredContract(process.env.SOROBAN_NETWORK || 'testnet', process.env.SOROBAN_CONTRACT_ID)
+  : undefined;
+
 export const PORT = process.env.PORT || 3001;
 
 export const CORS_ORIGINS = process.env.CORS_ORIGINS

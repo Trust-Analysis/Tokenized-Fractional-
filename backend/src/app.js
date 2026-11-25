@@ -33,7 +33,7 @@ import {
   reportError,
 } from './services/errorTracking.js';
 import { apiLimiter } from './middleware/rateLimiter.js';
-import { createAdminAuth, adminAuth as legacyAdminAuth } from './middleware/auth.js';
+import { configureAdminAuth, createAdminAuth, adminAuth as legacyAdminAuth } from './middleware/auth.js';
 import {
   createTieredRateLimiter,
   createGraphQLRateLimiter,
@@ -194,6 +194,7 @@ export async function initializeApp() {
 
     // Create and bind adminAuth middleware
     adminAuth = createAdminAuth(apiKeyService);
+    configureAdminAuth(adminAuth);
     logger.info('API key service initialized');
 
     // Setup API keys router
@@ -233,6 +234,7 @@ export async function initializeApp() {
     // time (below) so it is registered before the 404 handler.
     federatedGraphQL = await createFederatedGraphQLServer({
       dataLayer: dataService,
+      apiKeyService,
       transactionService,
       logger,
     });

@@ -16,9 +16,13 @@ import {
   removeItem,
   STORAGE_KEYS,
 } from '../../lib/storage';
+import { profileStorageKey } from '../../lib/profilePrivacy';
+import { hasAnalyticsConsent, setAnalyticsConsent } from '../../lib/analytics';
 import styles from './UserProfile.module.css';
 
-const profileStorageKey = (publicKey) => `userProfile_${publicKey}`;
+const emptyProfile = {
+  displayName: '', email: '', bio: '', website: '', location: '', avatar: null, avatarUrl: '',
+};
 
 const isProfileObject = (value) => value !== null && typeof value === 'object' && !Array.isArray(value);
 
@@ -28,18 +32,12 @@ export default function UserProfile() {
   const addToast = useToastStore((state) => state.addToast);
 
   // Profile information state
-  const [profileData, setProfileData] = useState({
-    displayName: '',
-    email: '',
-    bio: '',
-    website: '',
-    location: '',
-    avatar: null,
-    avatarUrl: '',
-  });
+  const [profileData, setProfileData] = useState(emptyProfile);
+  const clearLocalData = useWalletStore((state) => state.clearLocalData);
+  const [analyticsConsent, setConsent] = useState(hasAnalyticsConsent);
 
   // Settings state
-  const [preferences, setPreferences] = useState({
+  const readPreferences = () => ({
     darkMode: readString(STORAGE_KEYS.THEME) === 'dark',
     emailNotifications: readString(STORAGE_KEYS.PROFILE_EMAIL_NOTIFICATIONS, 'true') !== 'false',
     priceAlerts: readString(STORAGE_KEYS.PROFILE_PRICE_ALERTS, 'true') !== 'false',
@@ -51,6 +49,7 @@ export default function UserProfile() {
     autoLogout: readString(STORAGE_KEYS.PROFILE_AUTO_LOGOUT, 'true') !== 'false',
   });
 
+  const [preferences, setPreferences] = useState(readPreferences);
   const [activeTab, setActiveTab] = useState('profile'); // 'profile', 'settings', 'security'
   const [isEditing, setIsEditing] = useState(false);
   const [isSaving, setIsSaving] = useState(false);
@@ -61,6 +60,8 @@ export default function UserProfile() {
   // Load profile data on mount
   useEffect(() => {
     loadProfileData();
+    setConsent(hasAnalyticsConsent());
+    setPreferences(readPreferences());
   }, [publicKey]);
 
   const loadProfileData = () => {
@@ -74,10 +75,7 @@ export default function UserProfile() {
         setProfileData(stored);
       } else {
         // Set default display name from wallet address
-        setProfileData((prev) => ({
-          ...prev,
-          displayName: `User_${publicKey?.slice(0, 6)}`,
-        }));
+        setProfileData({ ...emptyProfile, displayName: publicKey ? `User_${publicKey.slice(0, 6)}` : '' });
       }
     } catch (err) {
       console.error('Error loading profile:', err);
@@ -591,6 +589,30 @@ export default function UserProfile() {
 
           <Card className={styles.dataCard}>
             <h3 className={styles.sectionTitle}>Data Management</h3>
+            <p>This browser stores your profile, preferences, price alerts and watchlist. Scripts on this site can read browser storage.</p>
+            <label>
+              <input
+                type="checkbox"
+                checked={analyticsConsent}
+                onChange={(event) => {
+                  setAnalyticsConsent(event.target.checked);
+                  setConsent(hasAnalyticsConsent());
+                }}
+              />
+              Allow purchase analytics to use a browser identifier
+            </label>
+            <Button
+              variant="secondary"
+              onClick={() => {
+                if (!window.confirm('Clear your local profile, watchlist, alerts and analytics settings?')) return;
+                clearLocalData();
+                loadProfileData();
+                setPreferences(readPreferences());
+                setConsent(false);
+              }}
+            >
+              Clear local data
+            </Button>
 
             <div className={styles.dataAction}>
               <div className={styles.dataInfo}>

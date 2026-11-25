@@ -3,28 +3,38 @@
  * No PII is included in any analytics payloads.
  */
 
-import { readString, writeString, STORAGE_KEYS } from './storage';
+import { readString, writeString, removeItem, STORAGE_KEYS } from './storage';
 
-const ANALYTICS_ENDPOINT = process.env.NEXT_PUBLIC_ANALYTICS_ENDPOINT || '/api/analytics';
+const ANALYTICS_ENDPOINT = import.meta.env?.VITE_ANALYTICS_ENDPOINT || '/api/analytics';
 
 function generateAnonymousId() {
   return 'anon_' + Math.random().toString(36).substring(2, 15);
 }
 
-let anonymousId = null;
+export function hasAnalyticsConsent() {
+  return readString(STORAGE_KEYS.ANALYTICS_CONSENT) === 'granted';
+}
+
+export function setAnalyticsConsent(granted) {
+  if (granted) {
+    if (!hasAnalyticsConsent()) removeItem(STORAGE_KEYS.ANALYTICS_ID);
+    writeString(STORAGE_KEYS.ANALYTICS_CONSENT, 'granted');
+  } else {
+    removeItem(STORAGE_KEYS.ANALYTICS_CONSENT);
+    removeItem(STORAGE_KEYS.ANALYTICS_ID);
+  }
+}
 
 function getAnonymousId() {
-  if (!anonymousId) {
-    anonymousId = readString(STORAGE_KEYS.ANALYTICS_ID) || null;
-    if (!anonymousId) {
-      anonymousId = generateAnonymousId();
-      writeString(STORAGE_KEYS.ANALYTICS_ID, anonymousId);
-    }
-  }
-  return anonymousId;
+  const stored = readString(STORAGE_KEYS.ANALYTICS_ID);
+  if (stored) return stored;
+  const id = generateAnonymousId();
+  writeString(STORAGE_KEYS.ANALYTICS_ID, id);
+  return id;
 }
 
 export function trackPurchaseInitiated(contractId, tokenAmount, currency) {
+  if (!hasAnalyticsConsent()) return;
   const event = {
     event: 'purchase_initiated',
     anonymous_id: getAnonymousId(),
@@ -37,6 +47,7 @@ export function trackPurchaseInitiated(contractId, tokenAmount, currency) {
 }
 
 export function trackPurchaseConfirmed(contractId, tokenAmount, currency, transactionHash) {
+  if (!hasAnalyticsConsent()) return;
   const event = {
     event: 'purchase_confirmed',
     anonymous_id: getAnonymousId(),

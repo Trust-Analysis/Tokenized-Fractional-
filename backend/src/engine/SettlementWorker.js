@@ -22,4 +22,4 @@ class SettlementWorker {
     }
   }
 }
-module.exports = SettlementWorker;
+export default SettlementWorker;

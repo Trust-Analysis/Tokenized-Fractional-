@@ -5,7 +5,7 @@ import { readFileSync } from 'fs';
 import { fileURLToPath } from 'url';
 import { dirname, join } from 'path';
 import { gql } from 'graphql-tag';
-import { isValidContractId, INVALID_CONTRACT_ID_MESSAGE } from '../../src/validators/rwaValidator.js';
+import { validateRwaBody, isValidContractId, INVALID_CONTRACT_ID_MESSAGE } from '../../src/validators/rwaValidator.js';
 
 const __filename = fileURLToPath(import.meta.url);
 const __dirname = dirname(__filename);
@@ -30,16 +30,6 @@ const dataLayer = {
     return typeof contractId === 'string' && contractId.startsWith('C') && contractId.length >= 56;
   },
   
-  validateRwaBody(input) {
-    if (!input.title || input.title.trim().length === 0) return 'Title is required';
-    if (!input.location || input.location.trim().length === 0) return 'Location is required';
-    if (!input.description || input.description.trim().length === 0) return 'Description is required';
-    if (!input.assetType) return 'Asset type is required';
-    if (input.totalShares && input.totalShares <= 0) return 'Total shares must be positive';
-    if (input.pricePerShare && input.pricePerShare <= 0) return 'Price per share must be positive';
-    if (input.availableShares && input.availableShares < 0) return 'Available shares cannot be negative';
-    return null;
-  },
   
   scoreSearch(query, data) {
     const searchTerms = query.toLowerCase();
@@ -249,7 +239,7 @@ export const resolvers = {
       if (!isValidContractId(contractId)) {
         throw new Error(INVALID_CONTRACT_ID_MESSAGE);
       }
-      const error = dataLayer.validateRwaBody(input);
+      const error = validateRwaBody(input);
       if (error) throw new Error(error);
 
       const now = new Date().toISOString();
@@ -288,7 +278,7 @@ export const resolvers = {
       const existing = dataLayer.assets.get(contractId);
       if (!existing) throw new Error('Asset not found');
 
-      const error = dataLayer.validateRwaBody(input);
+      const error = validateRwaBody(input);
       if (error) throw new Error(error);
 
       const updated = {
