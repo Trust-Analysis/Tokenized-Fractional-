@@ -1082,414 +1082,162 @@ impl MultiAssetManager {
     // -- Buy / Transfer Shares -----------------------------------
 
     pub fn buy_asset_shares(env: Env, asset_id: u64, buyer: Address, amount: u32, max_price_per_share: i128) {
-
         buyer.require_auth();
 
-
         if amount == 0 {
-
             panic_with_error!(&env, Error::InvalidAmount);
-
-
         }
 
         // Reentrancy guard (#934)
-
         if env.storage().instance().get(&DataKey::ReentrantGuard).unwrap_or(false) {
-
             panic_with_error!(&env, Error::ReentrantCall);
-
         }
-
         env.storage().instance().set(&DataKey::ReentrantGuard, &true);
 
-
         let info = env.storage().persistent()
-
             .get::<DataKey, AssetInfo>(&DataKey::AssetInfo(asset_id))
-
             .expect("Asset not found");
 
-
         if info.status != AssetStatus::Active {
-
             panic_with_error!(&env, Error::AssetArchived);
-
-
         }
-
 
         if amount > info.available_supply {
-
             panic_with_error!(&env, Error::InsufficientShares);
-
-
-        }
-
-
-        let pricing: AssetPricing = env.storage().persistent()
-
-            .get(&DataKey::AssetPricing(asset_id))
-
-            .expect("Pricing not found");
-
-
-        let total_cost = checked_mul_i128(&env, pricing.fixed_price, amount as i128);
-
-
-        // --- Effects: update all contract state BEFORE any external call ---
-
-        // Update supplies
-
-        let mut updated_info = info.clone();
-
-        updated_info.available_supply = checked_sub_u32(&env, updated_info.available_supply, amount);
-
-        env.storage().persistent().set(&DataKey::AssetInfo(asset_id), &updated_info);
-
-
-        // Update buyer balance
-
-        let prev_balance: u32 = env.storage().persistent()
-
-            .get(&DataKey::AssetBalance(asset_id, buyer.clone()))
-
-            .unwrap_or(0);
-
-        let new_balance = checked_add_u32(&env, prev_balance, amount);
-
-        env.storage().persistent().set(&DataKey::AssetBalance(asset_id, buyer.clone()), &new_balance);
-
-
-        // Register holder if new
-
-        let mut holders: Vec<Address> = env.storage().persistent()
-
-            .get(&DataKey::AssetHolders(asset_id))
-
-            .unwrap_or_else(|| Vec::new(&env));
-
-        let mut is_new_holder = true;
-
-        for h in holders.iter() {
-
-            if h == buyer {
-
-                is_new_holder = false;
-
-                break;
-
-            }
-
-        }
-
-        if is_new_holder {
-
-            holders.push_back(buyer.clone());
-
-            env.storage().persistent().set(&DataKey::AssetHolders(asset_id), &holders);
-
-
-        }
-
-        env.storage().instance().set(&DataKey::ReentrantGuard, &true);
-
-
-        // Update analytics
-
-        let mut analytics: AssetAnalytics = env.storage().persistent()
-
-            .get(&DataKey::AssetAnalytics(asset_id))
-
-            .expect("Analytics not found");
-
-        analytics.total_holders = if is_new_holder { analytics.total_holders + 1 } else { analytics.total_holders };
-
-        analytics.total_volume = analytics.total_volume.saturating_add(total_cost);
-
-        analytics.avg_price = analytics.total_volume / (analytics.buy_count + 1).max(1) as i128;
-
-        analytics.last_trade_at = env.ledger().timestamp();
-
-        analytics.buy_count += 1;
-
-        env.storage().persistent().set(&DataKey::AssetAnalytics(asset_id), &analytics);
-
-
-        // --- Interaction: external token transfer happens last (#934 CEI) ---
-
-        let client = soroban_sdk::token::Client::new(&env, &info.payment_token);
-
-        client.transfer(&buyer, &info.treasury, &total_cost);
-
-
-        // Release reentrancy guard
-
-        env.storage().instance().set(&DataKey::ReentrantGuard, &false);
-
-
-        EventAssetSharesBought { asset_id, buyer, amount, total_cost }.publish(&env);
-
-    }
-
-
-        let info = env.storage().persistent()
-
-            .get::<DataKey, AssetInfo>(&DataKey::AssetInfo(asset_id))
-
-            .expect("Asset not found");
-
-
-        if info.status != AssetStatus::Active {
-
-            panic_with_error!(&env, Error::AssetArchived);
-
-
-        }
-
-
-        if amount > info.available_supply {
-
-            panic_with_error!(&env, Error::InsufficientShares);
-
-
         }
 
         // AssetRestrictions enforcement (#935)
-
         let restrictions: AssetRestrictions = env.storage().persistent()
-
             .get(&DataKey::AssetRestrictions(asset_id))
-
             .expect("Restrictions not found");
 
         if restrictions.requires_kyc {
-
             let kyc_verified: bool = env.storage().persistent()
-
                 .get(&DataKey::KYCVerified(buyer.clone()))
-
                 .unwrap_or(false);
-
             if !kyc_verified {
-
                 panic_with_error!(&env, Error::KYCRequired);
-
             }
-
         }
 
         if restrictions.requires_accreditation {
-
             let accredited: bool = env.storage().persistent()
-
                 .get(&DataKey::AccreditedInvestor(buyer.clone()))
-
                 .unwrap_or(false);
-
             if !accredited {
-
                 panic_with_error!(&env, Error::AccreditationRequired);
-
             }
-
         }
 
         if restrictions.min_investment > 0 && amount < restrictions.min_investment {
-
             panic_with_error!(&env, Error::BelowMinInvestment);
-
         }
 
         let current_investor_total: u32 = env.storage().persistent()
-
             .get(&DataKey::AssetBalance(asset_id, buyer.clone()))
-
             .unwrap_or(0);
-
         if restrictions.max_per_investor > 0
-
             && current_investor_total.saturating_add(amount) > restrictions.max_per_investor
-
         {
-
             panic_with_error!(&env, Error::ExceedsMaxPerInvestor);
-
         }
 
         if !restrictions.restricted_jurisdictions.is_empty() {
-
             let buyer_jurisdiction: Option<String> = env.storage().persistent()
-
                 .get(&DataKey::BuyerJurisdiction(buyer.clone()));
-
             match buyer_jurisdiction {
-
                 Some(j) if restrictions.restricted_jurisdictions.contains(&j) => {
-
                     panic_with_error!(&env, Error::RestrictedJurisdiction);
-
                 }
-
                 Some(_) => {}
-
                 None => panic_with_error!(&env, Error::RestrictedJurisdiction),
-
             }
-
         }
 
-
         // Safety controls (#937)
-
         // Circuit breaker check
-
         let breaker_triggered: bool = env.storage().instance()
-
             .get(&DataKey::CircuitBreakerTriggered)
-
             .unwrap_or(false);
-
         if breaker_triggered {
-
             panic_with_error!(&env, Error::AssetPaused);
-
         }
 
         // Asset-specific pause check
-
         let asset_paused: bool = env.storage().instance()
-
             .get(&DataKey::AssetPause(asset_id))
-
             .unwrap_or(false);
-
         if asset_paused {
-
             panic_with_error!(&env, Error::AssetPaused);
-
         }
 
-
         let pricing: AssetPricing = env.storage().persistent()
-
             .get(&DataKey::AssetPricing(asset_id))
-
             .expect("Pricing not found");
-
 
         let total_cost = checked_mul_i128(&env, pricing.fixed_price, amount as i128);
 
-
         // Slippage protection: reject if configured price exceeds buyer's max
-
         if pricing.fixed_price > max_price_per_share {
-
             panic_with_error!(&env, Error::InvalidPricingModel);
-
         }
 
-
         // --- Effects: update all contract state BEFORE any external call ---
-
         // Update supplies
-
         let mut updated_info = info.clone();
-
         updated_info.available_supply = checked_sub_u32(&env, updated_info.available_supply, amount);
-
         env.storage().persistent().set(&DataKey::AssetInfo(asset_id), &updated_info);
 
-
         // Update buyer balance
-
         let prev_balance: u32 = env.storage().persistent()
-
             .get(&DataKey::AssetBalance(asset_id, buyer.clone()))
-
             .unwrap_or(0);
-
         let new_balance = checked_add_u32(&env, prev_balance, amount);
-
         env.storage().persistent().set(&DataKey::AssetBalance(asset_id, buyer.clone()), &new_balance);
-
 
         // Register holder if new (#939): O(1) IsHolder flag instead of
         // scanning/rewriting the full AssetHolders vector.
-
         let is_new_holder: bool = !env.storage().persistent()
-
             .get(&DataKey::IsHolder(asset_id, buyer.clone()))
-
             .unwrap_or(false);
 
         if is_new_holder {
-
             env.storage().persistent().set(
                 &DataKey::IsHolder(asset_id, buyer.clone()),
-
                 &true,
-
             );
-
             let mut holders: Vec<Address> = env.storage().persistent()
-
                 .get(&DataKey::AssetHolders(asset_id))
-
                 .unwrap_or_else(|| Vec::new(&env));
-
             holders.push_back(buyer.clone());
-
             env.storage().persistent().set(&DataKey::AssetHolders(asset_id), &holders);
 
-
             // Record per-holder acquisition time (#938)
-
             env.storage().persistent().set(
                 &DataKey::AcquiredAt(asset_id, buyer.clone()),
-
                 &env.ledger().timestamp(),
-
             );
-
         }
 
-
         // Update analytics
-
         let mut analytics: AssetAnalytics = env.storage().persistent()
-
             .get(&DataKey::AssetAnalytics(asset_id))
-
             .expect("Analytics not found");
-
         analytics.total_holders = if is_new_holder { analytics.total_holders + 1 } else { analytics.total_holders };
-
         analytics.total_volume = analytics.total_volume.saturating_add(total_cost);
-
         analytics.avg_price = analytics.total_volume / (analytics.buy_count + 1).max(1) as i128;
-
         analytics.last_trade_at = env.ledger().timestamp();
-
         analytics.buy_count += 1;
-
         env.storage().persistent().set(&DataKey::AssetAnalytics(asset_id), &analytics);
 
-
         // --- Interaction: external token transfer happens last (#934 CEI) ---
-
         let client = soroban_sdk::token::Client::new(&env, &info.payment_token);
-
         client.transfer(&buyer, &info.treasury, &total_cost);
 
-
         // Release reentrancy guard
-
         env.storage().instance().set(&DataKey::ReentrantGuard, &false);
 
-
         EventAssetSharesBought { asset_id, buyer, amount, total_cost }.publish(&env);
-
     }
 
 
@@ -1609,28 +1357,19 @@ impl MultiAssetManager {
 
 
         // Check lockup (#938): use per-holder acquisition time instead of
-        // the asset-wide last_trade_at timestamp.
-
+        // the asset-wide last_trade_at timestamp. Use `Option<u64>` so a
+        // purchase recorded at ledger timestamp 0 is still subject to lockup.
         if restrictions.transfer_lockup_days > 0 {
-
             let lockup_seconds = (restrictions.transfer_lockup_days as u64) * 86400;
-
-            let acquired_at: u64 = env.storage().persistent()
-
-                .get(&DataKey::AcquiredAt(asset_id, from.clone()))
-
-                .unwrap_or(0);
-
-            if acquired_at > 0
-
-                && env.ledger().timestamp() < acquired_at.saturating_add(lockup_seconds)
-
+            if let Some(acquired_at) = env
+                .storage()
+                .persistent()
+                .get::<DataKey, u64>(&DataKey::AcquiredAt(asset_id, from.clone()))
             {
-
-                panic_with_error!(&env, Error::NotAuthorized);
-
+                if env.ledger().timestamp() < acquired_at.saturating_add(lockup_seconds) {
+                    panic_with_error!(&env, Error::NotAuthorized);
+                }
             }
-
         }
 
 
