@@ -4,6 +4,7 @@
 import { ApolloServer } from '@apollo/server';
 import { startStandaloneServer } from '@apollo/server/standalone';
 import { resolvers, typeDefs } from './resolvers.js';
+import { verifyAdminKey } from '../../src/utils/adminKey.js';
 
 const PORT = process.env.USERS_SERVICE_PORT || 4002;
 
@@ -21,7 +22,7 @@ const { url } = await startStandaloneServer(server, {
   context: async ({ req }) => {
     // Extract authentication information
     const apiKey = req.headers['x-api-key'] || null;
-    const isAdmin = apiKey === process.env.ADMIN_API_KEY;
+    const isAdmin = verifyAdminKey(req);
     
     return {
       isAdmin,
