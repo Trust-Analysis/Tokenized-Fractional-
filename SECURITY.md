@@ -43,10 +43,6 @@ This disclaimer is removed only when an audit report is published **and** its
 findings have been remediated (see below).
 
 ### Audit plan
-### Threat model
-
-See [docs/security-model.md](docs/security-model.md) for the STRIDE threat model, privileged-role matrix, invariants, and remediation tracker.
-
 
 - [ ] Freeze the contract's public interface for the audit window.
 - [ ] Engage an independent auditor with Soroban/Rust experience.
@@ -174,6 +170,88 @@ purchase entry point (`buy_shares`, `buy_vested_shares`, `batch_buy_shares`,
 redemptions and `claim_distribution` keep working so holders can exit, and the admin
 can `burn_shares` any remaining inventory.
 
+## Governance & Timelock Model Across Contracts
+
+The repository contains two distinct Soroban contracts with intentionally different
+governance and delay models:
+
+- **`contracts/src/lib.rs` (`RwaMarketplace`)**: single-asset custodial marketplace.
+- **`contracts/multi_asset/src/lib.rs` (`MultiAssetManager`)**: multi-asset registry and
+  direct-to-treasury primary issuance contract.
+
+`MultiAssetManager` **intentionally omits** an on-chain `schedule_operation` /
+`execute_operation` timelock. Instead, supply origination (`register_asset`) is gated by
+`admin` authorization plus a 2-of-3 designated curator multi-sig
+(`require_multisig_approval`), while post-registration lifecycle and configuration calls
+(`activate_asset`, `deactivate_asset`, `archive_asset`, `update_pricing`, `set_oracle`,
+`update_asset_metadata`, `update_asset_restrictions`) execute immediately when authorized
+by `admin`.
+
+### Why `MultiAssetManager` Omits an On-Chain Timelock
+
+1. **Non-custodial payment flow reduces single-tx drain risk.** In `RwaMarketplace`, the
+   contract custodies payment tokens and exposes `emergency_withdraw`, dividend pools, and
+   buyback reserves. In `MultiAssetManager`, `buy_asset_shares` transfers payment tokens
+   directly from `buyer` to each asset's `info.treasury`; the contract holds no treasury
+   balance and has no `emergency_withdraw` entry point.
+2. **Incident-response halts must be immediate (`deactivate_asset`).** Moving an asset from
+   `Active` to `Paused` via `deactivate_asset` is an emergency stop for misconfigured,
+   compromised, or legally enjoined offerings. A 24–48 hour delay would leave purchases open
+   during an active incident. (For the same reason, `RwaMarketplace::pause` remains directly
+   callable by `PauserRole` without waiting for `schedule_operation`.)
+3. **Multi-asset pricing and oracle responsiveness (`update_pricing`, `set_oracle`).**
+   `MultiAssetManager` supports heterogeneous assets (`Fixed`, `Tiered`, `Auction`,
+   `Dynamic`) whose prices and oracle feeds must track off-chain NAV or market changes
+   without a 48-hour lag that would create stale-price arbitrage windows. Buyers are expected
+   to bound execution price via the `max_price_per_share` parameter on `buy_asset_shares`.
+4. **Immediate compliance and metadata enforcement (`update_asset_restrictions`,
+   `update_asset_metadata`, `activate_asset`).** Tightening `requires_kyc`,
+   `requires_accreditation`, `max_per_investor`, or `restricted_jurisdictions` for
+   regulatory holds—or fixing erroneous metadata—cannot wait 48 hours while unrestricted
+   purchases continue.
+5. **Alignment with `RwaMarketplace` enforcement scope.** In `contracts/src/lib.rs`,
+   `schedule_operation` / `execute_operation` (configurable between `86_400`s and
+   `2_592_000`s, default `172_800`s / 48h) covers `AdminAction` variants `Pause`, `Unpause`,
+   `EmergencyWithdraw`, `DelistAsset`, and `SetTimelockDelay`. Only `SetTimelockDelay` is
+   exclusively timelock-gated; `pause`, `unpause`, `emergency_withdraw`, and `delist_asset`
+   remain directly callable by their authorized role or admin, and `update_price`,
+   `set_oracle`, `clear_oracle`, `increase_total_shares`, `wind_down`, and `burn_shares`
+   are not in `AdminAction` at all (a separate ledger-based `UpgradeTimelock` covers
+   `schedule_upgrade` / `execute_upgrade`).
+
+### Risk Profile Differences (`RwaMarketplace` vs. `MultiAssetManager`)
+
+Omitting the timelock—combined with other structural differences in `MultiAssetManager`—creates
+a meaningfully different trust and blast-radius profile:
+
+| Dimension | `contracts/src/lib.rs` (`RwaMarketplace`) | `contracts/multi_asset/src/lib.rs` (`MultiAssetManager`) |
+| --- | --- | --- |
+| **Token custody** | Contract holds payment-token balances (`emergency_withdraw`, dividends, buybacks) | Non-custodial; `buy_asset_shares` routes funds directly to `info.treasury` |
+| **Timelock queue** | `schedule_operation` / `execute_operation` (24h–30d, default 48h) for `AdminAction`; mandatory for `SetTimelockDelay`, optional queue for `Pause`/`Unpause`/`EmergencyWithdraw`/`DelistAsset`; ledger-based `UpgradeTimelock` for upgrades | None on any entry point |
+| **Asset creation** | Single asset fixed at `init` | `register_asset` requires `admin` + 2-of-3 `Curators` multi-sig (`Draft` initial state) |
+| **Role separation & key rotation** | Separate `PauserRole`, `TreasuryRole`, `MetadataManagerRole` + two-step `transfer_admin` / `accept_admin` | Monolithic `Admin` key for all post-registration actions and `set_curators`; no `transfer_admin` |
+| **Price-change safety** | `update_price` requires `Paused == true` (though legacy `set_price` and `set_oracle` are unpaused) | `update_pricing` and `set_oracle` run immediately even while an asset is `Active`; `update_pricing` also changes the `fixed_price` used by `burn_and_reconstitute` valuation |
+| **Irreversible shutdown** | `delist_asset` / `wind_down` (admin-only, immediate if called directly) | `archive_asset` permanently blocks `activate_asset` and trading with zero delay window |
+| **Compliance mutations** | Allowlist/limits are admin-controlled immediately | `update_asset_restrictions` applies immediately; raising `transfer_lockup_days` retroactively blocks `transfer_asset_shares` for existing holders |
+| **On-chain auditability** | Emits events for scheduled/cancelled/executed operations and most admin updates | Emits `EventAssetActivated`, `EventAssetDeactivated`, `EventAssetArchived`, `EventAssetPricingUpdated`; `update_asset_metadata`, `update_asset_restrictions`, `set_oracle`, and `set_curators` currently emit no events |
+
+### Operational Requirements for `MultiAssetManager`
+
+Because `MultiAssetManager` provides neither an on-chain timelock notice period nor
+`Pauser`/`MetadataManager` role separation:
+
+- **Enforce a Stellar native multi-sig account as `Admin`.** A single-key `admin` compromise
+  immediately enables permanent `archive_asset`, arbitrary `update_pricing` / `set_oracle`,
+  weakening or locking `update_asset_restrictions`, and replacing `Curators` via
+  `set_curators` to bypass the 2-of-3 `register_asset` guard.
+- **Monitor ledger state alongside events.** Subscribe to `EventAssetActivated`,
+  `EventAssetDeactivated`, `EventAssetArchived`, and `EventAssetPricingUpdated`, and also
+  index transactions targeting `update_asset_metadata`, `update_asset_restrictions`,
+  `set_oracle`, and `set_curators` directly since those functions do not publish events.
+- **Pause before repricing operationally.** Even though `update_pricing` does not enforce a
+  pause check on-chain, operators should call `deactivate_asset` before `update_pricing` and
+  `activate_asset` afterward to mirror the `RwaMarketplace::update_price` workflow.
+
 ## Runbook: Correcting a Deployment Mistake
 
 `init` writes `PricePerShare` and `TotalShares` exactly once. If either value was mis-keyed at
@@ -245,11 +323,3 @@ We will credit researchers who responsibly disclose valid vulnerabilities (unles
 - Issues that require physical access to a user's device.
 - Social engineering attacks.
 - Freighter Wallet bugs (report to [Freighter](https://github.com/stellar/freighter)).
-
-## Rotate Pushed Secrets Even When CI Blocks the PR (#1105)
-
-If a credential or secret is committed and pushed to a remote branch or pull request—even when local `gitleaks` was skipped and CI later blocks the PR—treat the secret as compromised immediately:
-
-1. **Revoke and rotate** the exposed credential/token/key at the provider right away.
-2. **Remove/scrub** the secret from the branch and Git history if appropriate.
-3. **Do not rely on a blocked PR alone** to contain exposure, as remote refs, CI logs, or clones may have already observed the value.
