@@ -28,7 +28,7 @@ pub trait NftContractInterface {
     fn mint_certificate(env: Env, to: Address) -> u32;
 }
 
-/// Issue #169 â€“ Minimal oracle interface.
+/// Issue #169 – Minimal oracle interface.
 /// The oracle contract must expose a `get_price() -> i128` function
 /// that returns the current asset price per share in the payment token's
 /// smallest unit. This is intentionally minimal to support any Stellar-based
@@ -1465,7 +1465,7 @@ impl RwaMarketplace {
         // Issue #268: Oracle-aware price (reusable helper)
         let price: i128 = _get_current_price(&env);
 
-        // Issue #635: Slippage protection â€” reject if price exceeds caller's max
+        // Issue #635: Slippage protection — reject if price exceeds caller's max
         if let Some(max_price) = max_price_per_share {
             if price > max_price {
                 _set_non_reentrant(&env, false);
@@ -4730,8 +4730,8 @@ impl RwaMarketplace {
     /// without aborting the entire batch (partial fulfillment).
     ///
     /// # Arguments
-    /// * `buyer` â€“ The address purchasing shares (must authorize).
-    /// * `requests` â€“ A vector of `BatchPurchaseRequest` items.
+    /// * `buyer` – The address purchasing shares (must authorize).
+    /// * `requests` – A vector of `BatchPurchaseRequest` items.
     ///
     /// # Returns
     /// A vector of `BatchPurchaseResult` with per-item outcomes.
@@ -5483,7 +5483,7 @@ mod test {
         c.buy_shares(&te.buyer, &10, &te.token_id, &None);
         assert_eq!(c.get_holders().len(), 1);
 
-        // Second buy by same buyer â€” should NOT add duplicate
+        // Second buy by same buyer — should NOT add duplicate
         c.buy_shares(&te.buyer, &5, &te.token_id, &None);
         assert_eq!(c.get_holders().len(), 1);
     }
@@ -5591,7 +5591,7 @@ mod test {
         mint(&te, &te.contract_id, dividend_amount);
         c.distribute_dividends(&te.token_id, &dividend_amount);
 
-        // buyer had 0 shares â€” removed from registry
+        // buyer had 0 shares — removed from registry
         assert_eq!(c.get_holders().len(), 1);
     }
 
@@ -6257,7 +6257,7 @@ mod test {
         c.init(&te.admin, &te.token_id, &100, &1000, &None, &DEFAULT_TIMELOCK_DELAY);
 
         c.set_dividend_schedule(&10, &86400);
-        // Call immediately â€” interval (86400s = 1 day) has not elapsed
+        // Call immediately — interval (86400s = 1 day) has not elapsed
         c.process_scheduled_dividend();
     }
 
@@ -6792,7 +6792,7 @@ mod test {
         mint(&te, &te.contract_id, 50_000);
         c.auto_buyback_config(&3600_u64, &50_u32, &50_000_i128);
 
-        // Do NOT advance time â€” should fail immediately
+        // Do NOT advance time — should fail immediately
         c.process_auto_buyback(&te.buyer, &10);
     }
 
@@ -6903,7 +6903,7 @@ mod test {
         mint(&te, &te.buyer, 100_000);
         c.add_to_whitelist(&te.buyer);
 
-        // No NFT contract configured â€” buy_shares should succeed normally
+        // No NFT contract configured — buy_shares should succeed normally
         c.buy_shares(&te.buyer, &5, &te.token_id, &None);
         assert_eq!(c.get_shares(&te.buyer), 5);
     }
@@ -7633,7 +7633,7 @@ mod test {
         let te = setup();
         let c = client(&te);
         c.init(&te.admin, &te.token_id, &100, &1000, &None, &DEFAULT_TIMELOCK_DELAY);
-        // init emits EventInit â€“ no panic means success
+        // init emits EventInit – no panic means success
     }
 
     #[test]
@@ -8461,7 +8461,7 @@ mod fuzz_order_book_transitions {
     const INIT_PRICE: i128 = 100;
     const INIT_TOTAL: u32 = 10_000;
 
-    /// Fuzz: order book state transitions â€” place, fill, cancel.
+    /// Fuzz: order book state transitions — place, fill, cancel.
     /// Invariant: total shares (available + escrowed + held) == total_shares.
     proptest! {
         #[test]
@@ -8991,7 +8991,7 @@ mod oracle_bridge_tests {
         let te = setup();
         let c = client(&te);
         let oracle_addr = Address::generate(&te.env);
-        // No init() called â€” must panic
+        // No init() called — must panic
         c.set_oracle(&oracle_addr);
     }
 
@@ -9146,7 +9146,7 @@ mod oracle_bridge_tests {
         let te = setup();
         init(&te);
         let c = client(&te);
-        // No lock operations performed â€” should return 0
+        // No lock operations performed — should return 0
         assert_eq!(c.get_bridge_locked(&te.buyer), 0);
     }
 
@@ -9755,7 +9755,7 @@ mod sip4_metadata_tests {
         let c = client(&te);
         c.init(&te.admin, &te.token_id, &100, &1000, &None, &DEFAULT_TIMELOCK_DELAY);
 
-        // None means no slippage check â€” should pass regardless of price
+        // None means no slippage check — should pass regardless of price
         c.buy_shares(&te.buyer, &10, &te.token_id, &None);
         assert_eq!(c.get_shares(&te.buyer), 10);
     }
