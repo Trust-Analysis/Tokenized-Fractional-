@@ -30,4 +30,4 @@ class MatchingEngine {
   }
   getPendingTrades() { return this.trades.splice(0, this.trades.length); }
 }
-module.exports = MatchingEngine;
+export default MatchingEngine;

@@ -11,14 +11,12 @@ import 'dotenv/config';
 
 import { randomUUID } from 'crypto';
 import express from 'express';
-import cors from 'cors';
 import pinoHttp from 'pino-http';
 import swaggerUi from 'swagger-ui-express';
 import swaggerJSDoc from 'swagger-jsdoc';
 import { validateEnv } from '../env.js';
 
 import {
-  CORS_ORIGINS,
   REDIS_URL,
   DEPLOYMENT_COLOR,
   SERVICE_NAME,
@@ -89,6 +87,7 @@ import {
 } from './middleware/problemDetails.js';
 import { stitchingMetrics, getSchemaVersion, stitchingConfig } from '../graphql-stitching.js';
 import { metricsMiddleware, metricsHandler } from './services/metricsService.js';
+import { createCorsMiddleware } from './middleware/cors.js';
 
 validateEnv();
 
@@ -202,13 +201,7 @@ installErrorTrackingRequestScope(app);
 // Comprehensive security headers middleware
 app.use(createSecurityHeadersMiddleware(logger));
 
-app.use(
-  cors({
-    origin: CORS_ORIGINS,
-    methods: ['GET', 'POST', 'PATCH', 'DELETE'],
-    allowedHeaders: ['Content-Type', 'x-api-key', 'X-Request-ID'],
-  }),
-);
+app.use(createCorsMiddleware());
 // Request body size limit: 1MB for asset metadata (including descriptions, images, documents)
 // This is documented and tested - see __tests__/requestBodySize.test.js
 app.use(express.json({ limit: '1mb' }));

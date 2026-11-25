@@ -1,4 +1,4 @@
-const { SubscriptionOptimizer } = require('../src/services/subscriptionOptimizer');
+import { SubscriptionOptimizer } from '../src/services/subscriptionOptimizer.js';
 
 describe('SubscriptionOptimizer', () => {
   let optimizer;

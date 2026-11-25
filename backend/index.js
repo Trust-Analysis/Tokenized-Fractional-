@@ -8,7 +8,6 @@ import { createHash, randomUUID } from 'crypto';
 import express from 'express';
 import { Router } from 'express';
 import multer from 'multer';
-import cors from 'cors';
 import helmet from 'helmet';
 import pinoHttp from 'pino-http';
 import { readFileSync, writeFileSync, existsSync } from 'fs';
@@ -32,6 +31,7 @@ import { BillingService } from './src/services/billingService.js';
 import { createRateLimiter } from './src/middleware/rateLimiter.js';
 import { createGraphQLRateLimiter } from './src/middleware/tieredRateLimiter.js';
 import { createRateLimitAdminRoutes } from './src/routes/rateLimitAdmin.js';
+import { createCorsMiddleware } from './src/middleware/cors.js';
 import { metricsMiddleware, metricsHandler } from './src/services/metricsService.js';
 import { readDiskUsage, resolveDataDirectory } from './src/utils/diskUsage.js';
 import { applyCursorPagination, CursorError, paginationErrorHandler, SORT_FIELDS } from './src/services/cursorPagination.js';
@@ -71,9 +71,6 @@ const upload = multer({
   },
 });
 const PORT = process.env.PORT || 3001;
-const CORS_ORIGINS = process.env.CORS_ORIGINS
-  ? process.env.CORS_ORIGINS.split(',').map(s => s.trim())
-  : ['http://localhost:5173', 'http://localhost:4173'];
 
 // ── v1 Router ─────────────────────────────────────────────────────────────────
 // All versioned API routes (/rwa, /news, /webhooks, ...) are registered on this
@@ -482,7 +479,7 @@ app.use(metricsMiddleware);
 app.get('/metrics', metricsHandler);
 
 app.use(helmet());
-app.use(cors({ origin: CORS_ORIGINS, methods: ['GET', 'POST', 'PATCH', 'DELETE'], allowedHeaders: ['Content-Type', 'x-api-key', 'X-Request-ID'] }));
+app.use(createCorsMiddleware());
 app.use(express.json({ limit: '10kb' }));
 
 // ── Request ID middleware ──────────────────────────────────────────────────────
