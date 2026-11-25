@@ -1,0 +1,226 @@
+name: Contracts
+
+# Issue #668: contract checks (fuzz tests, wasm builds, coverage) only matter
+# when contracts/ or this workflow changes. The `paths` filter keeps
+# documentation-only and frontend-only PRs from paying for Rust toolchain
+# installs and wasm builds.
+#
+# When the path filter skips this workflow entirely, the `contracts-gate`
+# required check reports as skipped, which branch protection treats as
+# passing — so skipped path-filtered checks do not block merging.
+on:
+  pull_request:
+    branches: [ main, dev ]
+    paths:
+      - 'contracts/**'
+      - '.github/workflows/contracts.yml'
+  push:
+    branches: [ main ]
+    paths:
+      - 'contracts/**'
+      - '.github/workflows/contracts.yml'
+
+concurrency:
+  group: ${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  # Issue #514: Fuzz testing for Soroban smart contracts
+  fuzz-tests:
+    name: Soroban Fuzz Tests (proptest)
+    runs-on: ubuntu-latest
+    # Issue #668: scope contract checks to pull requests touching contracts/
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+
+      - name: Install Rust toolchain
+        uses: dtolnay/rust-toolchain@stable
+
+      - name: Cache cargo registry & build
+        uses: actions/cache@v4
+        with:
+          path: |
+            ~/.cargo/registry
+            ~/.cargo/git
+            contracts/target
+          key: ${{ runner.os }}-cargo-${{ hashFiles('contracts/Cargo.lock') }}
+          restore-keys: |
+            ${{ runner.os }}-cargo-
+
+      # Issue #748: the fuzz tests live in contracts/src/lib.rs in the modules
+      #   fuzz_fractional_math, fuzz_order_book_transitions, fuzz_dividend_distribution
+      # (the `property_tests` module holds proptest cases named `test_*`, not
+      # `fuzz_*`). The `fuzz_` filter below matches those modules by name; if
+      # the modules are ever renamed or moved, update the filter AND this
+      # comment. The zero-match guard in the step makes a stale filter fail
+      # the build instead of silently running zero tests.
+      - name: Run fuzz tests (proptest)
+        shell: bash
+        working-directory: contracts
+        env:
+          # proptest reads the PROPTEST_CASES environment variable to set the
+          # number of cases generated per property test.
+          PROPTEST_CASES: "50"
+        run: |
+          set -euo pipefail
+          # Guard: `cargo test` exits 0 even when the filter matches zero
+          # tests, so verify the filter matches real tests before running.
+          matched=$(cargo test fuzz_ -- --list 2>&1 | grep -c ': test$' || true)
+          echo "Fuzz filter matched ${matched} test(s)"
+          if [ "${matched}" -eq 0 ]; then
+            echo "::error::Fuzz test filter 'fuzz_' matched zero tests. The filter must name the modules that actually contain the fuzz tests (see comment above)."
+            exit 1
+          fi
+          cargo test fuzz_ -- --test-threads=1
+
+      - name: Run all contract tests
+        run: cargo test --workspace --verbose
+        working-directory: contracts
+
+      - name: Run vault contract tests
+        run: cargo test --manifest-path vault/Cargo.toml --verbose
+        working-directory: contracts
+
+  # Issue #668: Build contracts to WebAssembly on pull requests touching
+  # contracts/. This verifies the release Wasm artifacts compile with the
+  # exact target used to build `contracts/nft` and the marketplace contract.
+  contract-wasm-build:
+    name: Contracts WebAssembly Build
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+
+      # soroban-sdk 26's build script hard-fails on `wasm32-unknown-unknown`
+      # for Rust 1.82+: that target enables reference-types and multi-value,
+      # which the Soroban Environment does not support yet, so build.rs panics
+      # with "Rust compiler 1.82+ with target 'wasm32-unknown-unknown' is
+      # unsupported ... use 'wasm32v1-none' available with Rust 1.84+". The
+      # `stable` toolchain above is 1.84+, so wasm32v1-none is available and is
+      # the target Soroban actually supports.
+      - name: Install Rust toolchain with wasm target
+        uses: dtolnay/rust-toolchain@stable
+        with:
+          targets: wasm32v1-none
+
+      - name: Cache cargo registry & build
+        uses: actions/cache@v4
+        with:
+          path: |
+            ~/.cargo/registry
+            ~/.cargo/git
+            contracts/target
+          key: ${{ runner.os }}-cargo-wasm-${{ hashFiles('contracts/Cargo.lock') }}
+          restore-keys: |
+            ${{ runner.os }}-cargo-wasm-
+
+      - name: Build contracts (release wasm)
+        run: cargo build --workspace --release --target wasm32v1-none --verbose
+        working-directory: contracts
+
+      - name: Build vault contract (release wasm)
+        run: cargo build --manifest-path vault/Cargo.toml --release --target wasm32v1-none --verbose
+        working-directory: contracts
+
+  contract-coverage:
+    name: Contracts Code Coverage Targets
+    runs-on: ubuntu-latest
+    env:
+      # Per-crate minimum line-coverage percentages enforced and tracked in CI.
+      MAIN_CONTRACT_MIN_COVERAGE: "70"
+      MULTI_ASSET_MIN_COVERAGE: "80"
+      VAULT_MIN_COVERAGE: "90"
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+
+      - name: Install Rust toolchain with llvm-tools
+        uses: dtolnay/rust-toolchain@stable
+        with:
+          components: llvm-tools-preview
+
+      - name: Install cargo-llvm-cov
+        uses: taiki-e/install-action@cargo-llvm-cov
+
+      - name: Cache cargo registry & build
+        uses: actions/cache@v4
+        with:
+          path: |
+            ~/.cargo/registry
+            ~/.cargo/git
+            contracts/target
+            contracts/vault/target
+          key: ${{ runner.os }}-cargo-cov-${{ hashFiles('contracts/Cargo.lock') }}
+          restore-keys: |
+            ${{ runner.os }}-cargo-cov-
+
+      - name: Enforce coverage target for main contract (rwa-marketplace)
+        working-directory: contracts
+        shell: bash
+        run: |
+          set -euo pipefail
+          echo "### Contract Line Coverage Summary" >> "$GITHUB_STEP_SUMMARY"
+          echo "" >> "$GITHUB_STEP_SUMMARY"
+          echo "#### Main Contract (rwa-marketplace, target >= ${MAIN_CONTRACT_MIN_COVERAGE}%)" >> "$GITHUB_STEP_SUMMARY"
+          echo '```' >> "$GITHUB_STEP_SUMMARY"
+          cargo llvm-cov --package rwa-marketplace --summary-only --fail-under-lines "${MAIN_CONTRACT_MIN_COVERAGE}" | tee -a "$GITHUB_STEP_SUMMARY"
+          echo '```' >> "$GITHUB_STEP_SUMMARY"
+          cargo llvm-cov report --lcov --output-path coverage-rwa-marketplace.lcov
+
+      - name: Enforce coverage target for multi_asset (multi-asset-manager)
+        working-directory: contracts
+        shell: bash
+        run: |
+          set -euo pipefail
+          echo "#### Multi-Asset Contract (multi-asset-manager, target >= ${MULTI_ASSET_MIN_COVERAGE}%)" >> "$GITHUB_STEP_SUMMARY"
+          echo '```' >> "$GITHUB_STEP_SUMMARY"
+          cargo llvm-cov --package multi-asset-manager --summary-only --fail-under-lines "${MULTI_ASSET_MIN_COVERAGE}" | tee -a "$GITHUB_STEP_SUMMARY"
+          echo '```' >> "$GITHUB_STEP_SUMMARY"
+          cargo llvm-cov report --lcov --output-path coverage-multi-asset.lcov
+
+      - name: Enforce coverage target for vault (tokenized-fractional-vault)
+        working-directory: contracts/vault
+        shell: bash
+        run: |
+          set -euo pipefail
+          echo "#### Vault Contract (tokenized-fractional-vault, target >= ${VAULT_MIN_COVERAGE}%)" >> "$GITHUB_STEP_SUMMARY"
+          echo '```' >> "$GITHUB_STEP_SUMMARY"
+          cargo llvm-cov --summary-only --fail-under-lines "${VAULT_MIN_COVERAGE}" | tee -a "$GITHUB_STEP_SUMMARY"
+          echo '```' >> "$GITHUB_STEP_SUMMARY"
+          cargo llvm-cov report --lcov --output-path ../coverage-vault.lcov
+
+      - name: Upload contract coverage reports
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: contract-coverage-lcov
+          path: contracts/coverage-*.lcov
+
+  # Required-check gate: branch protection should require THIS job, not the
+  # individual contract jobs. It runs even when a needed job is skipped or
+  # fails to start, and only fails when a contract job actually failed or was
+  # cancelled — so path-filtered skips never block merging.
+  contracts-gate:
+    name: Contracts Gate
+    runs-on: ubuntu-latest
+    needs: [ fuzz-tests, contract-wasm-build, contract-coverage ]
+    if: always()
+    steps:
+      - name: Verify contract jobs succeeded
+        env:
+          FUZZ_RESULT: ${{ needs.fuzz-tests.result }}
+          WASM_RESULT: ${{ needs.contract-wasm-build.result }}
+          COVERAGE_RESULT: ${{ needs.contract-coverage.result }}
+        run: |
+          set -euo pipefail
+          failed=0
+          for pair in "fuzz-tests=$FUZZ_RESULT" "contract-wasm-build=$WASM_RESULT" "contract-coverage=$COVERAGE_RESULT"; do
+            job="${pair%%=*}"; result="${pair#*=}"
+            echo "$job: $result"
+            case "$result" in
+              success|skipped) ;;
+              *) echo "::error::$job ended with result '$result'"; failed=1 ;;
+            esac
+          done
+          exit "$failed"
