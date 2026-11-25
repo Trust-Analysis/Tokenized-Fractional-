@@ -1,5 +1,11 @@
 // Assets Service - Federated Resolvers
 // This file contains the resolver functions for the Assets service
+//
+// Income distribution note (ADR docs/adr/0001-income-distribution-consolidation.md):
+// The canonical income path is the accumulator-based distribution model
+// (`deposit_distribution` / `claim_distribution`). The legacy dividend path
+// (`distribute_dividends` / `claim_dividends` / `set_dividend_policy`) has been
+// removed from the contract ABI and is intentionally NOT exposed here.
 
 import { readFileSync } from 'fs';
 import { fileURLToPath } from 'url';
@@ -28,6 +34,22 @@ const dataLayer = {
   
   validateContractId(contractId) {
     return typeof contractId === 'string' && contractId.startsWith('C') && contractId.length >= 56;
+  },
+
+  // Canonical income distribution (accumulator model) state per asset.
+  // Mirrors the on-chain `deposit_distribution` / `claim_distribution` storage.
+  getDistribution(contractId) {
+    const asset = this.assets.get(contractId);
+    if (!asset) return null;
+    if (!asset.distribution) {
+      asset.distribution = {
+        totalDeposited: 0,
+        totalClaimed: 0,
+        accumulator: 0,
+        lastUpdated: null
+      };
+    }
+    return asset.distribution;
   },
   
   
@@ -201,6 +223,25 @@ export const resolvers = {
         }));
     },
 
+    // Canonical income distribution data for an asset.
+    // Replaces the removed dividend-related query fields.
+    assetDistribution: (_parent, args) => {
+      const { contractId } = args;
+      if (!dataLayer.validateContractId(contractId)) {
+        throw new Error('Invalid contract ID');
+      }
+      const distribution = dataLayer.getDistribution(contractId);
+      if (!distribution) return null;
+
+      return {
+        contractId,
+        totalDeposited: distribution.totalDeposited,
+        totalClaimed: distribution.totalClaimed,
+        accumulator: distribution.accumulator,
+        lastUpdated: distribution.lastUpdated
+      };
+    },
+
     assetStatistics: () => {
       const assets = Array.from(dataLayer.assets.values());
       const pendingCount = assets.filter(a => a.pending === true).length;
@@ -360,6 +401,72 @@ export const resolvers = {
         ...asset,
         isPaused: true,
         assetType: asset.assetType
+      };
+    },
+
+    // Canonical income distribution deposit (accumulator model).
+    // Replaces the removed `distribute_dividends` / `set_dividend_policy` entry points.
+    depositDistribution: (_parent, args, context) => {
+      if (!context.isAdmin) {
+        throw new Error('Unauthorized: Only admins can deposit distributions');
+      }
+
+      const { contractId, amount } = args;
+      if (!dataLayer.validateContractId(contractId)) {
+        throw new Error('Invalid contract ID');
+      }
+      if (typeof amount !== 'number' || amount <= 0) {
+        throw new Error('Amount must be positive');
+      }
+
+      const asset = dataLayer.assets.get(contractId);
+      if (!asset) throw new Error('Asset not found');
+
+      const distribution = dataLayer.getDistribution(contractId);
+      distribution.totalDeposited += amount;
+      distribution.accumulator += amount;
+      distribution.lastUpdated = new Date().toISOString();
+      dataLayer.assets.set(contractId, asset);
+
+      return {
+        contractId,
+        totalDeposited: distribution.totalDeposited,
+        totalClaimed: distribution.totalClaimed,
+        accumulator: distribution.accumulator,
+        lastUpdated: distribution.lastUpdated
+      };
+    },
+
+    // Canonical income distribution claim (accumulator model).
+    // Replaces the removed `claim_dividends` entry point.
+    claimDistribution: (_parent, args, context) => {
+      const { contractId, amount } = args;
+      if (!dataLayer.validateContractId(contractId)) {
+        throw new Error('Invalid contract ID');
+      }
+      if (typeof amount !== 'number' || amount <= 0) {
+        throw new Error('Amount must be positive');
+      }
+
+      const asset = dataLayer.assets.get(contractId);
+      if (!asset) throw new Error('Asset not found');
+
+      const distribution = dataLayer.getDistribution(contractId);
+      if (amount > distribution.accumulator) {
+        throw new Error('Claim amount exceeds available distribution');
+      }
+
+      distribution.accumulator -= amount;
+      distribution.totalClaimed += amount;
+      distribution.lastUpdated = new Date().toISOString();
+      dataLayer.assets.set(contractId, asset);
+
+      return {
+        contractId,
+        totalDeposited: distribution.totalDeposited,
+        totalClaimed: distribution.totalClaimed,
+        accumulator: distribution.accumulator,
+        lastUpdated: distribution.lastUpdated
       };
     },
 

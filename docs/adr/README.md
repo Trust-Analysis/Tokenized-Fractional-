@@ -24,6 +24,7 @@ Each ADR follows this structure:
 | [0004](0004-payment-token-migration-and-multi-asset-acceptance.md) | Payment Token Migration and Multi-Asset Payment Acceptance | Accepted |
 | [0005](0005-configurable-admin-timelock-delay.md) | Configurable Admin Timelock Delay | Accepted |
 | [0006](0006-contract-upgrades-and-migration-strategy.md) | Contract Upgrades and Migration Strategy | Accepted |
+| [0007](0007-canonical-income-distribution-model.md) | Canonical Income Distribution Model | Accepted |
 
 ## How to Add a New ADR
 

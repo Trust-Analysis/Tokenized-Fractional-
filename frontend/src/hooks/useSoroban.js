@@ -11,6 +11,24 @@ const NETWORK_PASSPHRASE = import.meta.env.VITE_NETWORK_PASSPHRASE || Networks.T
 
 const server = new rpc.Server(RPC_URL);
 
+// Issue #1021: the legacy dividend entry points (distribute_dividends,
+// claim_dividends, set_dividend_policy) were removed from the contract ABI.
+// The accumulator-based distribution pair is the single canonical income path.
+const LEGACY_DIVIDEND_FUNCTIONS = {
+  distribute_dividends: "deposit_distribution",
+  claim_dividends: "claim_distribution",
+  set_dividend_policy: "deposit_distribution",
+};
+
+function resolveCanonicalFn(fnName) {
+  const canonical = LEGACY_DIVIDEND_FUNCTIONS[fnName];
+  if (!canonical) return fnName;
+  console.warn(
+    `[useSoroban] "${fnName}" was removed in favour of the canonical income path; routing to "${canonical}".`
+  );
+  return canonical;
+}
+
 function getContract() {
   if (CONTRACT_ID.length < 50) return null;
   try { return new Contract(CONTRACT_ID); } catch { return null; }
@@ -83,6 +101,7 @@ export function useSorobanRead(fnName, args = [], options = {}) {
 
   const execute = useCallback(async () => {
     if (!publicKey || CONTRACT_ID.length < 50) return null;
+    const canonicalFn = resolveCanonicalFn(fnName);
     setLoading(true);
     setError(null);
     try {
@@ -90,14 +109,14 @@ export function useSorobanRead(fnName, args = [], options = {}) {
         await new Promise(resolve => setTimeout(resolve, 300));
         let mockVal = 10;
         let mockU64 = null;
-        if (fnName === "get_shares") {
+        if (canonicalFn === "get_shares") {
           const stored = readString(STORAGE_KEYS.MOCK_SHARES_BALANCE);
           mockVal = stored ? parseInt(stored, 10) : 10;
-        } else if (fnName === "get_available_shares") {
+        } else if (canonicalFn === "get_available_shares") {
           mockVal = 900;
-        } else if (fnName === "get_total_shares") {
+        } else if (canonicalFn === "get_total_shares") {
           mockVal = 1000;
-        } else if (fnName === "get_price") {
+        } else if (canonicalFn === "get_price") {
           mockU64 = 100_000_000;
         }
         const result = { retval: { u32: () => mockVal, u64: () => mockU64 ?? mockVal } };
@@ -111,19 +130,19 @@ export function useSorobanRead(fnName, args = [], options = {}) {
         fee: "100",
         networkPassphrase: NETWORK_PASSPHRASE,
       })
-        .addOperation(getContract().call(fnName, ...args))
+        .addOperation(getContract().call(canonicalFn, ...args))
         .setTimeout(30)
         .build();
 
-      const simulation = await withRetry(() => server.simulateTransaction(tx), `simulation (${fnName})`);
+      const simulation = await withRetry(() => server.simulateTransaction(tx), `simulation (${canonicalFn})`);
       if (simulation.error) throw new Error(simulation.error);
 
       setData(simulation.result);
       if (onSuccessRef.current) onSuccessRef.current(simulation.result);
       return simulation.result;
     } catch (err) {
-      console.error(`[useSorobanRead] Error executing ${fnName}:`, err);
-      const mapped = mapError(err, { operation: fnName });
+      console.error(`[useSorobanRead] Error executing ${canonicalFn}:`, err);
+      const mapped = mapError(err, { operation: canonicalFn });
       setError(mapped);
       if (onErrorRef.current) onErrorRef.current(err, mapped);
       throw err;
@@ -151,6 +170,7 @@ export function useSorobanWrite(fnName) {
 
   const execute = useCallback(async (args = [], options = {}) => {
     if (!publicKey) throw new Error("Wallet not connected");
+    const canonicalFn = resolveCanonicalFn(fnName);
     setLoading(true);
     setError(null);
     setResult(null);
@@ -164,7 +184,7 @@ export function useSorobanWrite(fnName) {
         if (readString(STORAGE_KEYS.MOCK_TX_FAILURE) === 'true') {
           throw new Error("mock transaction rejected (mock_tx_failure)");
         }
-        if (fnName === "buy_shares") {
+        if (canonicalFn === "buy_shares") {
           let buyAmount = 1;
           if (args[1] && typeof args[1].u32 === "function") {
             buyAmount = args[1].u32();
@@ -186,11 +206,11 @@ export function useSorobanWrite(fnName) {
         fee: options.fee || "10000",
         networkPassphrase: NETWORK_PASSPHRASE,
       })
-        .addOperation(getContract().call(fnName, ...args))
+        .addOperation(getContract().call(canonicalFn, ...args))
         .setTimeout(30)
         .build();
 
-      const simulation = await withRetry(() => server.simulateTransaction(tx), `simulation (${fnName})`);
+      const simulation = await withRetry(() => server.simulateTransaction(tx), `simulation (${canonicalFn})`);
       if (simulation.error) throw new Error(simulation.error);
 
       tx = rpc.assembleTransaction(tx, simulation).build();
@@ -202,15 +222,15 @@ export function useSorobanWrite(fnName) {
 
       const submitRes = await withRetry(
         () => server.sendTransaction(TransactionBuilder.fromXDR(signedTxXdr, NETWORK_PASSPHRASE)),
-        `submission (${fnName})`
+        `submission (${canonicalFn})`
       );
 
       setResult(submitRes);
       if (options.onSuccess) options.onSuccess(submitRes);
       return submitRes;
     } catch (err) {
-      console.error(`[useSorobanWrite] Error executing tx ${fnName}:`, err);
-      const mapped = mapError(err, { operation: fnName });
+      console.error(`[useSorobanWrite] Error executing tx ${canonicalFn}:`, err);
+      const mapped = mapError(err, { operation: canonicalFn });
       setError(mapped);
       if (options.onError) options.onError(err, mapped);
       throw err;

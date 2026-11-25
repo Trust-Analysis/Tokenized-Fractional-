@@ -43,6 +43,7 @@ update both together.
 | SDK version | Contract versions (`get_contract_metadata().version`) | REST API versions (`/api-docs.json` `info.version`) | Notes |
 |-------------|--------------------------------------------------------|------------------------------------------------------|-------|
 | `0.1.x`     | `>=0.4.0 <0.5.0`                                       | `>=2.0.0 <3.0.0`                                     | Developed and tested against contract 0.4.0 and backend API 2.0.0 (REST paths under `/api/v1`). |
+| `0.2.x`     | `>=0.5.0 <0.6.0`                                       | `>=2.0.0 <3.0.0`                                     | Contract 0.5.0 removes the legacy dividend entry points; use the distribution methods below. See [Income distribution](#income-distribution). |
 
 ### Runtime compatibility check
 
@@ -102,6 +103,40 @@ label the PR `sdk-contract-sync`:
 - [ ] Bump `version` in `package.json` when releasing the matching SDK
       version, then tag it `sdk-v<version>`.
 - [ ] Run `npm test` locally.
+
+## Income distribution
+
+The contract has a single, canonical income-distribution path: the
+accumulator-based `deposit_distribution` / `claim_distribution` pair. Income
+is deposited per token and holders claim their pro-rata share from the
+accumulator. This is the only income path documented and supported by the SDK.
+
+### Removed legacy dividend entry points
+
+Earlier contract versions also exposed a second, overlapping system:
+`distribute_dividends`, `claim_dividends` and `set_dividend_policy` (with
+withholding and reinvestment options). Those entry points are deprecated and
+have been removed from the contract ABI — they are no longer callable and the
+SDK does not wrap them. See `docs/adr/` for the consolidation decision.
+
+### Migration for SDK consumers
+
+If your integration used the legacy dividend methods, migrate as follows:
+
+- Replace `distribute_dividends(...)` with `deposit_distribution(...)`.
+  Withholding and reinvestment are no longer applied by the contract; perform
+  any such policy off-chain before depositing.
+- Replace `claim_dividends(...)` with `claim_distribution(...)`.
+- Remove any calls to `set_dividend_policy(...)`; there is no on-chain
+  replacement.
+- Update the contract version in your `COMPATIBILITY_MATRIX` expectations to
+  `>=0.5.0 <0.6.0` (SDK `0.2.x`) and re-run `npm test`.
+
+```ts
+// Deposit income for holders (admin), then let a holder claim their share.
+await soroban.write('deposit_distribution', adminPublicKey, [/* amount ScVal */]);
+await soroban.write('claim_distribution', holderPublicKey, []);
+```
 
 ## Soroban transactions
 

@@ -126,6 +126,7 @@ graph TB
 - [Architecture Overview & Diagrams](docs/architecture.md)
 - [Infrastructure Inventory & IaC Boundary](docs/infrastructure.md) — What is managed by `render.yaml` / Terraform, what is still provisioned by hand, and how to apply the database
 - [Architecture Decision Records (ADRs)](docs/adr/README.md) — Technical decisions and rationale
+- [ADR-0001: Consolidate income distribution](docs/adr/0001-consolidate-income-distribution.md) — Why the dividend path was removed in favour of the accumulator-based distribution path
 - [Security Policy & Audit Status](SECURITY.md) — Vulnerability reporting, current smart-contract audit status, mainnet risk disclaimer, and re-audit policy
 - [Asset Admission and Trust Review](docs/asset-admission-and-trust.md) — Issuer and asset checks, approval gates, user disclosures, and ongoing review expectations
 - [STRIDE threat model & privileged-role matrix](docs/security-model.md) — audit scope, every privileged function/actor/effect/risk, invariants, and the remediation tracker (issue #1063)
@@ -446,8 +447,8 @@ Keep ports 80 and 443 reachable so HTTP-01 renewal can complete. Check the renew
 | `add_payment_token` | Add a token to the accepted payment list | Admin |
 | `remove_payment_token` | Remove a token from the accepted payment list (default cannot be removed) | Admin |
 | `update_payment_token` | Migrate the default payment token (paused marketplace only; requires no outstanding unclaimed funds in the old token) | Admin |
-| `deposit_distribution` | Deposit asset income for pro-rata distribution to holders | Admin |
-| `claim_distribution` | Claim accrued income distribution | Holder |
+| `deposit_distribution` | Deposit asset income for pro-rata distribution to holders (canonical income path) | Admin |
+| `claim_distribution` | Claim accrued income distribution (canonical income path) | Holder |
 | `get_pending_distribution` | Query the income a holder can currently claim | None |
 | `get_unclaimed_distribution` | Query total deposited-but-unclaimed income | None |
 | `update_price` | Correct the price per share (paused marketplace only) | Admin |
@@ -463,6 +464,37 @@ Keep ports 80 and 443 reachable so HTTP-01 renewal can complete. Check the renew
 > returning normal values while paused, so dashboards and explorers stay live
 > during an incident. See
 > [docs/architecture.md](docs/architecture.md#pause-semantics).
+
+### Income Distribution
+
+The contract has exactly **one** income-distribution path: the accumulator-based
+`deposit_distribution` / `claim_distribution` pair listed above. The admin deposits
+payment tokens, and each holder's pro-rata share accrues in an on-chain accumulator
+that they withdraw with `claim_distribution`; `get_pending_distribution` and
+`get_unclaimed_distribution` expose the outstanding amounts. This is the only income
+API in the ABI — integrators should build against it and nothing else.
+
+The former dividend path (`distribute_dividends`, `claim_dividends`,
+`set_dividend_policy`, with withholding and reinvestment) has been **removed**. It
+used separate storage, events and semantics, and having two overlapping systems made
+it ambiguous which one was authoritative. The decision and its rationale are recorded
+in [ADR-0001: Consolidate income distribution](docs/adr/0001-consolidate-income-distribution.md);
+implementation details are in
+[contracts/DIVIDEND_IMPLEMENTATION.md](contracts/DIVIDEND_IMPLEMENTATION.md).
+
+#### Migration notes for existing deployments
+
+- **Before upgrading**, call `claim_dividends` for every holder (or run the
+  off-chain sweep the old SDK exposed) so no dividend entitlement is stranded —
+  the new contract does not read the old dividend storage.
+- Redeploy or upgrade the contract, then re-point the frontend/SDK/backend at the
+  new ABI. Any call to `distribute_dividends`, `claim_dividends` or
+  `set_dividend_policy` will now fail as an unknown function.
+- Fund income going forward with `deposit_distribution`; holders claim with
+  `claim_distribution`. Withholding and reinvestment options no longer exist —
+  apply any tax withholding off-chain before depositing.
+- Dividend-related events are no longer emitted; index `deposit_distribution` and
+  `claim_distribution` events instead.
 
 ### Compliance and Regulatory Limitations
 
