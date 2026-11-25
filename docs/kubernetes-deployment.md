@@ -67,11 +67,13 @@ rm /tmp/secrets.real.yaml
 | Secret key | Description |
 |---|---|
 | `ADMIN_API_KEY` | Strong random key for backend admin API authentication |
+| `JWT_SECRET` | 32+ byte random JWT signing secret (`openssl rand -hex 32`); the backend will not start without it |
 | `VITE_CONTRACT_ID` | Your deployed Soroban contract ID (starts with `C`) |
 
 > **Never commit real secret values to Git, and never `kubectl apply -f
 > k8s/secrets.example.yaml` as-is** — its placeholder values
-> (`REPLACE_WITH_STRONG_RANDOM_KEY`, `REPLACE_WITH_YOUR_CONTRACT_ID`) are not
+> (`REPLACE_WITH_STRONG_RANDOM_KEY`, `REPLACE_WITH_32_BYTE_RANDOM_JWT_SECRET`,
+> `REPLACE_WITH_YOUR_CONTRACT_ID`) are not
 > usable secrets. Prefer a secrets manager (External Secrets Operator, Sealed
 > Secrets, SOPS, AWS Secrets Manager, HashiCorp Vault) to provision these at
 > deploy time — see `k8s/README.md#secret-provisioning` — and validate with:

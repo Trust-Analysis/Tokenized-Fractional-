@@ -10,10 +10,13 @@ import request from 'supertest';
 import express from 'express';
 import jwt from 'jsonwebtoken';
 import { createStatementRoutes } from '../src/routes/statements.js';
+import { getJwtSecret } from '../src/config/jwtSecret.js';
 
 describe('Issue #908: Statements Authentication & IDOR Protection', () => {
   let app;
-  const JWT_SECRET = process.env.JWT_SECRET || 'jwt-secret';
+  // Issue #1144: sign with the same resolved secret the route verifies with;
+  // there is no longer a hardcoded fallback.
+  const JWT_SECRET = getJwtSecret();
 
   beforeAll(() => {
     app = express();
