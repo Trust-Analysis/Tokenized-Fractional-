@@ -151,6 +151,16 @@ describe('Rate Limiter Service', () => {
 });
 
 describe('Rate Limit Admin Routes', () => {
+  test('rejects API keys passed in the query string', async () => {
+    const res = await request(app)
+      .get('/api/v1/rwa?api_key=not-a-header-key')
+      .set('x-api-key', API_KEY);
+
+    expect(res.status).toBe(400);
+    expect(res.body.error).toMatch(/x-api-key header/i);
+    expect(res.body.error).toMatch(/query string is not supported/i);
+  });
+
   test('GET /api/admin/rate-limits/stats returns stats', async () => {
     const res = await request(app)
       .get('/api/admin/rate-limits/stats')
