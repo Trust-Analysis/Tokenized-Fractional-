@@ -27,6 +27,7 @@ import { HttpInstrumentation } from '@opentelemetry/instrumentation-http';
 import { ExpressInstrumentation } from '@opentelemetry/instrumentation-express';
 import { PgInstrumentation } from '@opentelemetry/instrumentation-pg';
 import { RedisInstrumentation } from '@opentelemetry/instrumentation-redis-4';
+import { logger } from '../../logger.js';
 
 /**
  * Initialize OpenTelemetry tracing
@@ -50,7 +51,7 @@ export function initializeTracing() {
   const hasJaegerConfig = process.env.OTEL_JAEGER_AGENT_HOST || process.env.OTEL_JAEGER_AGENT_PORT;
   
   if (!isEnabled || (!hasOtlpEndpoint && !hasJaegerConfig)) {
-    console.log('[OTEL] Distributed tracing disabled');
+    logger.info('[OTEL] Distributed tracing disabled');
     return null;
   }
 
@@ -59,7 +60,7 @@ export function initializeTracing() {
     const environment = process.env.NODE_ENV || 'development';
     const sampleRate = parseFloat(process.env.OTEL_SAMPLE_RATE || '0.1');
     
-    console.log(`[OTEL] Initializing distributed tracing (service: ${serviceName}, rate: ${sampleRate})`);
+    logger.info({ serviceName, sampleRate }, '[OTEL] Initializing distributed tracing');
 
     // Create resource with service metadata
     const resource = Resource.default().merge(
@@ -88,7 +89,7 @@ export function initializeTracing() {
         maxPacketSize: 65000,
       });
       tracerProvider.addSpanProcessor(new BatchSpanProcessor(jaegerExporter));
-      console.log('[OTEL] Using Jaeger exporter');
+      logger.info('[OTEL] Using Jaeger exporter');
     } else {
       // OTLP exporter (default, more flexible)
       const otlpExporter = new OTLPTraceExporter({
@@ -99,7 +100,10 @@ export function initializeTracing() {
         timeoutMillis: 30000,
       });
       tracerProvider.addSpanProcessor(new BatchSpanProcessor(otlpExporter));
-      console.log(`[OTEL] Using OTLP exporter (${process.env.OTEL_EXPORTER_OTLP_ENDPOINT})`);
+      logger.info(
+        { endpoint: process.env.OTEL_EXPORTER_OTLP_ENDPOINT },
+        '[OTEL] Using OTLP exporter',
+      );
     }
 
     // Register auto-instrumentations
@@ -136,10 +140,10 @@ export function initializeTracing() {
     // Optional: Initialize metrics
     initializeMetrics(resource, sampleRate);
 
-    console.log('[OTEL] Distributed tracing initialized successfully');
+    logger.info('[OTEL] Distributed tracing initialized successfully');
     return tracerProvider;
   } catch (error) {
-    console.error('[OTEL] Failed to initialize tracing:', error);
+    logger.error({ err: error }, '[OTEL] Failed to initialize tracing');
     return null;
   }
 }
@@ -162,7 +166,7 @@ function createProbabilitySampler(probability) {
 function initializeMetrics(resource, sampleRate) {
   try {
     if (process.env.OTEL_METRICS_DISABLED === 'true') {
-      console.log('[OTEL] Metrics disabled');
+      logger.info('[OTEL] Metrics disabled');
       return;
     }
 
@@ -188,10 +192,10 @@ function initializeMetrics(resource, sampleRate) {
       });
 
       metrics.setGlobalMeterProvider(meterProvider);
-      console.log('[OTEL] Metrics initialized');
+      logger.info('[OTEL] Metrics initialized');
     }
   } catch (error) {
-    console.error('[OTEL] Failed to initialize metrics:', error);
+    logger.error({ err: error }, '[OTEL] Failed to initialize metrics');
   }
 }
 

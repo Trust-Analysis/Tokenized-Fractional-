@@ -55,16 +55,16 @@ export async function initReadReplicas(config) {
         lastCheck: Date.now(),
         lagMs: 0,
       });
-      console.log('[ReadReplica] Replica connection established');
+      logger.info('Replica connection established');
     } catch (error) {
-      console.warn('[ReadReplica] Failed to connect replica:', error.message);
+      logger.warn({ err: error }, 'Failed to connect replica');
     }
   }
 
   // Start health monitoring
   startHealthCheck();
 
-  console.log(`[ReadReplica] Initialized with ${replicas.length} replicas`);
+  logger.info({ replicaCount: replicas.length }, 'Read replica system initialized');
 }
 
 /**
@@ -87,7 +87,7 @@ export function getReplica() {
   const healthyReplicas = replicas.filter(r => r.healthy);
 
   if (healthyReplicas.length === 0) {
-    console.warn('[ReadReplica] No healthy replicas, falling back to primary');
+    logger.warn('No healthy replicas, falling back to primary');
     return primaryDb;
   }
 
@@ -205,7 +205,7 @@ export async function readQuery(queryFn, tenantId = null) {
       const result = await queryFn(replica.db);
       return result;
     } catch (error) {
-      console.warn('[ReadReplica] Replica query failed, trying next:', error.message);
+      logger.warn({ err: error }, 'Replica query failed, trying next');
       replica.healthy = false;
     }
   }
@@ -290,7 +290,7 @@ function startHealthCheck() {
       } catch (error) {
         replica.healthy = false;
         replica.lastCheck = Date.now();
-        console.warn('[ReadReplica] Replica health check failed:', error.message);
+        logger.warn({ err: error }, 'Replica health check failed');
       }
     }
   }, 10000); // Check every 10 seconds

@@ -24,6 +24,7 @@
 import { print, parse, buildSchema, lexicographicSortSchema } from 'graphql';
 import { gql } from 'graphql-tag';
 import { pubsub } from './pubsub.js';
+import { logger } from './logger.js';
 
 // ── Schema versioning ─────────────────────────────────────────────────────────
 
@@ -52,7 +53,7 @@ function notifySchemaReload(newVersion) {
     try {
       listener(newVersion);
     } catch (err) {
-      console.error('[stitching] Schema reload listener error:', err);
+      logger.error({ err }, 'Schema reload listener error');
     }
   }
 }
@@ -345,11 +346,10 @@ export function withErrorHandler(resolver, serviceName) {
       if (err instanceof SchemaStitchingError) throw err;
 
       // Log the error with service context
-      console.error(`[stitching] Error in ${serviceName}:`, {
-        message: err.message,
-        path: info?.path,
-        service: serviceName,
-      });
+      logger.error(
+        { err, path: info?.path, service: serviceName },
+        `Error in ${serviceName}`,
+      );
 
       // Return null for optional fields, throw for required fields
       const fieldType = info?.returnType;
@@ -595,7 +595,7 @@ export function createSchemaTransforms(subschema) {
  * @param {string} newVersion - New schema version
  */
 export async function hotReloadSchema(newSubschemas, newVersion) {
-  console.log(`[stitching] Hot-reloading schema to version ${newVersion}...`);
+  logger.info({ version: newVersion }, 'Hot-reloading schema');
 
   // Clear all delegator caches
   for (const subschema of newSubschemas) {
@@ -607,7 +607,7 @@ export async function hotReloadSchema(newSubschemas, newVersion) {
   // Update version and notify listeners
   notifySchemaReload(newVersion);
 
-  console.log(`[stitching] Schema reloaded successfully to v${newVersion}`);
+  logger.info({ version: newVersion }, 'Schema reloaded successfully');
   return { version: newVersion, subschemaCount: newSubschemas.length };
 }
 
@@ -619,7 +619,7 @@ export async function hotReloadSchema(newSubschemas, newVersion) {
  */
 export function resolveCircularDependency(typeName, seen = new Set()) {
   if (seen.has(typeName)) {
-    console.warn(`[stitching] Circular dependency detected for type: ${typeName}`);
+    logger.warn({ typeName }, 'Circular dependency detected');
     // Return a lazy reference that resolves at query time
     return { __lazyRef: typeName, __circular: true };
   }

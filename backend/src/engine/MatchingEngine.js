@@ -55,3 +55,4 @@ export default class MatchingEngine {
     return this.trades.splice(0, this.trades.length);
   }
 }
+export default MatchingEngine;

@@ -1,5 +1,6 @@
 import { readFileSync, existsSync, statSync } from 'fs';
 import { CompressionEngine } from './compression-engine.js';
+import { logger } from '../../logger.js';
 
 /**
  * Pre-compression for static content
@@ -44,7 +45,7 @@ export class PreCompression {
           level
         };
       } catch (error) {
-        console.error(`Failed to pre-compress ${filePath} with ${algorithm}:`, error.message);
+        logger.error({ err: error, filePath, algorithm }, 'Failed to pre-compress file with algorithm');
       }
     }
 
@@ -70,7 +71,7 @@ export class PreCompression {
         const result = await this.preCompressFile(file.path, file.contentType);
         results[file.path] = result;
       } catch (error) {
-        console.error(`Failed to pre-compress ${file.path}:`, error.message);
+        logger.error({ err: error, filePath: file.path }, 'Failed to pre-compress file');
         results[file.path] = { error: error.message };
       }
     }
@@ -205,7 +206,7 @@ export class PreCompression {
           level
         };
       } catch (error) {
-        console.error(`Failed to pre-compress content with ${algorithm}:`, error.message);
+        logger.error({ err: error, algorithm }, 'Failed to pre-compress content with algorithm');
       }
     }
 
@@ -218,7 +219,7 @@ export class PreCompression {
   watch(filePath, callback) {
     // This would typically use fs.watch
     // For simplicity, we'll just provide the interface
-    console.log(`Watching ${filePath} for changes...`);
+    logger.info({ filePath }, 'Watching file for changes');
     
     // In a real implementation, you would:
     // 1. Use fs.watch to monitor the file

@@ -9,6 +9,7 @@ import { Worker } from 'worker_threads';
 import os from 'os';
 import path from 'path';
 import { fileURLToPath } from 'url';
+import { logger } from '../../logger.js';
 
 const __filename = fileURLToPath(import.meta.url);
 const __dirname = path.dirname(__filename);
@@ -84,9 +85,9 @@ export class IndexingEngine {
     for (let i = 0; i < numCores; i++) {
       const worker = new Worker(path.join(__dirname, 'xdrParserWorker.js'));
       worker.on('message', this.handleWorkerMessage.bind(this));
-      worker.on('error', (err) => console.error(`Worker error:`, err));
+      worker.on('error', (err) => logger.error({ err }, 'Worker error'));
       worker.on('exit', (code) => {
-        if (code !== 0) console.error(`Worker stopped with exit code ${code}`);
+        if (code !== 0) logger.error({ exitCode: code }, 'Worker stopped');
       });
       this.workerPool.push(worker);
     }

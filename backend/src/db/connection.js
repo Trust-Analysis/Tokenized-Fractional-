@@ -1,4 +1,7 @@
-const { Pool } = require('pg');
+import pg from 'pg';
+import { logger } from '../../logger.js';
+
+const { Pool } = pg;
 
 // Primary (Write) connection pool for mutations and transactional writes
 const primaryPool = new Pool({
@@ -10,7 +13,7 @@ const primaryPool = new Pool({
 
 // Read Replica connection pool for read-heavy GraphQL queries
 // Falls back to primaryPool if REPLICA_DB_URL is not set
-const replicaPool = process.env.REPLICA_DB_URL 
+const replicaPool = process.env.REPLICA_DB_URL
   ? new Pool({
       connectionString: process.env.REPLICA_DB_URL,
       max: 30,
@@ -31,23 +34,23 @@ const query = async (text, params, isRead = true) => {
   try {
     const res = await pool.query(text, params);
     const duration = Date.now() - start;
-    if (process.env.NODE_ENV !== 'test') {
-      console.log(`[DB] Target: ${isRead ? 'REPLICA (Read)' : 'PRIMARY (Write)'} | Time: ${duration}ms | Rows: ${res.rowCount}`);
-    }
+    logger.debug(
+      { target: isRead ? 'replica' : 'primary', durationMs: duration, rows: res.rowCount },
+      'db query',
+    );
     return res;
   } catch (error) {
-    console.error(`[DB Error] Target: ${isRead ? 'REPLICA' : 'PRIMARY'} | Msg:`, error.message);
+    logger.error(
+      { err: error, target: isRead ? 'replica' : 'primary' },
+      'db query failed',
+    );
     // Automatic fallback to primary if replica read fails
     if (isRead && pool !== primaryPool) {
-      console.warn('[DB Warning] Read replica query failed. Falling back to primary pool...');
+      logger.warn('Read replica query failed. Falling back to primary pool');
       return await primaryPool.query(text, params);
     }
     throw error;
   }
 };
 
-module.exports = {
-  query,
-  primaryPool,
-  replicaPool
-};
+export { query, primaryPool, replicaPool };

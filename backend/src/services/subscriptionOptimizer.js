@@ -5,6 +5,8 @@
  * for real-time price update subscriptions.
  */
 
+import { logger } from '../../logger.js';
+
 class SubscriptionOptimizer {
   constructor(options = {}) {
     this.batchInterval = options.batchInterval || 100;
@@ -83,7 +85,7 @@ class SubscriptionOptimizer {
       subscriber.callback(batch.length === 1 ? batch[0] : { batch });
       this._stats.batchesSent++;
     } catch (err) {
-      console.error(`Subscription batch error for ${subscriberId}:`, err);
+      logger.error({ err, subscriberId }, 'Subscription batch error');
     }
 
     if (pending.length > 0) {
@@ -148,4 +150,4 @@ class SubscriptionOptimizer {
   }
 }
 
-module.exports = { SubscriptionOptimizer };
+export { SubscriptionOptimizer };

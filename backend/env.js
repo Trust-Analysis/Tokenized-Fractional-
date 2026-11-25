@@ -179,7 +179,7 @@ const RULES = [
  * @returns {{ key: string, message: string }[]}
  */
 export function collectEnvErrors(env = process.env) {
-  return RULES.flatMap((rule) => {
+  const errors = RULES.flatMap((rule) => {
     const raw = env[rule.key];
     const missing = raw === undefined || raw === null || String(raw).trim() === '';
 
@@ -200,6 +200,25 @@ export function collectEnvErrors(env = process.env) {
 
     return [];
   });
+
+  // Production CORS policy: the allowlist must name explicit origins. An empty
+  // list or a '*' wildcard would let any website call the API with a user's
+  // credentials, so production refuses to boot (see src/middleware/cors.js).
+  if (env.NODE_ENV === 'production') {
+    const origins = String(env.CORS_ORIGINS || '')
+      .split(',')
+      .map((s) => s.trim())
+      .filter(Boolean);
+    if (origins.length === 0 || origins.includes('*')) {
+      errors.push({
+        key: 'CORS_ORIGINS',
+        message:
+          'CORS_ORIGINS is required in production and must list explicit origins — "*" and empty values are not allowed',
+      });
+    }
+  }
+
+  return errors;
 }
 
 /**

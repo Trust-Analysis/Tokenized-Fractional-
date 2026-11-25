@@ -158,7 +158,7 @@ export function compressionMiddleware(options = {}) {
             }
           } catch (error) {
             const errorInfo = edgeCaseHandler.handleCompressionError(error);
-            console.error('Compression error:', errorInfo.message);
+            logger.error({ err: error, message: errorInfo.message }, 'Compression error');
             
             // Fall back to uncompressed
             res.setHeader('Content-Length', contentLength);
@@ -264,7 +264,7 @@ export function streamingCompressionMiddleware(options = {}) {
       });
 
       stream.on('error', (err) => {
-        console.error('Streaming compression error:', err);
+        logger.error({ err }, 'Streaming compression error');
         statistics.recordError();
       });
     }

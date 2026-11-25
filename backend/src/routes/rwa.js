@@ -33,6 +33,7 @@ import {
   INVALID_CONTRACT_ID_MESSAGE,
 } from '../validators/rwaValidator.js';
 import { ASSET_STATUS, WEBHOOK_EVENTS } from '../config.js';
+import { logger } from '../../logger.js';
 
 // ── multer setup ──────────────────────────────────────────────────────────────
 const upload = multer({
@@ -639,8 +640,7 @@ v1.delete('/rwa/:contractId', adminAuth, writeLimiter, async (req, res) => {
     ).then(results => {
       results.forEach((r, i) => {
         if (r.status === 'rejected') {
-          // logger imported via closure is not available here; use console as fallback
-          console.warn('Failed to unpin document', deleted.documents[i]?.cid, r.reason);
+          logger.warn({ err: r.reason, cid: deleted.documents[i]?.cid }, 'Failed to unpin document');
         }
       });
     });

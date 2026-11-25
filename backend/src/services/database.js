@@ -13,6 +13,7 @@
 import knexModule from 'knex';
 import knexConfig from '../../knexfile.js';
 import { getSqlInjectionGuard, wrapKnexWithGuard } from './sqlInjectionGuard.js';
+import { logger } from '../../logger.js';
 
 let dbInstance = null;
 let poolMonitorInterval = null;
@@ -37,7 +38,7 @@ export async function initDatabase(environment = 'development') {
   try {
     await dbInstance.migrate.latest();
   } catch (error) {
-    console.error('Database migration failed:', error);
+    logger.error({ err: error }, 'Database migration failed');
     throw error;
   }
 
@@ -133,13 +134,14 @@ function startPoolMonitor() {
     if (stats) {
       // Log warning if pool utilization is high
       if (stats.utilization > 80) {
-        console.warn(
-          `[DB Pool] High utilization: ${stats.utilization}% (${stats.usedConnections}/${stats.maxConnections} used)`,
+        logger.warn(
+          { utilization: stats.utilization, usedConnections: stats.usedConnections, maxConnections: stats.maxConnections },
+          'High DB pool utilization',
         );
       }
       // Log if there are pending requests (potential bottleneck)
       if (stats.pendingRequests > 0) {
-        console.warn(`[DB Pool] ${stats.pendingRequests} pending connection requests`);
+        logger.warn({ pendingRequests: stats.pendingRequests }, 'DB pool has pending connection requests');
       }
     }
   }, 30000);
@@ -173,7 +175,7 @@ export async function validateMigrationRollback(migrationId) {
   try {
     // Get current migration state
     const [current] = await dbInstance.migrate.currentVersion();
-    console.log(`Current migration version: ${current}`);
+    logger.info({ version: current }, 'Current migration version');
 
     // Attempt rollback of the specific migration
     await dbInstance.migrate.rollback({ directory: './migrations' });
@@ -219,7 +221,7 @@ export async function validateAllRollbacks() {
   try {
     // Get list of executed migrations
     const [current] = await dbInstance.migrate.currentVersion();
-    console.log(`Validating rollbacks from version: ${current}`);
+    logger.info({ version: current }, 'Validating rollbacks');
 
     // Roll back one step at a time
     let version = current;
