@@ -223,6 +223,22 @@
   background: #1d4ed8;
 }
 
+.primaryButton:disabled,
+.secondaryButton:disabled {
+  opacity: 0.55;
+  cursor: not-allowed;
+  box-shadow: none;
+}
+
+.exportError {
+  margin: 0;
+  padding: 8px 24px;
+  color: #b91c1c;
+  background: #fef2f2;
+  border-top: 1px solid #fecaca;
+  font-size: 13px;
+}
+
 .secondaryButton {
   background: #e5e7eb;
   color: #111827;
@@ -284,6 +300,10 @@
   .secondaryButton {
     padding: 8px 16px;
     font-size: 12px;
+  }
+
+  .exportError {
+    padding: 8px 16px;
   }
 }
 

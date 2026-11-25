@@ -232,8 +232,11 @@
 /* No data state */
 .noData {
   display: flex;
+  flex-direction: column;
   align-items: center;
   justify-content: center;
+  gap: 6px;
+  text-align: center;
   min-height: 300px;
   padding: 24px;
   background: var(--bg-surface);
@@ -245,6 +248,11 @@
   margin: 0;
   color: var(--text-muted);
   font-size: 14px;
+}
+
+.noDataHint {
+  font-size: 13px !important;
+  opacity: 0.75;
 }
 
 /* Tooltip */

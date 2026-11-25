@@ -1,26 +1,29 @@
-import React, { useState } from 'react';
+import React, { useRef, useState } from 'react';
+import { useTranslation } from 'react-i18next';
 import PriceHistoryChart from './PriceHistoryChart';
-import usePriceHistory from '../../hooks/usePriceHistory';
+import { usePriceHistory } from '../../hooks/usePriceHistory';
+import {
+  buildPriceHistoryCsv,
+  buildPriceHistoryFilename,
+  downloadPriceHistoryCsv,
+  downloadPriceHistoryPng,
+} from '../../utils/priceHistoryExport';
 import styles from './PriceHistoryModal.module.css';
 
 /**
  * PriceHistoryModal Component
- * 
+ *
  * Displays price history in a modal with full-screen chart
  * Allows users to view detailed price trends with various options
  */
 export default function PriceHistoryModal({ isOpen, onClose, asset }) {
   const [chartType, setChartType] = useState('line');
-  const {
-    priceData,
-    stats,
-    loading,
-    error,
-    timeRange,
-    setTimeRange,
-    formatPrice,
-    formatPercent,
-  } = usePriceHistory(asset?.contractId, asset?.title);
+  const [exporting, setExporting] = useState(null);
+  const [exportError, setExportError] = useState('');
+  const chartRef = useRef(null);
+  const { t } = useTranslation();
+  const { priceData, stats, loading, error, timeRange, setTimeRange, formatPrice, formatPercent } =
+    usePriceHistory(asset?.contractId, asset?.title);
 
   if (!isOpen) return null;
 
@@ -32,6 +35,35 @@ export default function PriceHistoryModal({ isOpen, onClose, asset }) {
 
   const handleClose = () => {
     onClose();
+  };
+
+  const canExport = priceData.length > 0 && !loading && !error;
+
+  const handleExportCsv = () => {
+    setExportError('');
+    try {
+      downloadPriceHistoryCsv(
+        buildPriceHistoryCsv(priceData),
+        buildPriceHistoryFilename(asset?.title, timeRange, 'csv'),
+      );
+    } catch {
+      setExportError(t('priceHistory.export.error'));
+    }
+  };
+
+  const handleExportPng = async () => {
+    setExportError('');
+    setExporting('png');
+    try {
+      await downloadPriceHistoryPng(
+        chartRef.current,
+        buildPriceHistoryFilename(asset?.title, timeRange, 'png'),
+      );
+    } catch {
+      setExportError(t('priceHistory.export.error'));
+    } finally {
+      setExporting(null);
+    }
   };
 
   return (
@@ -66,14 +98,16 @@ export default function PriceHistoryModal({ isOpen, onClose, asset }) {
             <span className={styles.statCardLabel}>Average</span>
             <span className={styles.statCardValue}>{formatPrice(stats.avg)}</span>
           </div>
-          <div className={`${styles.statCard} ${stats.changePercent >= 0 ? styles.positive : styles.negative}`}>
+          <div
+            className={`${styles.statCard} ${stats.changePercent >= 0 ? styles.positive : styles.negative}`}
+          >
             <span className={styles.statCardLabel}>Change</span>
             <span className={styles.statCardValue}>{formatPercent(stats.changePercent)}</span>
           </div>
         </div>
 
         {/* Chart container */}
-        <div className={styles.chartWrapper}>
+        <div className={styles.chartWrapper} ref={chartRef}>
           <PriceHistoryChart
             data={priceData}
             assetName={asset?.title}
@@ -113,13 +147,37 @@ export default function PriceHistoryModal({ isOpen, onClose, asset }) {
           <button className={styles.secondaryButton} onClick={handleClose}>
             Close
           </button>
-          <button className={styles.primaryButton} onClick={() => {
-            // TODO: Add export functionality
-            console.log('Export chart');
-          }}>
-            📥 Export Chart
+          <button
+            type="button"
+            className={styles.secondaryButton}
+            onClick={handleExportCsv}
+            disabled={!canExport}
+            aria-label={t('priceHistory.export.csvLabel', { asset: asset?.title || 'Asset' })}
+            title={canExport ? undefined : t('priceHistory.export.empty')}
+          >
+            📄 {t('priceHistory.export.csv')}
+          </button>
+          <button
+            type="button"
+            className={styles.primaryButton}
+            onClick={handleExportPng}
+            disabled={!canExport || exporting === 'png'}
+            aria-busy={exporting === 'png'}
+            aria-label={t('priceHistory.export.pngLabel', { asset: asset?.title || 'Asset' })}
+            title={canExport ? undefined : t('priceHistory.export.empty')}
+          >
+            🖼️{' '}
+            {exporting === 'png'
+              ? t('priceHistory.export.exporting')
+              : t('priceHistory.export.png')}
           </button>
         </div>
+
+        {exportError && (
+          <p className={styles.exportError} role="alert">
+            {exportError}
+          </p>
+        )}
       </div>
     </div>
   );
