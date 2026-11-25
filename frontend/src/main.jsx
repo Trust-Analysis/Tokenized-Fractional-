@@ -12,13 +12,18 @@ import ErrorBoundary from './components/ErrorBoundary/ErrorBoundary';
 import ErrorFallback from './components/ErrorFallback/ErrorFallback';
 import { ThemeProvider } from './context/ThemeContext';
 import OfflineIndicator from './components/OfflineIndicator/OfflineIndicator';
+import MockModeBanner from './components/MockModeBanner/MockModeBanner';
 import { useServiceWorker } from './hooks/useServiceWorker';
 import { initPerformanceMonitoring } from './services/performanceMonitoring';
+import { purgeLegacyCredentialStorage } from './lib/authToken';
 
 // Lazily import the dashboard so it is never included in the main bundle
 const PerformanceDashboard = lazy(
   () => import('./components/PerformanceDashboard/PerformanceDashboard'),
 );
+
+// Tokens persisted by older releases are removed before the app renders.
+purgeLegacyCredentialStorage();
 
 // Global unhandled error handlers
 window.onerror = (message, source, lineno, colno, error) => {
@@ -72,6 +77,7 @@ ReactDOM.createRoot(document.getElementById('root')).render(
       <Sentry.ErrorBoundary fallback={ErrorFallback}>
         <BrowserRouter>
           <ThemeProvider>
+            <MockModeBanner />
             <OfflineIndicator />
             <SWUpdateBanner />
             <App />

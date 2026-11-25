@@ -6,7 +6,7 @@ import { CompressionStatistics } from './statistics.js';
 import { StreamingCompression } from './streaming.js';
 import { EdgeCaseHandler } from './edge-cases.js';
 import { PreCompression } from './pre-compression.js';
-import { logger } from '../../logger.js';
+import { getClientIp } from '../utils/clientIp.js';
 
 // Global instances
 let compressionEngine = null;
@@ -95,7 +95,7 @@ export function compressionMiddleware(options = {}) {
     const clientAlgorithms = clientNegotiator.getClientAlgorithms(acceptEncoding);
 
     // Cache client capabilities
-    const clientId = req.ip + req.headers['user-agent'];
+    const clientId = getClientIp(req) + req.headers['user-agent'];
     clientNegotiator.cacheCapabilities(clientId, acceptEncoding);
 
     // Intercept response

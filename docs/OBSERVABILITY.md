@@ -321,14 +321,139 @@ cluster.
 
 ---
 
-## 4. Metrics (complementary, not a substitute)
+## 4. Metrics & Monitoring (Prometheus & Grafana)
 
-Prometheus metrics are exposed on `GET /metrics`
-(`src/services/metricsService.js`): `http_request_duration_seconds`,
-`http_requests_total`, `http_request_errors_total`,
-`websocket_active_connections`, `db_pool_*`. They answer "is the service
-healthy" at a glance and are the right signal for autoscaling; logs answer "why
-did this particular request fail". Grafana dashboards live in `grafana/`.
+Prometheus metrics are exposed via `GET /metrics` (`backend/src/services/metricsService.js`) using the standard `prom-client` library. The endpoint provides real-time operational and business telemetry in the standard Prometheus exposition format (`text/plain; version=0.0.4`).
+
+For a dedicated operations manual and runbook, see [docs/METRICS_AND_MONITORING.md](METRICS_AND_MONITORING.md).
+
+### 4.1 Exposed Metrics Catalog
+
+| Metric Name | Type | Labels | Description |
+| --- | --- | --- | --- |
+| **HTTP Request Metrics** | | | |
+| `http_requests_total` | Counter | `method`, `route`, `status_code` | Total HTTP requests processed per route and status code |
+| `http_request_duration_seconds` | Histogram | `method`, `route`, `status_code` | HTTP request latency in seconds (buckets from 5ms to 10s) |
+| `http_request_errors_total` | Counter | `method`, `route`, `status_code` | Total HTTP errors (status >= 400) per route and status code |
+| **Business Metrics** | | | |
+| `rwa_total_assets` | Gauge | — | Total tokenized fractional real-world assets registered on the platform |
+| `rwa_assets_by_type` | Gauge | `asset_type` | Tokenized assets broken down by category (real estate, art, etc.) |
+| `rwa_purchases_total` | Gauge | — | Total completed share purchases proxied through the backend |
+| `rwa_purchase_volume_total` | Gauge | — | Total dollar volume of share purchases completed |
+| `rwa_unique_buyers_total` | Gauge | — | Total unique buyer Stellar wallet addresses |
+| `rwa_purchases_processed_total` | Counter | `status` | Real-time counter of purchase requests processed (`completed`, `failed`) |
+| **WebSocket & DLQ Metrics** | | | |
+| `websocket_active_connections` | Gauge | — | Currently connected WebSocket client instances |
+| `websocket_dlq_messages` | Gauge | `scope` | Messages buffered in the dead-letter queue (`total`, `largest_channel`) |
+| `websocket_dlq_channels` | Gauge | — | Active channels with buffered DLQ messages |
+| `websocket_dlq_over_threshold` | Gauge | — | 1 when buffered messages exceed alert threshold, 0 otherwise |
+| `websocket_dlq_dropped_messages` | Gauge | `reason` | Messages dropped due to buffer size or retention limits |
+| **Database & Infrastructure** | | | |
+| `db_pool_utilization_ratio` | Gauge | — | Connection pool utilization ratio (`used / maxConnections`) |
+| `db_pool_connections` | Gauge | `state` | Connection counts by state (`used`, `free`, `pending`) |
+| `disk_usage_ratio` | Gauge | — | Volume disk usage ratio for volume holding `DATA_FILE` (0..1) |
+| `disk_available_bytes` | Gauge | — | Unprivileged writable disk space remaining |
+| **Node.js Runtime Metrics** | | | |
+| `process_resident_memory_bytes` | Gauge | — | Resident memory size (RSS) in bytes |
+| `process_cpu_user_seconds_total` | Counter | — | Total user CPU time consumed |
+| `nodejs_eventloop_lag_seconds` | Gauge | — | Event loop lag in seconds |
+
+### 4.2 Production Security & Authentication
+
+In production (`NODE_ENV=production` or `METRICS_AUTH_REQUIRED=true`), the `/metrics` endpoint is protected by `metricsAuthMiddleware`. Unauthenticated requests are rejected with `401 Unauthorized` and return a standard `WWW-Authenticate` header.
+
+Three authentication mechanisms are supported for scrapers:
+
+1. **Bearer Token (`Authorization: Bearer <token>`)**:
+   - Matches `METRICS_BEARER_TOKEN`, `METRICS_TOKEN`, or `ADMIN_API_KEY`.
+2. **HTTP Basic Auth (`Authorization: Basic <base64(user:password)>`)**:
+   - Matches `METRICS_USER` (default: `metrics` or `prometheus`) and `METRICS_PASSWORD` (or `ADMIN_API_KEY`).
+3. **API Key Header (`x-api-key: <key>`)**:
+   - Matches `METRICS_API_KEY`, `ADMIN_API_KEY`, or any valid dynamic API key from the database.
+
+> [!NOTE]
+> In development and testing environments, `/metrics` allows unauthenticated access by default for frictionless local workflows. Set `METRICS_AUTH_REQUIRED=true` to test authentication locally.
+
+### 4.3 Scraping with Prometheus
+
+Add the backend to your `prometheus.yml`:
+
+```yaml
+scrape_configs:
+  - job_name: 'rwa-backend'
+    scrape_interval: 15s
+    scrape_timeout: 10s
+    metrics_path: '/metrics'
+    static_configs:
+      - targets: ['backend:3001']
+        labels:
+          service: 'rwa-backend'
+
+    # Option A: Bearer token authentication
+    authorization:
+      type: Bearer
+      credentials: '${ADMIN_API_KEY}'
+
+    # Option B: Basic authentication
+    # basic_auth:
+    #   username: 'metrics'
+    #   password: '${ADMIN_API_KEY}'
+```
+
+Verify scraping manually with `curl`:
+
+```bash
+# Bearer Token
+curl -H "Authorization: Bearer $ADMIN_API_KEY" http://localhost:3001/metrics
+
+# Basic Auth
+curl -u "metrics:$ADMIN_API_KEY" http://localhost:3001/metrics
+
+# API Key
+curl -H "x-api-key: $ADMIN_API_KEY" http://localhost:3001/metrics
+```
+
+### 4.4 Visualizing in Grafana
+
+Provisioned dashboards live in `grafana/dashboards/`:
+- **`grafana/dashboards/rwa-overview.json`**: Comprehensive overview dashboard covering business metrics (assets, purchase volume, buyers), golden signals (traffic, latency, errors), and infrastructure health.
+
+#### Essential PromQL Queries for Operational SLOs:
+
+- **Request Rate (RPS)**:
+  ```promql
+  sum(rate(http_requests_total[5m])) by (route, status_code)
+  ```
+- **Error Rate Percentage (SLO target: < 1%)**:
+  ```promql
+  (sum(rate(http_request_errors_total[5m])) / sum(rate(http_requests_total[5m]))) * 100
+  ```
+- **99th Percentile Latency (SLO target: < 1.0s)**:
+  ```promql
+  histogram_quantile(0.99, sum(rate(http_request_duration_seconds_bucket[5m])) by (le, route))
+  ```
+- **Current Tokenized Assets**:
+  ```promql
+  rwa_total_assets
+  ```
+- **Total Completed Purchases**:
+  ```promql
+  rwa_purchases_total
+  ```
+- **Database Connection Pool Saturation (> 85%)**:
+  ```promql
+  db_pool_utilization_ratio * 100
+  ```
+
+### 4.5 Start Full Monitoring Stack Locally
+
+Run Prometheus and Grafana alongside the backend via Docker Compose:
+
+```bash
+docker compose --profile monitoring up -d prometheus grafana backend
+# Prometheus Web UI: http://localhost:9090
+# Grafana Web UI:    http://localhost:3000 (admin / admin)
+```
 
 ---
 

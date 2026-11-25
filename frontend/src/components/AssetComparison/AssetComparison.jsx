@@ -8,7 +8,9 @@ import styles from './AssetComparison.module.css';
  * Shown when the user has at least 2 assets in the comparison list.
  */
 export default function AssetComparison() {
-  const { comparedAssets, removeFromComparison, clearComparison } = useComparisonStore();
+  const { comparedAssets, removeFromComparison, clearComparison, MAX_COMPARISON } =
+    useComparisonStore();
+  const atLimit = comparedAssets.length >= MAX_COMPARISON;
 
   // Empty state
   if (comparedAssets.length === 0) {
@@ -160,7 +162,7 @@ export default function AssetComparison() {
             Asset Comparison
           </h2>
           <span className={styles.assetCount}>
-            {comparedAssets.length} asset{comparedAssets.length !== 1 ? 's' : ''} selected
+            {comparedAssets.length} of {MAX_COMPARISON} assets selected
           </span>
         </div>
         <Button onClick={clearComparison} variant="danger" size="sm">
@@ -270,6 +272,13 @@ export default function AssetComparison() {
           </tbody>
         </table>
       </div>
+
+      {/* Maximum assets notice (issue #904) */}
+      {atLimit && (
+        <p className={styles.limitNotice} role="status">
+          Comparison limit reached ({MAX_COMPARISON} assets). Remove an asset to add another.
+        </p>
+      )}
 
       {/* Minimum assets hint */}
       {comparedAssets.length === 1 && (

@@ -1,0 +1,38 @@
+{
+  "schemaVersion": 1,
+  "tools": {
+    "node": {
+      "version": "20.18.0",
+      "major": "20",
+      "required": true
+    },
+    "rust": {
+      "channel": "stable",
+      "required": true
+    },
+    "wasmTarget": {
+      "target": "wasm32-unknown-unknown",
+      "required": true
+    },
+    "soroban": {
+      "package": "soroban-cli",
+      "required": true
+    },
+    "gitleaks": {
+      "version": "8.30.1",
+      "required": false
+    }
+  },
+  "envFiles": [
+    {
+      "source": "backend/.env.example",
+      "target": "backend/.env",
+      "required": true
+    },
+    {
+      "source": "frontend/.env.example",
+      "target": "frontend/.env",
+      "required": true
+    }
+  ]
+}

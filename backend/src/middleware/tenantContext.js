@@ -5,6 +5,8 @@
  * and sets the PostgreSQL session context to enforce Row-Level Security.
  */
 
+import { setTenantContext } from '../services/database.js';
+
 export function tenantContextMiddleware(db) {
   return async (req, res, next) => {
     try {
@@ -28,8 +30,8 @@ export function tenantContextMiddleware(db) {
       // We wrap the request handler in a Knex transaction where the local session variable is set
       if (db.client.config.client === 'pg') {
         req.db = await db.transaction();
-        // Use SET LOCAL so the setting only applies to this specific transaction block
-        await req.db.raw(`SET LOCAL app.current_tenant_id = ?`, [tenantId]);
+        // Use identical tenant-context-setting logic across all database paths
+        await setTenantContext(req.db, tenantId);
         
         // We must commit or rollback the transaction at the end of the request
         res.on('finish', () => {

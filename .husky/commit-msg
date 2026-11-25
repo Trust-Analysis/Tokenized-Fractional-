@@ -1,3 +1,0 @@
-#!/usr/bin/env sh
-# Validate commit message follows Conventional Commits specification
-npx --no -- commitlint --edit "$1"

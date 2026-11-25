@@ -1,7 +1,7 @@
 // Copyright (c) 2026 Tokenized Fractional RWA Marketplace Contributors
 // SPDX-License-Identifier: MIT
 
-import { cacheGet, cacheSet, cacheDel } from '../cache.js';
+import { cacheGet, cacheSet, cacheDel, cacheDelPrefix } from '../cache.js';
 
 /**
  * Price history cache key format:
@@ -68,6 +68,7 @@ export async function invalidatePriceHistoryCache(tokenId) {
   const invalidations = Object.keys(INTERVAL_TTL).map((interval) =>
     cacheDel(buildPriceHistoryKey(tokenId, interval))
   );
+  invalidations.push(cacheDelPrefix(`price_history_query:${tokenId}:`));
   await Promise.allSettled(invalidations);
 }
 

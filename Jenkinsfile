@@ -6,23 +6,51 @@ pipeline {
         timestamps()
         timeout(time: 45, unit: 'MINUTES')
         skipDefaultCheckout(true)
+        authorizeProjectProperty(strategy: [$class: 'TriggeringUsersAuthorizationStrategy'])
     }
 
     parameters {
-        string(
+        choice(
             name: 'ONCHAIN_INTEGRATION_COMMAND',
-            defaultValue: 'cargo test --locked',
-            description: 'Contract integration command. Keep live-network credentials in Jenkins credentials.'
+            choices: [
+                'cargo test --locked',
+                'cargo test --locked -- --nocapture',
+                'cargo check --locked --all-targets'
+            ],
+            description: 'Contract integration command. Live-network credentials are only exposed for the default command.'
         )
     }
 
     environment {
         COMPOSE_PROJECT_NAME = "rwa-jenkins-${env.BUILD_NUMBER}"
+        BACKEND_ENTRYPOINT = 'src/server.js'
         CI = 'true'
         NODE_ENV = 'test'
     }
 
     stages {
+        stage('Validate Build Authorization') {
+            steps {
+                script {
+                    def vettedCommands = [
+                        'cargo test --locked',
+                        'cargo test --locked -- --nocapture',
+                        'cargo check --locked --all-targets'
+                    ]
+
+                    if (!vettedCommands.contains(params.ONCHAIN_INTEGRATION_COMMAND)) {
+                        error("Unauthorized ONCHAIN_INTEGRATION_COMMAND: ${params.ONCHAIN_INTEGRATION_COMMAND}")
+                    }
+
+                    // Reject manual parameterized triggers unless initiated by an authenticated user with build-with-parameters permission
+                    def userCauses = currentBuild.getBuildCauses('hudson.model.Cause$UserIdCause')
+                    if (params.ONCHAIN_INTEGRATION_COMMAND != 'cargo test --locked' && (userCauses == null || userCauses.isEmpty())) {
+                        error('Non-default parameterized builds must be triggered manually by an authorized user.')
+                    }
+                }
+            }
+        }
+
         stage('Checkout') {
             steps {
                 checkout scm
@@ -85,7 +113,30 @@ pipeline {
         stage('On-chain contract tests') {
             steps {
                 dir('contracts') {
-                    sh '${ONCHAIN_INTEGRATION_COMMAND}'
+                    script {
+                        if (params.ONCHAIN_INTEGRATION_COMMAND == 'cargo test --locked') {
+                            // Live-network credentials are only injected for the default vetted command
+                            sh 'cargo test --locked'
+                        } else {
+                            // Ensure live-network credential variables are stripped from non-default runs
+                            withEnv([
+                                'STELLAR_SECRET_KEY=',
+                                'LIVE_NETWORK_SECRET=',
+                                'DEPLOYER_SECRET_KEY='
+                            ]) {
+                                switch (params.ONCHAIN_INTEGRATION_COMMAND) {
+                                    case 'cargo test --locked -- --nocapture':
+                                        sh 'cargo test --locked -- --nocapture'
+                                        break
+                                    case 'cargo check --locked --all-targets':
+                                        sh 'cargo check --locked --all-targets'
+                                        break
+                                    default:
+                                        error('Unsupported ONCHAIN_INTEGRATION_COMMAND')
+                                }
+                            }
+                        }
+                    }
                 }
             }
         }

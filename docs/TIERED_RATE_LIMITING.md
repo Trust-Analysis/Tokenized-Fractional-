@@ -2,6 +2,13 @@
 
 Comprehensive guide to the new tiered rate limiting system for the RWA Marketplace API.
 
+> **Looking for the big picture?** This document describes one layer only.
+> Which rate-limiting layers are actually live in each deployment topology
+> (edge nginx, Kubernetes Ingress, optional Kong, backend limiters), in what
+> order they run, and how their limits relate is documented in
+> [`docs/RATE_LIMITING.md`](./RATE_LIMITING.md) — the single source of truth.
+> Update that document when changing any limit described here.
+
 ## Overview
 
 The system implements **three-tier rate limiting** with different thresholds for:

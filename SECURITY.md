@@ -43,6 +43,10 @@ This disclaimer is removed only when an audit report is published **and** its
 findings have been remediated (see below).
 
 ### Audit plan
+### Threat model
+
+See [docs/security-model.md](docs/security-model.md) for the STRIDE threat model, privileged-role matrix, invariants, and remediation tracker.
+
 
 - [ ] Freeze the contract's public interface for the audit window.
 - [ ] Engage an independent auditor with Soroban/Rust experience.
@@ -102,7 +106,9 @@ Report vulnerabilities privately via one of these channels:
 
 The Soroban smart contract manages financial transactions on the Stellar network. High-severity issues include:
 
-- Unauthorised access to `admin`-only functions (`pause`, `unpause`, `emergency_withdraw`, `update_price`, `increase_total_shares`).
+- Unauthorised access to privileged functions: `pause` / `unpause` (Pauser role),
+  `emergency_withdraw` (Treasury role), `set_nft_contract` (MetadataManager role),
+  `wind_down` / `burn_shares` (`admin`), `update_price`, `increase_total_shares`.
 - Re-entrancy or integer overflow in `buy_shares`.
 - Bypassing the pause mechanism.
 - Token drain or fund misappropriation.
@@ -126,6 +132,47 @@ The contract uses a **two-step admin transfer** to prevent accidental or malicio
 - After `accept_admin`, the old admin key should be considered revoked and should no longer be used for any contract operations.
 - Monitor `EventAdminTransferInitiated` events for unexpected admin transfer proposals.
 - If a transfer is initiated by mistake, the pending admin can simply never call `accept_admin()`, and the transfer expires (pending admin can be overwritten by a new `transfer_admin` call from the current admin).
+
+## Role Model (Issue #768)
+
+Beyond the admin key the contract supports three duty-separated roles. Each role is an
+independent address stored under its own storage key, and each is gated by
+`require_auth` for the stored address only — a call authorised by any other address
+is rejected.
+
+| Role | Entry points guarded | Assigned with | Read with |
+| --- | --- | --- | --- |
+| **Pauser** | `pause`, `unpause` | `set_pauser(address)` | `get_pauser()` |
+| **Treasury** | `emergency_withdraw` | `set_treasury(address)` | `get_treasury()` |
+| **MetadataManager** | `set_nft_contract` | `set_metadata_manager(address)` | `get_metadata_manager()` |
+
+**Defaults.** `init` seeds all three roles to the admin address, so a deployment that
+never calls a `set_*` setter behaves exactly as it did before role separation. The
+division of duty only becomes effective once the admin assigns distinct addresses.
+
+**Assignment is admin-only.** Each setter requires `admin` authorisation and emits
+`EventRoleAssigned { role, holder }`; monitor that event for unexpected re-assignment.
+Rotation is single-step (assignment replaces the holder immediately), so route the
+address through the same operational review as an admin transfer.
+
+**Scope notes:**
+
+- `wind_down()` and `burn_shares()` (Issue #766) remain `admin`-only. They are
+  destructive/irreversible and are deliberately not delegated to a role key.
+- `delist_asset`, `update_price`, `increase_total_shares`, and the two-step admin
+  transfer remain `admin`-only.
+- The Pauser address cannot drain funds: `emergency_withdraw` requires Treasury
+  authorisation, and the Treasury address cannot pause or unpause. Tests in
+  `contracts/src/lib.rs` (`role_separation_tests`) assert both directions.
+
+### End-of-life wind-down (Issue #766)
+
+`wind_down()` is an irreversible end-of-life switch. It sets `IsClosed` alongside the
+pause flag. `unpause()` can clear the pause, but `IsClosed` is never cleared: every
+purchase entry point (`buy_shares`, `buy_vested_shares`, `batch_buy_shares`,
+`buy_from_order`) rejects with `Marketplace is closed` afterwards. Transfers,
+redemptions and `claim_distribution` keep working so holders can exit, and the admin
+can `burn_shares` any remaining inventory.
 
 ## Runbook: Correcting a Deployment Mistake
 
@@ -198,3 +245,11 @@ We will credit researchers who responsibly disclose valid vulnerabilities (unles
 - Issues that require physical access to a user's device.
 - Social engineering attacks.
 - Freighter Wallet bugs (report to [Freighter](https://github.com/stellar/freighter)).
+
+## Rotate Pushed Secrets Even When CI Blocks the PR (#1105)
+
+If a credential or secret is committed and pushed to a remote branch or pull request—even when local `gitleaks` was skipped and CI later blocks the PR—treat the secret as compromised immediately:
+
+1. **Revoke and rotate** the exposed credential/token/key at the provider right away.
+2. **Remove/scrub** the secret from the branch and Git history if appropriate.
+3. **Do not rely on a blocked PR alone** to contain exposure, as remote refs, CI logs, or clones may have already observed the value.

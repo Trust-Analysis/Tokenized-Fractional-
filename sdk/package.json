@@ -1,8 +1,17 @@
 {
   "name": "@trust-analysis/tokenized-fractional-sdk",
   "version": "0.1.0",
-  "private": true,
   "description": "Typed REST and Soroban SDK for the Tokenized Fractional RWA Marketplace",
+  "license": "MIT",
+  "repository": {
+    "type": "git",
+    "url": "https://github.com/Trust-Analysis/Tokenized-Fractional-.git",
+    "directory": "sdk"
+  },
+  "publishConfig": {
+    "access": "public",
+    "provenance": true
+  },
   "type": "module",
   "main": "./dist/index.js",
   "types": "./dist/index.d.ts",
@@ -12,9 +21,16 @@
       "import": "./dist/index.js"
     }
   },
+  "files": [
+    "dist",
+    "README.md",
+    "LICENSE"
+  ],
   "scripts": {
     "build": "tsc -p tsconfig.json",
-    "typecheck": "tsc -p tsconfig.json --noEmit"
+    "typecheck": "tsc -p tsconfig.json --noEmit",
+    "test": "npm run build && node --test test/*.test.mjs",
+    "prepublishOnly": "npm run typecheck && npm run build"
   },
   "peerDependencies": {
     "@stellar/stellar-sdk": ">=16"

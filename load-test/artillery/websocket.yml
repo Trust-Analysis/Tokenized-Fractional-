@@ -1,5 +1,27 @@
 # WebSocket Fan-Out Scenario — 1,000 Concurrent Connections (Issue #524)
 #
+# Also covers cross-instance broadcast verification (Issue #894): the
+# "cross-instance-broadcast-receiver" scenario below connects clients to ONE
+# backend replica (the Artillery `target`, "instance B") while triggering
+# broadcasts on a DIFFERENT replica over HTTP ("instance A", see
+# config.env.INSTANCE_A_API). Delivery of those broadcasts back to instance B's
+# clients — the path served by backend/websocketRedisAdapter.js via Redis
+# pub/sub — is asserted per run (helpers/run-cross-instance.js checks the
+# aggregated report: every triggered broadcast must be received by clients on
+# instance B) and latency is recorded as the
+# `websocket.cross_instance_broadcast_latency` histogram with a p95 threshold.
+#
+# Multi-replica setup:
+#   - Real stack: start >= 2 backend replicas sharing one REDIS_URL, point the
+#     Artillery target at replica B, and set INSTANCE_A_API to replica A's HTTP
+#     base URL, e.g.
+#       INSTANCE_A_API=http://replica-a:3001 npm run test:websocket -- \
+#         --target ws://replica-b:3001/ws
+#   - Local simulation (no backend/Redis needed): `npm run
+#     test:websocket:cross-instance` boots two load-test mock instances bridged
+#     by a peer-forward (load-test/mock-server.js) that emulates the Redis
+#     pub/sub fan-out, then runs this scenario against them.
+#
 # Simulates 1,000 concurrent users each holding an open WebSocket connection to
 # the backend real-time service at /ws and subscribed to the live trade topics
 # ("share-purchases" and asset-specific topics). While connected, users ping the
@@ -25,6 +47,18 @@ config:
       duration: 120
       arrivalRate: 25
   processor: "../helpers/processor.js"
+  # Per-VU environment for the cross-instance scenario (Issue #894).
+  # INSTANCE_A_API: HTTP base URL of the OTHER replica that receives the
+  # broadcast triggers. Defaults to a second local mock instance.
+  env:
+    INSTANCE_A_API: "http://localhost:3002"
+  # Alert on cross-instance broadcast latency specifically (Issue #894), not
+  # just overall WebSocket throughput. Delivery itself is asserted by
+  # helpers/run-cross-instance.js against this run's report:
+  # `websocket.cross_instance_broadcast_received` must be >=
+  # `websocket.cross_instance_broadcast_sent`, and `..._failed` must be 0.
+  thresholds:
+    - websocket.cross_instance_broadcast_latency: ["p95<1000"]
 
 scenarios:
   - name: "concurrent-trader-webhook"
@@ -38,5 +72,24 @@ scenarios:
       - send: '{"action":"subscribe","topic":"{{ subscribeTopic }}"}'
       # Keep the connection alive while receiving broadcast trade events.
       - think: 2
+      - send: '{"action":"ping"}'
+      - think: 2
+
+  # Issue #894: clients connect to instance B (the target) and trigger trade
+  # broadcasts on instance A over HTTP. A broadcast only shows up here if the
+  # cross-instance (Redis pub/sub) fan-out path replicates it.
+  - name: "cross-instance-broadcast-receiver"
+    engine: ws
+    flow:
+      - function: "trackCrossInstanceMessages"
+      - send: '{"action":"subscribe","topic":"share-purchases"}'
+      - function: "setWsEnv"
+      - send: '{"action":"subscribe","topic":"{{ subscribeTopic }}"}'
+      - think: 2
+      # Trigger a broadcast on the OTHER replica and wait for it to fan out
+      # to this connection. The run's report is asserted by the runner
+      # (every broadcast must be received by clients on this instance).
+      - function: "triggerCrossInstanceBroadcast"
+      - think: 5
       - send: '{"action":"ping"}'
       - think: 2

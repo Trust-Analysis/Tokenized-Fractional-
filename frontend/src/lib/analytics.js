@@ -3,6 +3,8 @@
  * No PII is included in any analytics payloads.
  */
 
+import { readString, writeString, STORAGE_KEYS } from './storage';
+
 const ANALYTICS_ENDPOINT = process.env.NEXT_PUBLIC_ANALYTICS_ENDPOINT || '/api/analytics';
 
 function generateAnonymousId() {
@@ -13,10 +15,10 @@ let anonymousId = null;
 
 function getAnonymousId() {
   if (!anonymousId) {
-    anonymousId = localStorage.getItem('analytics_anon_id');
+    anonymousId = readString(STORAGE_KEYS.ANALYTICS_ID) || null;
     if (!anonymousId) {
       anonymousId = generateAnonymousId();
-      localStorage.setItem('analytics_anon_id', anonymousId);
+      writeString(STORAGE_KEYS.ANALYTICS_ID, anonymousId);
     }
   }
   return anonymousId;

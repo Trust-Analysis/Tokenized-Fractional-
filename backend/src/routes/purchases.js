@@ -22,8 +22,89 @@ import { invalidatePriceHistoryCache } from '../../services/priceHistoryCache.js
  * @param {Object} logger
  * @returns {Router}
  */
-export function createPurchaseRoutes(transactionService, logger) {
+export function createPurchaseRoutes(transactionService, logger, adminAuth = null) {
   const router = Router();
+
+  const requireAdmin = (req, res, next) => {
+    if (adminAuth) {
+      return adminAuth(req, res, next);
+    }
+    const apiKey = req.headers['x-api-key'];
+    if (apiKey || req.user?.role === 'admin') {
+      return next();
+    }
+    return res.status(401).json({ error: 'Unauthorized: Admin authentication required', code: 'UNAUTHORIZED' });
+  };
+
+  /**
+   * POST /purchases/:transactionId/legal-hold
+   * Issue #912: Admin-only endpoint to place a legal hold on a transaction
+   */
+  router.post('/:transactionId/legal-hold', requireAdmin, async (req, res) => {
+    try {
+      const { transactionId } = req.params;
+      const { reason } = req.body || {};
+      const placedBy = req.apiKey?.id || req.user?.id || 'admin';
+
+      const updated = await transactionService.placeLegalHold(transactionId, { reason, placedBy });
+      res.json({
+        success: true,
+        message: 'Legal hold placed successfully',
+        transaction: updated,
+      });
+    } catch (error) {
+      if (error.message.includes('not found')) {
+        return res.status(404).json({ error: error.message, code: 'NOT_FOUND' });
+      }
+      res.status(500).json({ error: error.message });
+    }
+  });
+
+  /**
+   * DELETE /purchases/:transactionId/legal-hold
+   * Issue #912: Admin-only endpoint to release a legal hold on a transaction
+   */
+  router.delete('/:transactionId/legal-hold', requireAdmin, async (req, res) => {
+    try {
+      const { transactionId } = req.params;
+      const releasedBy = req.apiKey?.id || req.user?.id || 'admin';
+
+      const updated = await transactionService.releaseLegalHold(transactionId, { releasedBy });
+      res.json({
+        success: true,
+        message: 'Legal hold released successfully',
+        transaction: updated,
+      });
+    } catch (error) {
+      if (error.message.includes('not found')) {
+        return res.status(404).json({ error: error.message, code: 'NOT_FOUND' });
+      }
+      res.status(500).json({ error: error.message });
+    }
+  });
+
+  /**
+   * GET /purchases/:transactionId/legal-hold
+   * Issue #912: Check legal hold status on a transaction
+   */
+  router.get('/:transactionId/legal-hold', requireAdmin, async (req, res) => {
+    try {
+      const { transactionId } = req.params;
+      const tx = await transactionService.getTransactionById(transactionId);
+      if (!tx) {
+        return res.status(404).json({ error: `Transaction ${transactionId} not found`, code: 'NOT_FOUND' });
+      }
+      res.json({
+        transactionId: tx.transaction_id,
+        legalHold: Boolean(tx.legal_hold),
+        reason: tx.legal_hold_reason || null,
+        placedAt: tx.legal_hold_placed_at || null,
+        placedBy: tx.legal_hold_placed_by || null,
+      });
+    } catch (error) {
+      res.status(500).json({ error: error.message });
+    }
+  });
 
   /**
    * POST /purchases

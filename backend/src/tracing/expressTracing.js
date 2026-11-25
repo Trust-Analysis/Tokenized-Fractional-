@@ -13,6 +13,7 @@
 
 import { trace, context } from '@opentelemetry/api';
 import { randomUUID } from 'crypto';
+import { getClientIp } from '../utils/clientIp.js';
 
 const tracer = trace.getTracer('express-tracing');
 
@@ -189,18 +190,6 @@ function extractOperationType(query) {
   if (query.includes('subscription')) return 'subscription';
   if (query.includes('mutation')) return 'mutation';
   return 'query';
-}
-
-/**
- * Extract client IP from request
- */
-function getClientIp(req) {
-  return (
-    req.headers['x-forwarded-for']?.split(',')[0].trim() ||
-    req.headers['x-real-ip'] ||
-    req.socket?.remoteAddress ||
-    'unknown'
-  );
 }
 
 /**

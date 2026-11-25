@@ -39,10 +39,13 @@ export const typeDefs = parse(`#graphql
   }
 
   """
-  Reference to RWA entity defined in Assets subgraph
+  Reference to RWA entity owned by the Assets subgraph.
+  The key field is *provided* by this subgraph (holdings resolvers fabricate
+  the entity representation from UserHolding.contractId);
+  it must not be @external so composition can route '@key' hops through here.
   """
-  type RWA @key(fields: "contractId", extendable: true) {
-    contractId: String! @external
+  type RWA @key(fields: "contractId") {
+    contractId: String!
   }
 
   type Query {
@@ -145,5 +148,5 @@ export function createUsersSubgraph(transactionService) {
     },
   };
 
-  return buildSubgraphSchema({ typeDefs, resolvers });
+  return buildSubgraphSchema([{ typeDefs, resolvers }]);
 }

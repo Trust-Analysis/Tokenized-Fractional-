@@ -58,6 +58,11 @@ export function resolveManifestUrl() {
   return readEnv('VITE_CONTRACT_MANIFEST_URL') || DEFAULT_MANIFEST_URL;
 }
 
+/** Resolve an optional independently-hosted remote manifest URL for runtime cross-checks. */
+export function resolveRemoteManifestUrl() {
+  return readEnv('VITE_CONTRACT_MANIFEST_REMOTE_URL');
+}
+
 /** Pinned signers, plus any deployment-time additions from the environment. */
 export function resolvePinnedSigners() {
   const fromEnv = readEnv('VITE_CONTRACT_MANIFEST_SIGNERS')
@@ -267,6 +272,7 @@ export async function verifyConfiguredContract({
   contractId,
   network,
   url = resolveManifestUrl(),
+  remoteUrl = resolveRemoteManifestUrl(),
   fetchImpl,
   signers,
   verify,
@@ -285,6 +291,47 @@ export async function verifyConfiguredContract({
       payload: verification.payload,
       manifestVerified: verification.valid,
     });
+
+    // Issue #906: Cross-check against independently-hosted remote manifest if configured
+    if (evaluation.status === DEPLOYMENT_STATUS.OFFICIAL && remoteUrl && remoteUrl !== url) {
+      try {
+        const remoteManifest = await loadOfficialManifest({ url: remoteUrl, fetchImpl });
+        const remoteVerification = await verifyManifest(remoteManifest, { signers, verify });
+        if (!remoteVerification.valid) {
+          return {
+            status: DEPLOYMENT_STATUS.UNVERIFIED,
+            reason: `Cross-check failed: remote manifest signature invalid (${remoteVerification.reason}).`,
+            contractId: configured,
+            manifestUrl: url,
+            remoteManifestUrl: remoteUrl,
+          };
+        }
+        const remoteEval = evaluateContractDeployment({
+          contractId,
+          network,
+          payload: remoteVerification.payload,
+          manifestVerified: remoteVerification.valid,
+        });
+        if (remoteEval.status !== DEPLOYMENT_STATUS.OFFICIAL) {
+          return {
+            status: DEPLOYMENT_STATUS.UNOFFICIAL,
+            reason: 'Tamper detected: contract is marked official locally but is repudiated by independently-hosted remote manifest.',
+            contractId: configured,
+            manifestUrl: url,
+            remoteManifestUrl: remoteUrl,
+          };
+        }
+      } catch (remoteError) {
+        return {
+          status: DEPLOYMENT_STATUS.UNVERIFIED,
+          reason: `Remote manifest cross-check failed (${remoteError.message}).`,
+          contractId: configured,
+          manifestUrl: url,
+          remoteManifestUrl: remoteUrl,
+        };
+      }
+    }
+
     return {
       ...evaluation,
       manifestUrl: url,

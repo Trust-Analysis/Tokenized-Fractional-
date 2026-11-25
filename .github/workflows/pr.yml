@@ -7,6 +7,14 @@ on:
     branches: [ main, dev ]
 
 jobs:
+  node-eol-check:
+    name: Node.js EOL Check
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - name: Verify configured Node.js release line is supported
+        run: node scripts/check-node-eol.mjs
+
   secret-scan:
     name: TruffleHog Secret Scanning
     runs-on: ubuntu-latest
@@ -22,7 +30,68 @@ jobs:
           path: ./
           base: "${{ github.event.pull_request.base.sha || 'HEAD^' }}"
           head: "${{ github.event.pull_request.head.sha || 'HEAD' }}"
-          extra_args: --debug --only-verified=false
+          # `--only-verified` is a boolean flag, so `--only-verified=false` is not
+          # a way to turn it off: the action interpolates extra_args unquoted, so
+          # the CLI received a bare `false` token and aborted with
+          # "unexpected false" before scanning anything. Omitting the flag
+          # already means "report unverified findings too", which is what this
+          # job wants. See the sibling `secret-scanning` job in security.yml,
+          # which passes `--only-verified` bare and works.
+          extra_args: --debug
+
+  # Issue #907: Independent CI enforcement of Husky commit-msg hook (commitlint)
+  commitlint:
+    name: Commit Message Linting (commitlint)
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+
+      - name: Setup Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version-file: '.nvmrc'
+
+      - name: Install commitlint dependencies
+        run: npm --no-audit --no-fund install --no-save @commitlint/cli@^19.6.0 @commitlint/config-conventional@^19.6.0
+
+      - name: Validate PR commit messages against Conventional Commits
+        if: github.event_name == 'pull_request'
+        run: |
+          npx commitlint --from "${{ github.event.pull_request.base.sha }}" --to "${{ github.event.pull_request.head.sha }}" --verbose
+
+      - name: Validate latest commit message on push
+        if: github.event_name == 'push'
+        run: |
+          npx commitlint --from "HEAD~1" --to "HEAD" --verbose || true
+
+  # Issue #907: Independent CI enforcement of Husky pre-commit hook (linting/syntax checks)
+  lint-check:
+    name: Lint and Formatting Enforcement
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+
+      - name: Check repository hygiene
+        run: node scripts/check-repository-hygiene.mjs
+
+      - name: Setup Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version-file: '.nvmrc'
+
+      - name: Syntax and lint validation (lint-staged equivalent)
+        run: |
+          node --check backend/index.js
+          node --check backend/src/server.js
+          node --check backend/src/app.js
+          find backend/src -name '*.js' -exec node --check {} +
+          node -e "JSON.parse(require('fs').readFileSync('package.json'))"
+          node -e "JSON.parse(require('fs').readFileSync('backend/package.json'))"
+          node -e "JSON.parse(require('fs').readFileSync('frontend/package.json'))"
 
   # Issue #514: Fuzz testing for Soroban smart contracts
   fuzz-tests:
@@ -87,10 +156,17 @@ jobs:
       - name: Checkout repository
         uses: actions/checkout@v4
 
+      # soroban-sdk 26's build script hard-fails on `wasm32-unknown-unknown`
+      # for Rust 1.82+: that target enables reference-types and multi-value,
+      # which the Soroban Environment does not support yet, so build.rs panics
+      # with "Rust compiler 1.82+ with target 'wasm32-unknown-unknown' is
+      # unsupported ... use 'wasm32v1-none' available with Rust 1.84+". The
+      # `stable` toolchain above is 1.84+, so wasm32v1-none is available and is
+      # the target Soroban actually supports.
       - name: Install Rust toolchain with wasm target
         uses: dtolnay/rust-toolchain@stable
         with:
-          targets: wasm32-unknown-unknown
+          targets: wasm32v1-none
 
       - name: Cache cargo registry & build
         uses: actions/cache@v4
@@ -104,5 +180,5 @@ jobs:
             ${{ runner.os }}-cargo-wasm-
 
       - name: Build contracts (release wasm)
-        run: cargo build --workspace --release --target wasm32-unknown-unknown --verbose
+        run: cargo build --workspace --release --target wasm32v1-none --verbose
         working-directory: contracts

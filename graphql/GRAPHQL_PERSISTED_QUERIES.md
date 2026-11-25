@@ -239,6 +239,91 @@ POST /admin/queries/batch
 
 ---
 
+## 🚫 Enforcing Persisted-Query-Only Access (Production)
+
+> **Having the feature available is not the same as enforcing it.**
+> Registering queries through this system does **not** restrict the GraphQL
+> API: by default `/api/graphql` (Yoga) and `/graphql` (Apollo) keep serving
+> arbitrary ad-hoc documents, and persisted queries are merely an additional
+> access path. To make the API accept **only** registered persisted queries,
+> persisted-query enforcement must be explicitly enabled in the deployment
+> environment.
+
+### How enforcement works
+
+`backend/src/middleware/persistedQueryEnforcement.js` is mounted directly in
+front of the GraphQL handler on both endpoints. When enforcement is active, a
+`POST` body must reference a registered persisted query in one of two ways:
+
+1. **Hash reference (APQ protocol)** — `extensions.persistedQuery.sha256Hash`
+   must equal the SHA-256 of a registered (whitespace-normalized) query. Any
+   inline `query` sent alongside the hash is stripped so only the registered
+   document can execute.
+2. **Inline document** — the SHA-256 of the normalized inline `query` must
+   equal a registered hash (i.e. the document is byte-for-byte equivalent to a
+   registered query after whitespace normalization).
+
+Anything else is rejected with **HTTP 403** and
+`errors[0].extensions.code = "PERSISTED_QUERY_NOT_REGISTERED"` before it
+reaches the GraphQL server. Enforcement **fails closed**: if it is enabled but
+the allowlist file is missing or unreadable, every query-carrying request is
+rejected (with an error logged at startup-of-request).
+
+### Production configuration
+
+| Environment variable | Required | Purpose |
+|----------------------|----------|---------|
+| `PERSISTED_QUERY_ENFORCEMENT=true` | Yes | Turns on enforcement (default: disabled — feature available but not enforced) |
+| `PERSISTED_QUERIES_FILE=/etc/rwa/persisted-queries.json` | Yes | Allowlist file of registered queries (absolute path) |
+
+Both variables are read at request time, so they must be present in the
+backend service's environment (e.g. Render dashboard / k8s ConfigMap). The
+allowlist file is JSON — either an array or an object with a `queries` array —
+whose entries are raw query strings or objects:
+
+```json
+{
+  "queries": [
+    {
+      "operationName": "GetAssetsCount",
+      "queryString": "query GetAssetsCount { assetsCount }",
+      "category": "assets"
+    },
+    { "hash": "9f2c…64-char sha256 of an already-registered query…" }
+  ]
+}
+```
+
+Hashes are computed exactly as query registration does (SHA-256 of the query
+with whitespace runs collapsed and trimmed), so the registry can be generated
+from the registered-query store.
+
+### Rollout checklist
+
+1. Register the production query set (admin API or registration workflow).
+2. Generate the allowlist file from the registered queries and ship it to the
+   backend hosts (config volume / deployment artifact).
+3. Set `PERSISTED_QUERY_ENFORCEMENT=true` and `PERSISTED_QUERIES_FILE` in the
+   backend service environment; restart/roll the service.
+4. Verify: an arbitrary ad-hoc query must be refused, a registered hash must
+   execute:
+
+```bash
+# Must be rejected (403, PERSISTED_QUERY_NOT_REGISTERED)
+curl -s -X POST "$API_URL/api/graphql" -H 'content-type: application/json' \
+  -d '{"query":"query Sneaky { __typename }"}'
+
+# Must execute (registered query sent by hash)
+curl -s -X POST "$API_URL/api/graphql" -H 'content-type: application/json' \
+  -d '{"extensions":{"persistedQuery":{"sha256Hash":"<registered-sha256>"}}}'
+```
+
+Regression coverage: `backend/__tests__/persistedQueryEnforcement.test.js`
+asserts that, with enforcement enabled, an arbitrary unregistered query is
+rejected (not merely that a registered one succeeds).
+
+---
+
 ## 📊 Analytics & Monitoring
 
 ### Metrics Collected
@@ -407,6 +492,7 @@ app.post('/graphql/persisted', async (req, res) => {
 - [ ] Set up caching layer (Redis/Memcached)
 - [ ] Configure logging and monitoring
 - [ ] Register critical queries
+- [ ] Enable persisted-query enforcement in production (`PERSISTED_QUERY_ENFORCEMENT=true` + `PERSISTED_QUERIES_FILE`, see “Enforcing Persisted-Query-Only Access” above)
 - [ ] Warm cache
 - [ ] Set up admin user accounts
 - [ ] Configure rate limiting

@@ -46,6 +46,8 @@ These are the **job names** (`name:` in the workflow), not the workflow names:
 | `npm audit (high/critical)` | `dependency-audit.yml` |
 | `cargo audit (contracts)` | `dependency-audit.yml` |
 | `gitleaks` | `gitleaks.yml` |
+| `Commit Message Linting (commitlint)` | `pr.yml` |
+| `Lint and Formatting Enforcement` | `pr.yml` |
 
 **Only checks that run on *every* pull request may be required.** GitHub treats
 a required check that never reports as permanently pending, so a path-filtered

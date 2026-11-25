@@ -18,6 +18,7 @@ import {
   RATE_LIMIT_TIERS,
   checkRateLimiterHealth,
 } from '../middleware/tieredRateLimiter.js';
+import { getClientIp } from '../utils/clientIp.js';
 
 /**
  * Factory function to create rate limiting routes
@@ -148,7 +149,7 @@ export function createRateLimitingRoutes(logger, adminAuth) {
         return res.json({
           data: {
             message: 'No rate limit active for this request',
-            ip: req.ip,
+            ip: getClientIp(req),
           },
         });
       }

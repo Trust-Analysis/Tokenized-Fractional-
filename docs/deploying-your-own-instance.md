@@ -84,7 +84,7 @@ examples. Never reuse them.
 
 - [ ] Generate a dedicated admin identity for each environment (`soroban keys generate ...`). For mainnet, keep the admin secret in a hardware wallet or secrets manager, not on a developer laptop.
 - [ ] Build and deploy the contract to testnet for staging and to mainnet for production (see [README → Configure Testnet & Deploy](../README.md#3-configure-testnet--deploy); for mainnet use `https://soroban.stellar.org:443` and the passphrase `Public Global Stellar Network ; September 2015`).
-- [ ] Call `init` with **your** admin, the payment token you actually accept (e.g. a USDC SAC on mainnet), price, and total shares.
+- [ ] Call `init` with **your** admin, the payment token you actually accept (e.g. a USDC SAC on mainnet), price, total shares, and a `timelock_delay` between 86400 and 2592000 seconds (172800 preserves the legacy 48-hour default).
 - [ ] Configure the allowlist (enabled by default) and, if used, the NFT certificate contract (`set_nft_contract`; see [NFT_CERTIFICATES.md](NFT_CERTIFICATES.md)).
 - [ ] Record every deployed contract ID per environment; the frontend and backend both need it.
 
@@ -112,7 +112,9 @@ has its own CSP settings (`CSP_*` variables in `backend/.env.example`).
 
 Not using Render? The same configuration applies to
 [Kubernetes](kubernetes-deployment.md) (replace `rwa.example.com` in
-`k8s/ingress.yaml` and the values in `k8s/secrets.yaml`) or to a self-hosted
+`k8s/ingress.yaml`, and provision real secrets per
+`k8s/README.md#secret-provisioning` instead of applying
+`k8s/secrets.example.yaml`'s placeholder values) or to a self-hosted
 Nginx server ([README → Self-Hosted HTTPS](../README.md#8-self-hosted-https-with-nginx),
 replace `example.com` in `nginx/nginx.tls.conf`). Terraform for AWS lives in
 `terraform/`; review `variables.tf` before applying.

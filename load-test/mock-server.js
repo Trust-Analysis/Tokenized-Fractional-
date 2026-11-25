@@ -18,6 +18,19 @@
  *   HTTP_LATENCY_MS  (default 5)  -> delay before HTTP responses
  *   WS_LATENCY_MS    (default 1)  -> delay before WS handshake confirmation
  *
+ * Cross-instance simulation (Issue #894):
+ *   Set PEER_URL on an instance and every HTTP trade broadcast is ALSO
+ *   forwarded to that peer (exactly once — forward loops are guarded by the
+ *   `forwardedBy` field), fanning out to the peer's own WebSocket clients.
+ *   This emulates the backend's Redis pub/sub bridge
+ *   (backend/websocketRedisAdapter.js) between horizontally-scaled replicas,
+ *   so the cross-instance Artillery scenario can be validated without Redis:
+ *     PORT=3001 INSTANCE_ID=instance-b node load-test/mock-server.js
+ *     PORT=3002 INSTANCE_ID=instance-a PEER_URL=http://localhost:3001 node load-test/mock-server.js
+ *   (Or simply: npm run test:websocket:cross-instance — see
+ *   helpers/run-cross-instance.js, which boots both instances and runs the
+ *   scenario.)
+ *
  * Run:
  *   node load-test/mock-server.js            # listens on :3001
  *   PORT=3002 node load-test/mock-server.js
@@ -29,6 +42,10 @@ import { WebSocketServer } from 'ws';
 const PORT = Number(process.env.PORT || 3001);
 const HTTP_LATENCY_MS = Number(process.env.HTTP_LATENCY_MS || 5);
 const WS_LATENCY_MS = Number(process.env.WS_LATENCY_MS || 1);
+// Issue #894: identity + optional peer bridge emulating the Redis pub/sub
+// cross-instance broadcast path between replicas.
+const INSTANCE_ID = process.env.INSTANCE_ID || `instance-${PORT}`;
+const PEER_URL = (process.env.PEER_URL || '').replace(/\/$/, '');
 
 const topics = new Map(); // topic -> Set<ws>
 
@@ -100,12 +117,33 @@ const server = createServer((req, res) => {
     }
 
     if (req.method === 'POST' && url.pathname === '/api/v1/notify/share-purchased') {
-      const { contractId, buyerAddress, sharesToBuy, totalCost } = payload;
+      const { contractId, buyerAddress, sharesToBuy, totalCost, crossInstanceBroadcastId } = payload;
       if (!contractId || !buyerAddress) {
         return respond(400, { error: 'Missing required fields' });
       }
-      broadcastTopic('share-purchases', { type: 'share_purchased', data: { contractId, buyerAddress, sharesToBuy, totalCost } });
-      return respond(200, { ok: true, message: 'Event broadcasted' });
+      const message = {
+        type: 'share_purchased',
+        data: { contractId, buyerAddress, sharesToBuy, totalCost },
+        // Issue #894: marker so cross-instance receivers can recognise (and
+        // time) broadcasts that originated on a different instance.
+        ...(crossInstanceBroadcastId ? { crossInstanceBroadcastId } : {}),
+        originInstance: INSTANCE_ID,
+      };
+      broadcastTopic('share-purchases', message);
+      broadcastTopic(`asset:${contractId}`, message);
+
+      // Issue #894: emulate the Redis pub/sub cross-instance bridge — forward
+      // this broadcast to the peer replica exactly once (the forwardedBy guard
+      // prevents infinite A->B->A forwarding loops).
+      if (PEER_URL && !payload.forwardedBy) {
+        fetch(`${PEER_URL}/api/v1/notify/share-purchased`, {
+          method: 'POST',
+          headers: { 'content-type': 'application/json' },
+          body: JSON.stringify({ ...payload, forwardedBy: INSTANCE_ID }),
+        }).catch((err) => console.warn(`[load-test mock] peer forward failed: ${err.message}`));
+      }
+
+      return respond(200, { ok: true, message: 'Event broadcasted', instanceId: INSTANCE_ID });
     }
 
     if (req.method === 'POST' && url.pathname === '/api/v1/purchases') {
@@ -128,5 +166,6 @@ handleWs(wss);
 
 server.listen(PORT, () => {
   console.log(`[load-test mock] listening on http://localhost:${PORT} (ws path /ws)`);
-  console.log(`  HTTP_LATENCY_MS=${HTTP_LATENCY_MS} WS_LATENCY_MS=${WS_LATENCY_MS}`);
+  console.log(`  INSTANCE_ID=${INSTANCE_ID} HTTP_LATENCY_MS=${HTTP_LATENCY_MS} WS_LATENCY_MS=${WS_LATENCY_MS}`);
+  if (PEER_URL) console.log(`  PEER_URL=${PEER_URL} (cross-instance bridge enabled)`);
 });

@@ -6,6 +6,7 @@ import {
   isDefaultPreferences,
   mergePreferences,
 } from '../utils/preferences';
+import { createZustandStorage } from '../lib/storage';
 
 /**
  * usePreferencesStore (Issue #793)
@@ -41,7 +42,7 @@ export const usePreferencesStore = create(
     {
       name: PREFERENCES_STORAGE_KEY,
       version: 1,
-      storage: createJSONStorage(() => localStorage),
+      storage: createJSONStorage(() => createZustandStorage()),
       // Only persist the data fields; drop any actions that may end up in state.
       partialize: (state) => mergePreferences(state),
       // Sanitise whatever was stored before it reaches the app.

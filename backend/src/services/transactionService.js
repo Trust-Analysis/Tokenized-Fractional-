@@ -11,6 +11,7 @@
  */
 
 import { randomUUID } from 'crypto';
+import { recordPurchaseMetric } from './metricsService.js';
 
 /**
  * Transaction Service
@@ -128,20 +129,90 @@ export class TransactionService {
         sharesPurchased: data.sharesPurchased,
       }, 'Purchase recorded');
 
+      recordPurchaseMetric({
+        status: 'completed',
+        contractId: data.contractId,
+        sharesPurchased: data.sharesPurchased,
+        totalAmount: data.totalAmount,
+      });
+
       return transaction;
     } catch (error) {
+      recordPurchaseMetric({ status: 'failed' });
       this.logger.error({ error: error.message, data }, 'Failed to record purchase');
       throw new Error(`Failed to record purchase: ${error.message}`);
     }
   }
 
   /**
-   * Get transaction by ID
+   * Get transaction by ID (supports transaction_id string or database integer id)
    */
   async getTransaction(transactionId) {
+    return this.getTransactionById(transactionId);
+  }
+
+  /**
+   * Get transaction by either transaction_id string or primary key id
+   */
+  async getTransactionById(transactionId) {
     return this.db('transactions')
       .where('transaction_id', transactionId)
+      .orWhere('id', transactionId)
       .first();
+  }
+
+  /**
+   * Issue #912: Place a legal hold on a transaction
+   * @param {string|number} transactionId
+   * @param {Object} options
+   * @returns {Promise<Object>}
+   */
+  async placeLegalHold(transactionId, options = {}) {
+    const { reason = 'Active investigation or dispute', placedBy = 'admin' } = options;
+    const tx = await this.getTransactionById(transactionId);
+    if (!tx) {
+      throw new Error(`Transaction ${transactionId} not found`);
+    }
+
+    await this.db('transactions')
+      .where('id', tx.id)
+      .update({
+        legal_hold: true,
+        legal_hold_reason: reason,
+        legal_hold_placed_at: new Date(),
+        legal_hold_placed_by: placedBy,
+        updated_at: new Date(),
+      });
+
+    this.logger.info({ transactionId: tx.transaction_id, reason, placedBy }, 'Legal hold placed on transaction');
+    return this.getTransactionById(tx.id);
+  }
+
+  /**
+   * Issue #912: Release a legal hold on a transaction
+   * @param {string|number} transactionId
+   * @param {Object} options
+   * @returns {Promise<Object>}
+   */
+  async releaseLegalHold(transactionId, options = {}) {
+    const { releasedBy = 'admin' } = options;
+    const tx = await this.getTransactionById(transactionId);
+    if (!tx) {
+      throw new Error(`Transaction ${transactionId} not found`);
+    }
+
+    await this.db('transactions')
+      .where('id', tx.id)
+      .update({
+        legal_hold: false,
+        legal_hold_reason: null,
+        legal_hold_placed_at: null,
+        legal_hold_placed_by: null,
+        updated_at: new Date(),
+      });
+
+    this.logger.info({ transactionId: tx.transaction_id, releasedBy }, 'Legal hold released on transaction');
+    return this.getTransactionById(tx.id);
   }
 
   /**
@@ -154,6 +225,72 @@ export class TransactionService {
       .orderBy('created_at', 'desc')
       .limit(limit)
       .offset(offset);
+  }
+
+  /**
+   * Get paginated price points from completed purchases for a contract.
+   */
+  async getPriceHistory(contractId, { from, to, resolution, limit, offset }) {
+    const createBaseQuery = () => {
+      let query = this.db('transactions')
+        .where('contract_id', contractId)
+        .where('status', 'completed');
+      if (from) query = query.where('created_at', '>=', from);
+      if (to) query = query.where('created_at', '<=', to);
+      return query;
+    };
+
+    if (resolution === 'raw') {
+      const count = await createBaseQuery().count({ total: 'id' }).first();
+      const rows = await createBaseQuery()
+        .select('created_at as timestamp', 'price_per_share as price', 'total_amount as volume')
+        .orderBy('created_at', 'asc')
+        .orderBy('id', 'asc')
+        .limit(limit)
+        .offset(offset);
+
+      return {
+        total: Number(count?.total || 0),
+        data: rows.map(row => ({
+          timestamp: new Date(row.timestamp).toISOString(),
+          price: Number(row.price),
+          volume: Number(row.volume),
+          transactions: 1,
+        })),
+      };
+    }
+
+    const bucket = resolution === 'hour' ? 'hour' : 'day';
+    const isPostgres = ['pg', 'postgres', 'postgresql'].includes(this.db.client.config.client);
+    const bucketExpression = isPostgres
+      ? `date_trunc('${bucket}', created_at)`
+      : bucket === 'hour'
+        ? "strftime('%Y-%m-%dT%H:00:00Z', created_at)"
+        : "strftime('%Y-%m-%dT00:00:00Z', created_at)";
+    const bucketQuery = () => createBaseQuery()
+      .select(this.db.raw(`${bucketExpression} as timestamp`))
+      .avg({ price: 'price_per_share' })
+      .sum({ volume: 'total_amount' })
+      .count({ transactions: 'id' })
+      .groupByRaw(bucketExpression);
+    const total = await this.db
+      .from(createBaseQuery().select(this.db.raw(`${bucketExpression} as timestamp`)).groupByRaw(bucketExpression).as('price_buckets'))
+      .count({ total: '*' })
+      .first();
+    const rows = await bucketQuery()
+      .orderBy('timestamp', 'asc')
+      .limit(limit)
+      .offset(offset);
+
+    return {
+      total: Number(total?.total || 0),
+      data: rows.map(row => ({
+        timestamp: new Date(row.timestamp).toISOString(),
+        price: Number(row.price),
+        volume: Number(row.volume),
+        transactions: Number(row.transactions),
+      })),
+    };
   }
 
   /**

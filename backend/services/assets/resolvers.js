@@ -5,6 +5,7 @@ import { readFileSync } from 'fs';
 import { fileURLToPath } from 'url';
 import { dirname, join } from 'path';
 import { gql } from 'graphql-tag';
+import { isValidContractId, INVALID_CONTRACT_ID_MESSAGE } from '../../src/validators/rwaValidator.js';
 
 const __filename = fileURLToPath(import.meta.url);
 const __dirname = dirname(__filename);
@@ -244,10 +245,13 @@ export const resolvers = {
       }
 
       const { input } = args;
+      const { contractId } = input;
+      if (!isValidContractId(contractId)) {
+        throw new Error(INVALID_CONTRACT_ID_MESSAGE);
+      }
       const error = dataLayer.validateRwaBody(input);
       if (error) throw new Error(error);
 
-      const contractId = `C${Math.random().toString(36).substring(2, 56)}`;
       const now = new Date().toISOString();
 
       const newAsset = {
@@ -256,6 +260,7 @@ export const resolvers = {
         createdAt: now,
         updatedAt: now,
         pending: true,
+        contractVerified: false,
         paused: false,
         documents: []
       };

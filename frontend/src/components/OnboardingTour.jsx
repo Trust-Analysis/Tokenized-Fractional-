@@ -1,11 +1,12 @@
 import React, { useState, useEffect } from 'react';
 import Joyride, { STATUS } from 'react-joyride';
+import { readString, writeString, STORAGE_KEYS } from '../lib/storage';
 
 const OnboardingTour = () => {
   const [run, setRun] = useState(false);
 
   useEffect(() => {
-    const hasCompletedTour = localStorage.getItem('hasCompletedTour');
+    const hasCompletedTour = readString(STORAGE_KEYS.ONBOARDING_COMPLETED);
     // Only run the tour if the user hasn't completed or skipped it before
     if (!hasCompletedTour) {
       setRun(true);
@@ -37,7 +38,7 @@ const OnboardingTour = () => {
     const finishedStatuses = [STATUS.FINISHED, STATUS.SKIPPED];
     
     if (finishedStatuses.includes(status)) {
-      localStorage.setItem('hasCompletedTour', 'true');
+      writeString(STORAGE_KEYS.ONBOARDING_COMPLETED, 'true');
       setRun(false);
     }
   };

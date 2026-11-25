@@ -23,6 +23,14 @@ import styles from './Breadcrumbs.module.css';
 
 const MAX_VISIBLE = 5; // Maximum visible crumbs before truncation
 
+function serializeJsonLd(data) {
+  return JSON.stringify(data).replace(/[<>&]/g, character => ({
+    '<': '\\u003c',
+    '>': '\\u003e',
+    '&': '\\u0026',
+  })[character]);
+}
+
 // Route path → human-readable label mapping
 const DEFAULT_LABELS = {
   '': 'Home',
@@ -90,7 +98,8 @@ function Breadcrumbs({
       {...rest}
     >
       {schemaData && (
-        <script type="application/ld+json" dangerouslySetInnerHTML={{ __html: JSON.stringify(schemaData) }} />
+        // eslint-disable-next-line no-restricted-syntax -- JSON-LD needs a script text node; serializeJsonLd escapes HTML-sensitive characters.
+        <script type="application/ld+json" dangerouslySetInnerHTML={{ __html: serializeJsonLd(schemaData) }} />
       )}
       <ol className={styles.list}>
         {displayCrumbs.map((crumb, idx) => {

@@ -205,7 +205,7 @@ function startBackend(port, apiKey) {
   delete env.REDIS_URL;
   delete env.CONSISTENCY_CHECK_ENABLED;
 
-  const child = spawn(process.execPath, ['index.js'], { cwd: BACKEND_DIR, env, stdio: ['ignore', 'inherit', 'inherit'] });
+  const child = spawn(process.execPath, ['src/server.js'], { cwd: BACKEND_DIR, env, stdio: ['ignore', 'inherit', 'inherit'] });
   return child;
 }
 
