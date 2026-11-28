@@ -1,0 +1,114 @@
+# Assets Service - Federated Schema
+# This service manages real-world asset metadata and ownership
+
+extend schema
+  @link(url: "https://specs.apollo.dev/federation/v2.3",
+        import: ["@key", "@shareable", "@inaccessible", "@override", "@provides", "@external"])
+
+type Asset @key(fields: "contractId") {
+  contractId: ID!
+  title: String!
+  location: String!
+  description: String!
+  assetType: AssetType!
+  totalShares: Int!
+  pricePerShare: Int!
+  availableShares: Int!
+  isPaused: Boolean!
+  documents: [DocumentHash!]!
+  createdAt: String!
+  updatedAt: String!
+  # Extended fields from other services
+  owner: User @provides(fields: "walletAddress")
+  transactions: [Transaction!] @provides(fields: "transactionId type status")
+  # Canonical income path: accumulator-based distribution (see docs/adr).
+  # The legacy dividend path (distribute_dividends/claim_dividends) has been
+  # removed from the contract ABI; no GraphQL fields are exposed for it.
+  distribution: AssetDistribution
+}
+
+# Canonical income distribution state for an asset.
+# Mirrors the on-chain accumulator model (deposit_distribution/claim_distribution).
+type AssetDistribution {
+  contractId: ID!
+  # Total amount deposited into the distribution accumulator (base units).
+  totalDistributed: String!
+  # Amount currently claimable by the given holder, if requested.
+  claimable(walletAddress: String!): String
+  # Accumulator index used to compute per-holder entitlements.
+  accumulatorIndex: String!
+  lastUpdatedAt: String!
+}
+
+type DocumentHash {
+  name: String!
+  hash: String!
+  mimeType: String
+  uploadedAt: String!
+}
+
+enum AssetType {
+  COMMERCIAL_REAL_ESTATE
+  RESIDENTIAL
+  AGRICULTURAL
+  INFRASTRUCTURE
+  COMMODITIES
+  ART
+  OTHER
+}
+
+input AssetFilter {
+  search: String
+  assetType: AssetType
+  location: String
+  isPaused: Boolean
+}
+
+# BEGIN GENERATED ASSET INPUT
+input AssetInput {
+  contractId: String!
+  title: String!
+  location: String!
+  description: String!
+  assetType: AssetType!
+  totalShares: Int!
+  pricePerShare: Int!
+  availableShares: Int!
+}
+# END GENERATED ASSET INPUT
+
+type Query {
+  assets(filter: AssetFilter, limit: Int, offset: Int): [Asset!]!
+  asset(contractId: ID!): Asset
+  assetsCount: Int!
+  searchAssets(query: String!, limit: Int): [Asset!]!
+  pendingAssets: [Asset!]!
+  assetStatistics: AssetStatistics!
+  # Canonical income path query.
+  assetDistribution(contractId: ID!): AssetDistribution
+}
+
+type AssetStatistics {
+  totalAssets: Int!
+  pendingAssets: Int!
+  totalSharesAvailable: Int!
+  averagePricePerShare: Float!
+  assetsByType: [AssetTypeCount!]!
+}
+
+type AssetTypeCount {
+  assetType: AssetType!
+  count: Int!
+}
+
+type Mutation {
+  createAsset(input: AssetInput!): Asset!
+  updateAsset(contractId: ID!, input: AssetInput!): Asset!
+  deleteAsset(contractId: ID!): Boolean!
+  approveAsset(contractId: ID!): Asset!
+  pauseAsset(contractId: ID!): Asset!
+  unpauseAsset(contractId: ID!): Asset!
+  # Canonical income path mutation: record a distribution deposit.
+  # Replaces the removed dividend mutations (distributeDividends/claimDividends).
+  depositDistribution(contractId: ID!, amount: String!): AssetDistribution!
+}

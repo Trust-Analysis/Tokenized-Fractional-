@@ -1,0 +1,75 @@
+# RWA Marketplace — full stack
+#
+# Dev mode  (hot-reload):  docker compose --profile dev up
+# Prod mode (built nginx): docker compose --profile prod up --build
+# With Redis cache:        docker compose --profile redis up
+# With Redis + TLS:        docker compose --profile redis-tls up
+#
+# Setup steps:
+#   1. Copy backend/.env.example → backend/.env and fill in values, including a
+#      32+ byte JWT_SECRET (`openssl rand -hex 32`).
+#   2. Generate TLS certificates:  bash scripts/generate-certs.sh
+#   3. Export POSTGRES_USER, POSTGRES_PASSWORD and JWT_SECRET in your shell or a
+#      root .env — compose interpolates these before starting the containers.
+#      (creates ./certs/  with CA, nginx, and Redis client certs)
+
+x-backend-common: &backend-common
+  build: ./backend
+  command: ["node", "\${BACKEND_ENTRYPOINT:-src/server.js}"]
+  restart: unless-stopped
+  env_file:
+    - path: ./backend/.env
+      required: false
+  volumes:
+    # Persist data.json across restarts
+    - backend-data:/app/data
+    # Mount TLS certificates (read-only) — used for Redis mTLS and reference
+    - ./certs:/etc/ssl/rwa:ro
+  healthcheck:
+    test: ["CMD", "wget", "-qO-", "http://localhost:3001/health"]
+    interval: 30s
+    timeout: 5s
+    retries: 3
+  depends_on:
+    postgres:
+      condition: service_healthy
+    redis:
+      condition: service_healthy
+
+services:
+
+  # ── Express.js backend API (dev profile) ───────────────────────────────────
+  backend-dev:
+    <<: *backend-common
+    environment:
+      PORT: "3001"
+      NODE_ENV: \${NODE_ENV:-development}
+      JWT_SECRET: \${JWT_SECRET:?JWT_SECRET must be set to a 32+ byte random value (openssl rand -hex 32)}
+      DATABASE_URL: postgresql://\${POSTGRES_USER:?POSTGRES_USER must be set}:${POSTGRES_PASSWORD:?POSTGRES_PASSWORD must be set}@postgres:5432/${POSTGRES_DB:-rwa_marketplace}
+      REDIS_URL: redis://redis:6379
+    ports:
+      - "3001:3001"
+    profiles: ["dev"]
+
+  # ── Express.js backend API (prod profile — internal only behind Nginx) ─────
+  backend:
+    <<: *backend-common
+    environment:
+      PORT: "3001"
+      NODE_ENV: \${NODE_ENV:-production}
+      JWT_SECRET: \${JWT_SECRET:?JWT_SECRET must be set to a 32+ byte random value (openssl rand -hex 32)}
+      DATABASE_URL: postgresql://\${POSTGRES_USER:?POSTGRES_USER must be set}:${POSTGRES_PASSWORD:?POSTGRES_PASSWORD must be set}@postgres:5432/${POSTGRES_DB:-rwa_marketplace}
+      REDIS_URL: redis://redis:6379
+    expose:
+      - "3001"
+    profiles: ["prod"]
+
+  # ── Dev frontend (Vite HMR) — default ──────────────────────────────────────
+  frontend-dev:
+    build:
+      context: ./frontend
+      target: dev
+    restart: unless-stopped
+    environment:
+      VITE_CONTRACT_ID: \${VITE_CONTRACT_ID:-C...}
+      VITE_RPC_URL: \${

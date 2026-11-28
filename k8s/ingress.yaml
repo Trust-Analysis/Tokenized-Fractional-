@@ -1,0 +1,61 @@
+apiVersion: networking.k8s.io/v1
+kind: Ingress
+metadata:
+  name: rwa-marketplace-ingress
+  namespace: rwa-marketplace
+  labels:
+    app: rwa-marketplace
+    component: ingress
+  annotations:
+    # nginx ingress controller annotations
+    nginx.ingress.kubernetes.io/rewrite-target: /
+    nginx.ingress.kubernetes.io/ssl-redirect: "true"
+    nginx.ingress.kubernetes.io/proxy-body-size: "10m"
+    nginx.ingress.kubernetes.io/proxy-read-timeout: "60"
+    nginx.ingress.kubernetes.io/proxy-send-timeout: "60"
+    # Rate limiting — matches existing nginx.conf rules
+    nginx.ingress.kubernetes.io/limit-rps: "10"
+    nginx.ingress.kubernetes.io/limit-connections: "20"
+spec:
+  ingressClassName: nginx
+  # TLS — replace example.com with your domain and create the corresponding TLS secret
+  tls:
+    - hosts:
+        - rwa.example.com
+      secretName: rwa-tls-secret
+  rules:
+    - host: rwa.example.com
+      http:
+        paths:
+          # Backend API path
+          - path: /api
+            pathType: Prefix
+            backend:
+              service:
+                name: rwa-backend-svc
+                port:
+                  number: 3001
+          # API docs path
+          - path: /api-docs
+            pathType: Prefix
+            backend:
+              service:
+                name: rwa-backend-svc
+                port:
+                  number: 3001
+          # Health check
+          - path: /health
+            pathType: Prefix
+            backend:
+              service:
+                name: rwa-backend-svc
+                port:
+                  number: 3001
+          # Frontend catch-all
+          - path: /
+            pathType: Prefix
+            backend:
+              service:
+                name: rwa-frontend-svc
+                port:
+                  number: 80

@@ -1,0 +1,31 @@
+name: Setup Script Parity
+
+on:
+  pull_request:
+    branches: [ main, dev ]
+  push:
+    branches: [ main, dev ]
+
+jobs:
+  setup-unix:
+    name: Setup parity (Ubuntu)
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version-file: ".nvmrc"
+      - run: bash scripts/setup.sh --env-only
+      - run: node scripts/verify-setup-parity.mjs --check-env
+
+  setup-windows:
+    name: Setup parity (Windows)
+    runs-on: windows-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version-file: ".nvmrc"
+      - shell: pwsh
+        run: ./scripts/setup.ps1 -EnvOnly
+      - run: node scripts/verify-setup-parity.mjs --check-env

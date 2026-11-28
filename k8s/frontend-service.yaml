@@ -1,0 +1,17 @@
+apiVersion: v1
+kind: Service
+metadata:
+  name: rwa-frontend-svc
+  namespace: rwa-marketplace
+  labels:
+    app: rwa-frontend
+    component: frontend
+spec:
+  selector:
+    app: rwa-frontend
+  type: ClusterIP
+  ports:
+    - name: http
+      port: 80
+      targetPort: 80
+      protocol: TCP

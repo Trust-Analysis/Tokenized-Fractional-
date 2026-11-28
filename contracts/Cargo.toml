@@ -1,0 +1,25 @@
+[workspace]
+members = [".", "nft", "multi_asset"]
+resolver = "2"
+
+[package]
+name = "rwa-marketplace"
+version = "0.2.0"
+edition = "2021"
+
+[lib]
+crate-type = ["cdylib", "rlib"]
+
+[dependencies]
+soroban-sdk = "26.1.0"
+
+[profile.release]
+opt-level = "z"
+lto = true
+debug = false
+
+[dev-dependencies]
+soroban-sdk = { version = "26.1.0", features = ["testutils"] }
+proptest = "1.4"
+share-certificate-nft = { path = "nft" }
+stellar-tokens = { version = "0.7.1" }

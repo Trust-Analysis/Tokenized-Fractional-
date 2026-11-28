@@ -1,0 +1,43 @@
+name: Security hardening (non-vulnerability)
+description: >-
+  Propose a security improvement that is not an exploitable vulnerability
+  (e.g. defense-in-depth, CI/CD hardening, dependency policy). For an
+  exploitable vulnerability, use the security advisory form instead — see
+  config.yml / SECURITY.md.
+title: "[Security-hardening]: "
+labels: ["security-hardening"]
+body:
+  - type: markdown
+    attributes:
+      value: >-
+        **Do not use this form for an exploitable vulnerability.** Use the
+        "Report a security vulnerability" link on the issue picker instead, per
+        SECURITY.md.
+  - type: textarea
+    id: area
+    attributes:
+      label: Affected area
+      description: Component/path(s) this affects (e.g. contracts/, backend/auth, .github/ workflows).
+    validations:
+      required: true
+  - type: textarea
+    id: risk
+    attributes:
+      label: Current gap / risk
+      description: What is missing or weak today, and what is the realistic impact?
+    validations:
+      required: true
+  - type: textarea
+    id: proposal
+    attributes:
+      label: Proposed hardening
+      description: Concrete steps to close the gap.
+    validations:
+      required: true
+  - type: checkboxes
+    id: acknowledgements
+    attributes:
+      label: Acknowledgements
+      options:
+        - label: This is not an exploitable vulnerability (if it is, I used the security advisory form instead).
+          required: true

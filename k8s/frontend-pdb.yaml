@@ -1,0 +1,13 @@
+apiVersion: policy/v1
+kind: PodDisruptionBudget
+metadata:
+  name: rwa-frontend-pdb
+  namespace: rwa-marketplace
+  labels:
+    app: rwa-frontend
+    component: frontend
+spec:
+  minAvailable: 1
+  selector:
+    matchLabels:
+      app: rwa-frontend

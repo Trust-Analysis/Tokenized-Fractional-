@@ -1,0 +1,89 @@
+/* Copyright (c) 2026 Tokenized Fractional RWA Marketplace Contributors */
+/* SPDX-License-Identifier: MIT */
+
+.emptyState {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  text-align: center;
+  padding: var(--spacing-xl, 3rem) var(--spacing-lg, 2rem);
+  min-height: 280px;
+  width: 100%;
+  animation: emptyStateFadeIn 0.4s ease-out;
+}
+
+@keyframes emptyStateFadeIn {
+  from { opacity: 0; transform: translateY(8px); }
+  to   { opacity: 1; transform: translateY(0); }
+}
+
+.illustration {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  margin-bottom: var(--spacing-md, 1.5rem);
+  color: var(--color-text-muted, #6b7280);
+  opacity: 0.6;
+  transition: transform 0.3s ease, opacity 0.3s ease;
+}
+
+.emptyState:hover .illustration {
+  transform: scale(1.05);
+  opacity: 0.8;
+}
+
+/* Variant-specific accent colors */
+.no-results .illustration    { color: var(--color-warning, #f59e0b); }
+.no-transactions .illustration { color: var(--color-info, #3b82f6); }
+.no-favorites .illustration   { color: var(--color-accent, #ec4899); }
+.no-data .illustration        { color: var(--color-text-muted, #6b7280); }
+.new-user .illustration       { color: var(--color-primary, #4a9eff); }
+.generic .illustration        { color: var(--color-text-muted, #6b7280); }
+
+.title {
+  font-size: 1.25rem;
+  font-weight: 700;
+  margin: 0 0 var(--spacing-xs, 0.5rem) 0;
+  color: var(--color-text, #e5e7eb);
+}
+
+.description {
+  font-size: 0.95rem;
+  line-height: 1.5;
+  color: var(--color-text-muted, #9ca3af);
+  max-width: 420px;
+  margin: 0 0 var(--spacing-lg, 2rem) 0;
+}
+
+.actions {
+  display: flex;
+  flex-wrap: wrap;
+  gap: var(--spacing-sm, 0.75rem);
+  justify-content: center;
+}
+
+.actionButton {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.5rem;
+}
+
+.actionIcon {
+  display: inline-flex;
+  align-items: center;
+}
+
+/* New-user variant: slightly larger illustration + special styling */
+.new-user .illustration { transform: scale(1.1); }
+.new-user .title { font-size: 1.5rem; }
+
+/* Responsive */
+@media (max-width: 480px) {
+  .emptyState {
+    padding: var(--spacing-lg, 2rem) var(--spacing-sm, 0.75rem);
+    min-height: 220px;
+  }
+  .title { font-size: 1.1rem; }
+  .description { font-size: 0.875rem; }
+}

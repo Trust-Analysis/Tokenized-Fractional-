@@ -1,0 +1,19 @@
+{
+  "name": "federation-gateway",
+  "version": "1.0.0",
+  "description": "Apollo Gateway for Federated GraphQL Services",
+  "type": "module",
+  "main": "index.js",
+  "scripts": {
+    "start": "node index.js",
+    "dev": "node --watch index.js"
+  },
+  "dependencies": {
+    "@apollo/gateway": "^2.5.0",
+    "@apollo/server": "^4.10.1",
+    "graphql": "^16.8.1"
+  },
+  "engines": {
+    "node": ">=18.0.0"
+  }
+}

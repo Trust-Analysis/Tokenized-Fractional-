@@ -1,0 +1,6 @@
+{
+  "initialJsKb": 250,
+  "lazyChunkJsKb": 500,
+  "cssKb": 50,
+  "maxIncreasePercent": 15
+}

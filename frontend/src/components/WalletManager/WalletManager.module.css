@@ -1,0 +1,938 @@
+/* ─── WalletManager.module.css ────────────────────────────────────────────────
+   Styles for WalletManager panel and TransactionConfirmModal.
+   Uses CSS custom properties from theme.css.
+──────────────────────────────────────────────────────────────────────────── */
+
+/* ── Overlay ──────────────────────────────────────────────────────────────── */
+
+.overlay {
+  position: fixed;
+  inset: 0;
+  z-index: 1000;
+  background: rgba(0, 0, 0, 0.6);
+  backdrop-filter: blur(4px);
+  -webkit-backdrop-filter: blur(4px);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  padding: var(--spacing-md);
+  animation: overlayFadeIn 0.2s ease;
+}
+
+@keyframes overlayFadeIn {
+  from { opacity: 0; }
+  to   { opacity: 1; }
+}
+
+/* ── Panel ────────────────────────────────────────────────────────────────── */
+
+.panel {
+  position: relative;
+  width: 100%;
+  max-width: 480px;
+  max-height: calc(100vh - 2 * var(--spacing-md));
+  overflow-y: auto;
+  background: var(--bg-surface);
+  border: 1px solid var(--border-color);
+  border-radius: var(--radius-lg);
+  box-shadow: var(--shadow-lg), 0 0 40px rgba(0, 0, 0, 0.3);
+  display: flex;
+  flex-direction: column;
+  gap: 0;
+  outline: none; /* focus ring set on :focus-visible */
+  animation: panelSlideUp 0.25s ease;
+  scrollbar-width: thin;
+  scrollbar-color: var(--border-color) transparent;
+}
+
+.panel::-webkit-scrollbar {
+  width: 4px;
+}
+.panel::-webkit-scrollbar-thumb {
+  background: var(--border-color);
+  border-radius: var(--radius-circle);
+}
+
+@keyframes panelSlideUp {
+  from { opacity: 0; transform: translateY(12px) scale(0.98); }
+  to   { opacity: 1; transform: translateY(0)    scale(1);    }
+}
+
+.panel:focus-visible {
+  box-shadow: var(--shadow-lg), 0 0 0 2px var(--primary);
+}
+
+/* ── Panel Header ─────────────────────────────────────────────────────────── */
+
+.panelHeader {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  padding: var(--spacing-lg) var(--spacing-lg) var(--spacing-md);
+  border-bottom: 1px solid var(--border-color);
+  position: sticky;
+  top: 0;
+  background: var(--bg-surface);
+  z-index: 1;
+}
+
+.panelTitle {
+  font-size: var(--font-size-lg);
+  font-weight: var(--font-weight-semibold);
+  color: var(--text-primary);
+  margin: 0;
+}
+
+.closeBtn {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  width: 32px;
+  height: 32px;
+  border-radius: var(--radius-sm);
+  border: none;
+  background: transparent;
+  color: var(--text-muted);
+  cursor: pointer;
+  transition: background-color var(--transition-fast), color var(--transition-fast);
+  flex-shrink: 0;
+}
+
+.closeBtn:hover {
+  background: var(--bg-surface-hover);
+  color: var(--text-primary);
+}
+
+.closeBtn:focus-visible {
+  outline: 2px solid var(--primary);
+  outline-offset: 2px;
+}
+
+/* ── Phishing Banner ──────────────────────────────────────────────────────── */
+
+.phishingBanner {
+  display: flex;
+  align-items: flex-start;
+  gap: var(--spacing-sm);
+  margin: var(--spacing-md) var(--spacing-lg) 0;
+  padding: var(--spacing-sm) var(--spacing-md);
+  background: var(--warning-bg);
+  border: 1px solid var(--warning-border);
+  border-radius: var(--radius-md);
+  color: var(--warning-text);
+}
+
+.phishingIcon {
+  display: flex;
+  align-items: center;
+  flex-shrink: 0;
+  margin-top: 1px;
+  color: var(--warning-text);
+}
+
+.phishingText {
+  font-size: var(--font-size-xs);
+  font-weight: var(--font-weight-medium);
+  color: var(--warning-text);
+  line-height: 1.5;
+  margin: 0;
+}
+
+/* ── Reconnect notice ─────────────────────────────────────────────────────── */
+
+.reconnectNotice {
+  margin: var(--spacing-sm) var(--spacing-lg) 0;
+  padding: var(--spacing-sm) var(--spacing-md);
+  background: var(--error-bg);
+  border: 1px solid var(--error-border);
+  border-radius: var(--radius-md);
+  font-size: var(--font-size-xs);
+  color: var(--error-text);
+  line-height: 1.5;
+}
+
+/* ── Provider List ────────────────────────────────────────────────────────── */
+
+.providerList {
+  display: flex;
+  flex-direction: column;
+  gap: var(--spacing-sm);
+  padding: var(--spacing-md) var(--spacing-lg);
+}
+
+/* ── Provider Card ────────────────────────────────────────────────────────── */
+
+.providerCard {
+  display: flex;
+  flex-direction: row;
+  align-items: center;
+  justify-content: space-between;
+  gap: var(--spacing-md);
+  padding: var(--spacing-md);
+  border: 1px solid var(--border-color);
+  border-radius: var(--radius-md);
+  background: var(--bg-surface);
+  transition: border-color var(--transition-fast),
+              background-color var(--transition-fast),
+              box-shadow var(--transition-fast);
+}
+
+.providerCard:not(.providerCardDisabled):hover {
+  border-color: var(--border-color-hover);
+  background: var(--bg-surface-hover);
+  box-shadow: var(--shadow-sm);
+}
+
+.providerCardActive {
+  border-color: var(--success-border) !important;
+  background: var(--success-bg) !important;
+  box-shadow: 0 0 0 1px var(--success-border);
+}
+
+.providerCardDisabled {
+  opacity: 0.5;
+  cursor: not-allowed;
+}
+
+.providerCardLeft {
+  display: flex;
+  align-items: flex-start;
+  gap: var(--spacing-md);
+  flex: 1;
+  min-width: 0;
+}
+
+.providerLogo {
+  flex-shrink: 0;
+  width: 40px;
+  height: 40px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+}
+
+.providerInfo {
+  display: flex;
+  flex-direction: column;
+  gap: var(--spacing-xs);
+  min-width: 0;
+}
+
+.providerNameRow {
+  display: flex;
+  align-items: center;
+  gap: var(--spacing-sm);
+  flex-wrap: wrap;
+}
+
+.providerName {
+  font-size: var(--font-size-sm);
+  font-weight: var(--font-weight-semibold);
+  color: var(--text-primary);
+}
+
+.providerDesc {
+  font-size: var(--font-size-xs);
+  color: var(--text-muted);
+  line-height: 1.4;
+  margin: 0;
+}
+
+.publicKeyDisplay {
+  font-size: var(--font-size-xs);
+  font-family: monospace;
+  color: var(--success-text);
+  margin: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.errorText {
+  font-size: var(--font-size-xs);
+  color: var(--error-text);
+  margin: 0;
+  line-height: 1.4;
+}
+
+/* ── Provider status badges ───────────────────────────────────────────────── */
+
+.badgeConnected {
+  display: inline-flex;
+  align-items: center;
+  padding: 1px 8px;
+  border-radius: var(--radius-circle);
+  font-size: 0.65rem;
+  font-weight: var(--font-weight-semibold);
+  background: var(--success-bg);
+  border: 1px solid var(--success-border);
+  color: var(--success-text);
+  text-transform: uppercase;
+  letter-spacing: 0.04em;
+  white-space: nowrap;
+}
+
+.badgeAvailable {
+  display: inline-flex;
+  align-items: center;
+  padding: 1px 8px;
+  border-radius: var(--radius-circle);
+  font-size: 0.65rem;
+  font-weight: var(--font-weight-semibold);
+  background: var(--primary-glow);
+  border: 1px solid rgba(59, 130, 246, 0.25);
+  color: var(--primary);
+  text-transform: uppercase;
+  letter-spacing: 0.04em;
+  white-space: nowrap;
+}
+
+.badgeComingSoon {
+  display: inline-flex;
+  align-items: center;
+  padding: 1px 8px;
+  border-radius: var(--radius-circle);
+  font-size: 0.65rem;
+  font-weight: var(--font-weight-semibold);
+  background: rgba(148, 163, 184, 0.08);
+  border: 1px solid rgba(148, 163, 184, 0.15);
+  color: var(--text-muted);
+  text-transform: uppercase;
+  letter-spacing: 0.04em;
+  white-space: nowrap;
+}
+
+/* ── Provider card right column ───────────────────────────────────────────── */
+
+.providerCardRight {
+  display: flex;
+  flex-direction: column;
+  align-items: flex-end;
+  gap: var(--spacing-sm);
+  flex-shrink: 0;
+}
+
+.actionButtons {
+  display: flex;
+  flex-direction: column;
+  align-items: flex-end;
+  gap: var(--spacing-xs);
+}
+
+/* ── Status dot ───────────────────────────────────────────────────────────── */
+
+.statusDot {
+  display: inline-block;
+  width: 10px;
+  height: 10px;
+  border-radius: var(--radius-circle);
+  flex-shrink: 0;
+  transition: background-color var(--transition-fast);
+}
+
+.dot_connected {
+  background: var(--success);
+  box-shadow: 0 0 6px var(--success);
+}
+
+.dot_connecting {
+  background: var(--warning);
+  animation: dotPulse 1s ease-in-out infinite;
+}
+
+.dot_error {
+  background: var(--error);
+}
+
+.dot_disconnected {
+  background: var(--text-muted);
+  opacity: 0.4;
+}
+
+@keyframes dotPulse {
+  0%, 100% { opacity: 1; }
+  50%       { opacity: 0.3; }
+}
+
+/* ── Action buttons ───────────────────────────────────────────────────────── */
+
+.btnConnect {
+  padding: 5px 14px;
+  border-radius: var(--radius-sm);
+  border: 1px solid var(--primary);
+  background: var(--primary-glow);
+  color: var(--primary);
+  font-size: var(--font-size-xs);
+  font-weight: var(--font-weight-medium);
+  cursor: pointer;
+  transition: background-color var(--transition-fast),
+              color var(--transition-fast),
+              box-shadow var(--transition-fast);
+  white-space: nowrap;
+}
+
+.btnConnect:hover {
+  background: var(--primary);
+  color: #ffffff;
+  box-shadow: var(--shadow-glow);
+}
+
+.btnConnect:focus-visible {
+  outline: 2px solid var(--primary);
+  outline-offset: 2px;
+}
+
+.btnDisconnect {
+  padding: 5px 14px;
+  border-radius: var(--radius-sm);
+  border: 1px solid var(--error-border);
+  background: var(--error-bg);
+  color: var(--error-text);
+  font-size: var(--font-size-xs);
+  font-weight: var(--font-weight-medium);
+  cursor: pointer;
+  transition: background-color var(--transition-fast),
+              color var(--transition-fast),
+              border-color var(--transition-fast);
+  white-space: nowrap;
+}
+
+.btnDisconnect:hover {
+  background: var(--error);
+  border-color: var(--error);
+  color: #ffffff;
+}
+
+.btnDisconnect:focus-visible {
+  outline: 2px solid var(--error);
+  outline-offset: 2px;
+}
+
+.btnConnecting {
+  display: inline-flex;
+  align-items: center;
+  gap: var(--spacing-xs);
+  padding: 5px 14px;
+  border-radius: var(--radius-sm);
+  border: 1px solid var(--border-color);
+  background: transparent;
+  color: var(--text-muted);
+  font-size: var(--font-size-xs);
+  font-weight: var(--font-weight-medium);
+  cursor: not-allowed;
+  white-space: nowrap;
+}
+
+.btnRetry {
+  padding: 5px 14px;
+  border-radius: var(--radius-sm);
+  border: 1px solid var(--warning-border);
+  background: var(--warning-bg);
+  color: var(--warning-text);
+  font-size: var(--font-size-xs);
+  font-weight: var(--font-weight-medium);
+  cursor: pointer;
+  transition: background-color var(--transition-fast),
+              color var(--transition-fast);
+  white-space: nowrap;
+}
+
+.btnRetry:hover {
+  background: var(--warning);
+  color: #000000;
+}
+
+.btnRetry:focus-visible {
+  outline: 2px solid var(--warning);
+  outline-offset: 2px;
+}
+
+/* ── Inline spinner (used inside connecting button) ───────────────────────── */
+
+.spinnerInline {
+  display: inline-block;
+  width: 10px;
+  height: 10px;
+  border: 2px solid currentColor;
+  border-top-color: transparent;
+  border-radius: var(--radius-circle);
+  animation: spin 0.7s linear infinite;
+  flex-shrink: 0;
+}
+
+@keyframes spin {
+  to { transform: rotate(360deg); }
+}
+
+/* ── Connection History ───────────────────────────────────────────────────── */
+
+.historySection {
+  padding: 0 var(--spacing-lg) var(--spacing-md);
+  border-top: 1px solid var(--border-color);
+  padding-top: var(--spacing-md);
+  margin-top: var(--spacing-xs);
+}
+
+.historyTitle {
+  font-size: var(--font-size-xs);
+  font-weight: var(--font-weight-semibold);
+  color: var(--text-muted);
+  text-transform: uppercase;
+  letter-spacing: 0.06em;
+  margin: 0 0 var(--spacing-sm);
+}
+
+.historyList {
+  list-style: none;
+  display: flex;
+  flex-direction: column;
+  gap: var(--spacing-xs);
+}
+
+.historyItem {
+  display: flex;
+  align-items: center;
+  gap: var(--spacing-sm);
+  font-size: var(--font-size-xs);
+  color: var(--text-secondary);
+}
+
+.historyWallet {
+  text-transform: capitalize;
+  font-weight: var(--font-weight-medium);
+  color: var(--text-primary);
+  flex-shrink: 0;
+}
+
+.historyKey {
+  font-family: monospace;
+  color: var(--text-muted);
+  flex: 1;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.historyTime {
+  flex-shrink: 0;
+  color: var(--text-muted);
+}
+
+/* ── Connected footer ─────────────────────────────────────────────────────── */
+
+.connectedFooter {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: var(--spacing-md);
+  padding: var(--spacing-md) var(--spacing-lg);
+  border-top: 1px solid var(--border-color);
+  background: var(--success-bg);
+  flex-wrap: wrap;
+}
+
+.connectedInfo {
+  display: flex;
+  align-items: center;
+  gap: var(--spacing-sm);
+  flex-wrap: wrap;
+  min-width: 0;
+}
+
+.connectedLabel {
+  font-size: var(--font-size-xs);
+  color: var(--text-secondary);
+  font-weight: var(--font-weight-medium);
+  white-space: nowrap;
+}
+
+.connectedKey {
+  font-family: monospace;
+  font-size: var(--font-size-xs);
+  color: var(--success-text);
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  max-width: 160px;
+}
+
+.sharesChip {
+  display: inline-flex;
+  align-items: center;
+  padding: 1px 8px;
+  border-radius: var(--radius-circle);
+  font-size: 0.65rem;
+  font-weight: var(--font-weight-semibold);
+  background: var(--primary-glow);
+  border: 1px solid rgba(59, 130, 246, 0.25);
+  color: var(--primary);
+  white-space: nowrap;
+}
+
+/* ── Help text ────────────────────────────────────────────────────────────── */
+
+.helpText {
+  padding: var(--spacing-md) var(--spacing-lg);
+  font-size: var(--font-size-xs);
+  color: var(--text-muted);
+  text-align: center;
+  border-top: 1px solid var(--border-color);
+}
+
+.helpLink {
+  color: var(--primary);
+  text-decoration: none;
+  font-weight: var(--font-weight-medium);
+  transition: color var(--transition-fast);
+}
+
+.helpLink:hover {
+  color: var(--primary-hover);
+  text-decoration: underline;
+}
+
+/* ═══════════════════════════════════════════════════════════════════════════
+   TransactionConfirmModal
+═══════════════════════════════════════════════════════════════════════════ */
+
+/* Sits on top of everything, including the WalletManager overlay */
+.txOverlay {
+  position: fixed;
+  inset: 0;
+  z-index: 1100;
+  background: rgba(0, 0, 0, 0.7);
+  backdrop-filter: blur(6px);
+  -webkit-backdrop-filter: blur(6px);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  padding: var(--spacing-md);
+  animation: overlayFadeIn 0.18s ease;
+}
+
+.txCard {
+  position: relative;
+  width: 100%;
+  max-width: 440px;
+  max-height: calc(100vh - 2 * var(--spacing-md));
+  overflow-y: auto;
+  background: var(--bg-surface);
+  border: 1px solid var(--border-color);
+  border-radius: var(--radius-lg);
+  box-shadow: var(--shadow-lg), 0 0 50px rgba(0, 0, 0, 0.4);
+  display: flex;
+  flex-direction: column;
+  outline: none;
+  animation: panelSlideUp 0.22s ease;
+  scrollbar-width: thin;
+  scrollbar-color: var(--border-color) transparent;
+}
+
+.txCard::-webkit-scrollbar {
+  width: 4px;
+}
+.txCard::-webkit-scrollbar-thumb {
+  background: var(--border-color);
+  border-radius: var(--radius-circle);
+}
+
+.txHeader {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  padding: var(--spacing-lg) var(--spacing-lg) var(--spacing-md);
+  border-bottom: 1px solid var(--border-color);
+}
+
+.txTitle {
+  font-size: var(--font-size-md);
+  font-weight: var(--font-weight-semibold);
+  color: var(--text-primary);
+  margin: 0;
+}
+
+.txSubtitle {
+  padding: var(--spacing-md) var(--spacing-lg) 0;
+  font-size: var(--font-size-xs);
+  color: var(--text-secondary);
+  line-height: 1.5;
+  margin: 0;
+}
+
+/* ── Transaction details table ────────────────────────────────────────────── */
+
+.txTableWrapper {
+  padding: var(--spacing-md) var(--spacing-lg);
+  overflow-x: auto;
+}
+
+.txTable {
+  width: 100%;
+  border-collapse: collapse;
+  font-size: var(--font-size-xs);
+}
+
+.txTable tr {
+  border-bottom: 1px solid var(--border-color);
+}
+
+.txTable tr:last-child {
+  border-bottom: none;
+}
+
+.txTh {
+  padding: var(--spacing-sm) var(--spacing-sm) var(--spacing-sm) 0;
+  text-align: left;
+  color: var(--text-muted);
+  font-weight: var(--font-weight-medium);
+  white-space: nowrap;
+  width: 35%;
+  vertical-align: top;
+}
+
+.txTd {
+  padding: var(--spacing-sm) 0;
+  text-align: left;
+  vertical-align: top;
+}
+
+.txValue {
+  display: block;
+  color: var(--text-primary);
+  font-family: monospace;
+  font-size: 0.7rem;
+  word-break: break-all;
+  max-width: 240px;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.txValue:hover {
+  white-space: normal;
+  overflow: visible;
+}
+
+.txEmpty {
+  padding: var(--spacing-lg);
+  text-align: center;
+  color: var(--text-muted);
+  font-size: var(--font-size-sm);
+  margin: 0;
+}
+
+/* ── TX action buttons ────────────────────────────────────────────────────── */
+
+.txActions {
+  display: flex;
+  gap: var(--spacing-sm);
+  padding: var(--spacing-md) var(--spacing-lg) var(--spacing-lg);
+  border-top: 1px solid var(--border-color);
+  justify-content: flex-end;
+}
+
+.btnTxCancel {
+  padding: 8px 20px;
+  border-radius: var(--radius-sm);
+  border: 1px solid var(--border-color);
+  background: transparent;
+  color: var(--text-secondary);
+  font-size: var(--font-size-sm);
+  font-weight: var(--font-weight-medium);
+  cursor: pointer;
+  transition: background-color var(--transition-fast),
+              color var(--transition-fast),
+              border-color var(--transition-fast);
+}
+
+.btnTxCancel:hover {
+  background: var(--bg-surface-hover);
+  border-color: var(--border-color-hover);
+  color: var(--text-primary);
+}
+
+.btnTxCancel:focus-visible {
+  outline: 2px solid var(--primary);
+  outline-offset: 2px;
+}
+
+.btnTxConfirm {
+  padding: 8px 20px;
+  border-radius: var(--radius-sm);
+  border: 1px solid transparent;
+  background: var(--primary);
+  color: #ffffff;
+  font-size: var(--font-size-sm);
+  font-weight: var(--font-weight-semibold);
+  cursor: pointer;
+  transition: background-color var(--transition-fast),
+              box-shadow var(--transition-fast),
+              transform var(--transition-fast);
+}
+
+.btnTxConfirm:hover {
+  background: var(--primary-hover);
+  box-shadow: var(--shadow-glow);
+  transform: translateY(-1px);
+}
+
+.btnTxConfirm:active {
+  transform: scale(0.98);
+}
+
+.btnTxConfirm:focus-visible {
+  outline: 2px solid var(--primary);
+  outline-offset: 2px;
+}
+
+/* ── Responsive ───────────────────────────────────────────────────────────── */
+
+@media (max-width: 520px) {
+  .panel,
+  .txCard {
+    max-width: 100%;
+    border-radius: var(--radius-md);
+  }
+
+  .overlay,
+  .txOverlay {
+    align-items: flex-end;
+    padding: 0;
+  }
+
+  .panel,
+  .txCard {
+    border-bottom-left-radius: 0;
+    border-bottom-right-radius: 0;
+    max-height: 90vh;
+  }
+
+  @keyframes panelSlideUp {
+    from { opacity: 0; transform: translateY(100%); }
+    to   { opacity: 1; transform: translateY(0);    }
+  }
+
+  .providerCard {
+    flex-wrap: wrap;
+  }
+
+  .providerCardRight {
+    flex-direction: row;
+    align-items: center;
+    width: 100%;
+    justify-content: space-between;
+    padding-top: var(--spacing-xs);
+    border-top: 1px solid var(--border-color);
+    margin-top: var(--spacing-xs);
+  }
+
+  .txActions {
+    flex-direction: column-reverse;
+  }
+
+  .btnTxCancel,
+  .btnTxConfirm {
+    width: 100%;
+    text-align: center;
+  }
+}
+
+/* ── WalletConnect modal (Issue #568) ───────────────────────────────────────── */
+
+.wcOverlay {
+  position: fixed;
+  inset: 0;
+  background: rgba(0, 0, 0, 0.55);
+  backdrop-filter: blur(2px);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  z-index: 60;
+}
+
+.wcCard {
+  background: var(--color-bg-card, #1e2230);
+  border: 1px solid var(--color-border, #2a3041);
+  border-radius: 12px;
+  box-shadow: 0 10px 40px rgba(0, 0, 0, 0.4);
+  padding: 1.5rem;
+  width: min(90vw, 340px);
+  outline: none;
+  text-align: center;
+}
+
+.wcCardHeader {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 1rem;
+}
+
+.wcCardTitle {
+  font-size: 1.05rem;
+  font-weight: 600;
+  color: var(--color-text-primary, #f5f7fa);
+  margin: 0;
+}
+
+.wcSubtitle {
+  font-size: 0.85rem;
+  color: var(--color-text-secondary, #9aa3b5);
+  margin: 1rem 0;
+  line-height: 1.5;
+}
+
+.wcCode {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  background: #fff;
+  border-radius: 10px;
+  padding: 0.75rem;
+  margin: 0.5rem 0 1rem;
+}
+
+.wcCode img {
+  border-radius: 6px;
+  display: block;
+}
+
+.wcLoading {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: 0.5rem;
+  color: var(--color-text-secondary, #9aa3b5);
+  font-size: 0.85rem;
+  padding: 2.5rem 0;
+}
+
+.wcError {
+  background: rgba(220, 53, 69, 0.12);
+  border: 1px solid rgba(220, 53, 69, 0.35);
+  color: var(--color-error, #ef4444);
+  border-radius: 8px;
+  padding: 0.75rem;
+  font-size: 0.82rem;
+  margin: 0.5rem 0 1rem;
+}
+
+.wcCopyUriBtn {
+  background: var(--color-bg-secondary, #161a26);
+  color: var(--color-primary, #4a9eff);
+  border: 1px solid var(--color-border, #2a3041);
+  border-radius: 8px;
+  padding: 0.5rem 1rem;
+  font-size: 0.8rem;
+  cursor: pointer;
+}
+
+.wcCopyUriBtn:hover {
+  background: rgba(74, 158, 255, 0.12);
+}
+
+.wcHint {
+  font-size: 0.75rem;
+  color: var(--color-text-tertiary, #6b7280);
+  margin: 1rem 0 0;
+}

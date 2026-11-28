@@ -1,0 +1,35 @@
+apiVersion: autoscaling/v2
+kind: HorizontalPodAutoscaler
+metadata:
+  name: rwa-backend-hpa
+  namespace: rwa-marketplace
+  labels:
+    app: rwa-backend
+    component: backend
+spec:
+  scaleTargetRef:
+    apiVersion: apps/v1
+    kind: Deployment
+    name: rwa-backend
+  minReplicas: 2
+  maxReplicas: 10
+  metrics:
+    # metrics-server supplies CPU; a Prometheus Adapter must expose the
+    # `http_requests_per_second` pod metric from the ingress/backend metrics
+    # (see k8s/README.md) for the RPS signal to be available.
+    - type: Resource
+      resource:
+        name: cpu
+        target:
+          type: Utilization
+          averageUtilization: 70
+    - type: Pods
+      pods:
+        metric:
+          name: http_requests_per_second
+        target:
+          type: AverageValue
+          averageValue: "10"
+  behavior:
+    scaleDown:
+      stabilizationWindowSeconds: 300

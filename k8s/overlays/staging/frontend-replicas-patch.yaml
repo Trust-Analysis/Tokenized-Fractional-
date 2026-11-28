@@ -1,0 +1,8 @@
+# Staging runs a single frontend replica (Issue #890)
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: rwa-frontend
+  namespace: rwa-marketplace
+spec:
+  replicas: 1

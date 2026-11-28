@@ -1,0 +1,23 @@
+# CODEOWNERS
+#
+# Requests review from the listed owners whenever a PR touches these paths.
+# Placeholder team handles below (@Trust-Analysis/maintainers,
+# @Trust-Analysis/security) must exist as real GitHub teams on this org (or be
+# swapped for actual maintainer usernames) before this file takes effect —
+# GitHub silently ignores a CODEOWNERS rule naming a team/user it can't find.
+
+# Fallback: anything not matched below.
+*                           @Trust-Analysis/maintainers
+
+# Smart contract — fund-handling and admin surface, see SECURITY.md re-audit policy.
+/contracts/                 @Trust-Analysis/maintainers @Trust-Analysis/security
+
+# Backend auth surface.
+/backend/auth.js            @Trust-Analysis/security
+/backend/authMiddleware.js  @Trust-Analysis/security
+
+# CI/CD and repo governance.
+/.github/                   @Trust-Analysis/maintainers
+
+# Security policy.
+/SECURITY.md                @Trust-Analysis/security

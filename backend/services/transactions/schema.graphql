@@ -1,0 +1,113 @@
+# Transactions Service - Federated Schema
+# This service manages all blockchain transactions and purchase records
+
+extend schema
+  @link(url: "https://specs.apollo.dev/federation/v2.3",
+        import: ["@key", "@shareable", "@inaccessible", "@override", "@provides", "@external"])
+
+type Transaction @key(fields: "transactionId") {
+  transactionId: ID!
+  type: TransactionType!
+  status: TransactionStatus!
+  amount: Int!
+  contractId: ID!
+  userId: ID!
+  walletAddress: String!
+  transactionHash: String
+  blockNumber: Int
+  timestamp: String!
+  createdAt: String!
+  updatedAt: String!
+  # Extended fields from other services
+  asset: Asset @provides(fields: "title location")
+  user: User @provides(fields: "walletAddress kycStatus")
+  metadata: TransactionMetadata
+}
+
+type TransactionMetadata {
+  shareCount: Int
+  pricePerShare: Int
+  gasUsed: Int
+  gasPrice: Int
+  memo: String
+}
+
+enum TransactionType {
+  PURCHASE
+  TRANSFER
+  MINT
+  BURN
+  APPROVAL
+  DEPOSIT
+  WITHDRAWAL
+}
+
+enum TransactionStatus {
+  PENDING
+  CONFIRMED
+  FAILED
+  CANCELLED
+}
+
+input TransactionFilter {
+  type: TransactionType
+  status: TransactionStatus
+  contractId: ID
+  userId: ID
+  startDate: String
+  endDate: String
+}
+
+input TransactionInput {
+  type: TransactionType!
+  contractId: ID!
+  userId: ID!
+  walletAddress: String!
+  amount: Int!
+  metadata: TransactionMetadataInput
+}
+
+input TransactionMetadataInput {
+  shareCount: Int
+  pricePerShare: Int
+  gasUsed: Int
+  gasPrice: Int
+  memo: String
+}
+
+type Query {
+  transactions(filter: TransactionFilter, limit: Int, offset: Int): [Transaction!]!
+  transaction(transactionId: ID!): Transaction
+  transactionsByAsset(contractId: ID!, limit: Int, offset: Int): [Transaction!]!
+  transactionsByUser(userId: ID!, limit: Int, offset: Int): [Transaction!]!
+  transactionsCount: Int!
+  transactionStatistics: TransactionStatistics!
+}
+
+type TransactionStatistics {
+  totalTransactions: Int!
+  pendingTransactions: Int!
+  confirmedTransactions: Int!
+  failedTransactions: Int!
+  totalVolume: Int!
+  averageTransactionAmount: Float!
+  transactionsByType: [TransactionTypeCount!]!
+  transactionsByStatus: [TransactionStatusCount!]!
+}
+
+type TransactionTypeCount {
+  type: TransactionType!
+  count: Int!
+}
+
+type TransactionStatusCount {
+  status: TransactionStatus!
+  count: Int!
+}
+
+type Mutation {
+  createTransaction(input: TransactionInput!): Transaction!
+  updateTransactionStatus(transactionId: ID!, status: TransactionStatus!, transactionHash: String): Transaction!
+  cancelTransaction(transactionId: ID!): Transaction!
+  retryTransaction(transactionId: ID!): Transaction!
+}

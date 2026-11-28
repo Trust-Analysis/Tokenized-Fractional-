@@ -1,0 +1,4 @@
+node_modules/
+reports/*
+!reports/baseline-metrics.json
+!reports/.gitkeep
